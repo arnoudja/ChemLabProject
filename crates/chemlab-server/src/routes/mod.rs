@@ -107,6 +107,33 @@ mod tests {
         set_cookie.split(';').next().unwrap().to_string()
     }
 
+    fn session_cookie_pair(response: &axum::response::Response) -> String {
+        response
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .find(|value| value.starts_with("chemlab_session="))
+            .map(cookie_pair)
+            .expect("chemlab_session set-cookie")
+    }
+
+    async fn get_me(app: &Router, cookie: &str) -> serde_json::Value {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/me")
+                    .header("cookie", cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        body_json(response).await
+    }
+
     async fn issue_csrf(app: &Router) -> (String, String) {
         let response = app
             .clone()
@@ -338,6 +365,33 @@ mod tests {
         assert_eq!(login.status(), StatusCode::OK);
         let login_json = body_json(login).await;
         assert_eq!(login_json["email"], "ada@chemlab.local");
+    }
+
+    #[tokio::test]
+    async fn login_rotates_session_old_cookie_rejected_new_cookie_works() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, old_session) = register_user(&app, "ada@chemlab.local").await;
+        assert_eq!(get_me(&app, &old_session).await["authenticated"], true);
+
+        let login = post_login(
+            &app,
+            &csrf_token,
+            &csrf_cookie,
+            "ada@chemlab.local",
+            "secret123",
+            None,
+        )
+        .await;
+        assert_eq!(login.status(), StatusCode::OK);
+        let new_session = session_cookie_pair(&login);
+        assert_ne!(new_session, old_session);
+
+        let me_old = get_me(&app, &old_session).await;
+        assert_eq!(me_old["authenticated"], false);
+
+        let me_new = get_me(&app, &new_session).await;
+        assert_eq!(me_new["authenticated"], true);
+        assert_eq!(me_new["user"]["email"], "ada@chemlab.local");
     }
 
     async fn post_login(

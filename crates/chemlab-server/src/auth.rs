@@ -1,6 +1,7 @@
 //! Password hashing, opaque session cookie, and CSRF synchronizer helpers.
 //!
-//! TODO(v0.2+): session rotation on privilege change,
+//! Login rotates the session: previous tokens for that user are deleted, then a
+//! new cookie is issued. TODO(v0.2+): rotation on later privilege changes;
 //! Secure cookie default in production deploy docs.
 
 use crate::error::ApiError;

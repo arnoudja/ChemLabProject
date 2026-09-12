@@ -1,7 +1,7 @@
 # ChemLabProject
 
 ChemLab is a web lab game that is fun and as realistic as practical.  
-**v0.1** is framework only — welcome page, Cargo workspace, Axum API health, and a thin login/session stub. No dissolve/evaporate simulation yet.
+**v0.1** is framework plus the first chemistry API — welcome page, login/session stub, and session-gated `POST /api/lab/dissolve` (NaCl vs sand). No evaporate or welcome-page dissolve control yet.
 
 Primary browsers: **Firefox**. Backend targets **Linux** (Ubuntu / Omarchy). Production shape later: Raspberry Pi 4 + Caddy.
 
@@ -10,7 +10,7 @@ Primary browsers: **Firefox**. Backend targets **Linux** (Ubuntu / Omarchy). Pro
 ```
 Cargo.toml                 # workspace
 crates/
-  chemlab-core/            # pure domain (placeholder in 0.1)
+  chemlab-core/            # domain (dissolve lookup: NaCl vs sand)
   chemlab-db/              # sqlx + SQLite migrations (users/sessions)
   chemlab-server/          # Axum HTTP API + SPA/static / Vite proxy
   chemlab-contracts/       # shared DTOs (serde + ts-rs)
@@ -151,7 +151,7 @@ Working thin stub (not a fake button):
 ## Tests
 
 ```bash
-# All Rust crates (health + auth integration, db, core placeholder, contracts)
+# All Rust crates (health + auth + dissolve HTTP, db, core, contracts)
 cargo test --workspace
 
 # Frontend unit smoke (Vitest) — optional once installed
@@ -171,9 +171,9 @@ v0.1 also keeps `apps/web/src/generated/contracts.ts` in sync by hand when neede
 
 ## Design notes
 
-- Chemistry rules will live in `chemlab-core` (server-authoritative). Browser never decides “did NaCl dissolve?”
+- Chemistry rules live in `chemlab-core` (server-authoritative). Browser never decides “did NaCl dissolve?”
 - Login is required even for single-player (see project context).
-- No chemistry gameplay in 0.1.
+- No welcome-page dissolve control yet (issue #9); no evaporate.
 
 ## License
 

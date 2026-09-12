@@ -139,10 +139,11 @@ Working thin stub (not a fake button):
 | `POST` | `/api/auth/login` | email, password → sets session cookie; requires CSRF; rate-limited |
 | `POST` | `/api/auth/logout` | clears cookie + deletes server session; requires CSRF |
 | `GET`  | `/api/auth/me` | `{ authenticated, user }` |
+| `POST` | `/api/lab/dissolve` | `{ substance_id, solvent_id, temperature_c }` → `{ dissolved, explanation }`; session + CSRF |
 
 - Passwords: Argon2  
 - Session cookie: `chemlab_session` (HttpOnly, SameSite=Lax; Secure when configured)  
-- CSRF: double-submit synchronizer — `GET /api/auth/csrf`, then send `X-CSRF-Token` matching `chemlab_csrf` on mutating POSTs (auth today; later lab POSTs reuse `require_csrf` + `mutateHeaders()`)  
+- CSRF: double-submit synchronizer — `GET /api/auth/csrf`, then send `X-CSRF-Token` matching `chemlab_csrf` on mutating POSTs (`/api/auth/*` and `/api/lab/dissolve` via `require_csrf`)  
 - Rate limits: in-process sliding window on `POST /api/auth/register` and `POST /api/auth/login` (5 / 60s per IP and per email). Over limit → `429` `{ code: "rate_limited" }`. Logout is not limited.  
 - Store: SQLite `users` + `sessions` (token **hash** only)  
 - TODO next: session rotation

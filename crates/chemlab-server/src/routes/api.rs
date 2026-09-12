@@ -13,7 +13,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::cookie::CookieJar;
 use chemlab_contracts::{
-    AuthUserResponse, CsrfResponse, HealthResponse, LoginRequest, MeResponse, RegisterRequest,
+    AuthUserResponse, CsrfResponse, DissolveRequest, DissolveResponse, HealthResponse,
+    LoginRequest, MeResponse, RegisterRequest,
 };
 use chemlab_db::{
     create_session, delete_session_by_token_hash, find_user_by_email,
@@ -29,12 +30,13 @@ pub fn router() -> Router<AppState> {
         .merge(csrf_protected())
 }
 
-/// Mutating JSON routes. Later lab POSTs should join this router (or `.layer(from_fn(require_csrf))`).
+/// Mutating JSON routes (auth + lab). Reuses `require_csrf`; do not fork a second CSRF helper.
 fn csrf_protected() -> Router<AppState> {
     Router::new()
         .route("/api/auth/register", post(register))
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
+        .route("/api/lab/dissolve", post(lab_dissolve))
         .layer(middleware::from_fn(require_csrf))
 }
 
@@ -111,6 +113,22 @@ async fn logout(
     }
     let jar = jar.add(clear_session_cookie(state.inner.cookie_secure));
     Ok((StatusCode::NO_CONTENT, jar))
+}
+
+async fn lab_dissolve(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(body): Json<DissolveRequest>,
+) -> Result<Json<DissolveResponse>, ApiError> {
+    if current_user(&state, &jar).await?.is_none() {
+        return Err(ApiError::unauthorized("unauthenticated", "Login required"));
+    }
+
+    let outcome = chemlab_core::dissolve(&body.substance_id, &body.solvent_id, body.temperature_c)?;
+    Ok(Json(DissolveResponse {
+        dissolved: outcome.dissolved,
+        explanation: outcome.explanation.to_string(),
+    }))
 }
 
 async fn me(State(state): State<AppState>, jar: CookieJar) -> Result<Json<MeResponse>, ApiError> {

@@ -2,6 +2,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chemlab_contracts::ErrorResponse;
+use chemlab_core::DissolveError;
 use chemlab_db::DbError;
 
 #[derive(Debug)]
@@ -68,6 +69,12 @@ impl IntoResponse for ApiError {
             code: self.code.to_string(),
         };
         (self.status, Json(body)).into_response()
+    }
+}
+
+impl From<DissolveError> for ApiError {
+    fn from(value: DissolveError) -> Self {
+        Self::bad_request(value.code(), value.to_string())
     }
 }
 

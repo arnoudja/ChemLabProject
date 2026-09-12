@@ -74,6 +74,23 @@ pub struct CsrfResponse {
     pub csrf_token: String,
 }
 
+/// Inputs for `POST /api/lab/dissolve`. Ids are matched as-is (no trim or case-fold).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/generated/")]
+pub struct DissolveRequest {
+    pub substance_id: String,
+    pub solvent_id: String,
+    pub temperature_c: i32,
+}
+
+/// Server-authoritative dissolve prediction (`dissolved` + UI `explanation`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/generated/")]
+pub struct DissolveResponse {
+    pub dissolved: bool,
+    pub explanation: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +109,29 @@ mod tests {
         let raw = r#"{"email":"a@b.co","password":"secret123","display_name":"Ada"}"#;
         let req: RegisterRequest = serde_json::from_str(raw).unwrap();
         assert_eq!(req.display_name, "Ada");
+    }
+
+    #[test]
+    fn dissolve_request_round_trips() {
+        let req = DissolveRequest {
+            substance_id: "nacl".into(),
+            solvent_id: "water".into(),
+            temperature_c: 20,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let back: DissolveRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(req, back);
+    }
+
+    #[test]
+    fn dissolve_response_round_trips() {
+        let resp = DissolveResponse {
+            dissolved: false,
+            explanation: "Sand (silica) does not dissolve in water at bench temperature.".into(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let back: DissolveResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(resp, back);
+        assert!(!back.dissolved);
     }
 }

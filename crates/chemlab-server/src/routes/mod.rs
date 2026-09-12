@@ -93,12 +93,65 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
-    #[tokio::test]
-    async fn register_login_me_logout_flow() {
-        let app = test_app().await;
+    fn first_set_cookie(response: &axum::response::Response) -> String {
+        response
+            .headers()
+            .get("set-cookie")
+            .expect("set-cookie")
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
 
-        let register = app
+    fn cookie_pair(set_cookie: &str) -> String {
+        set_cookie.split(';').next().unwrap().to_string()
+    }
+
+    async fn issue_csrf(app: &Router) -> (String, String) {
+        let response = app
             .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/csrf")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = cookie_pair(&first_set_cookie(&response));
+        let json = body_json(response).await;
+        let token = json["csrf_token"].as_str().expect("csrf_token").to_string();
+        (token, cookie)
+    }
+
+    #[tokio::test]
+    async fn csrf_endpoint_sets_cookie_and_returns_token() {
+        let app = test_app().await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/csrf")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let set_cookie = first_set_cookie(&response);
+        assert!(set_cookie.contains("chemlab_csrf="));
+        assert!(set_cookie.to_ascii_lowercase().contains("httponly"));
+        let json = body_json(response).await;
+        let token = json["csrf_token"].as_str().expect("csrf_token");
+        assert!(!token.is_empty());
+        assert!(set_cookie.contains(token));
+    }
+
+    #[tokio::test]
+    async fn register_without_csrf_is_forbidden() {
+        let app = test_app().await;
+        let response = app
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -111,22 +164,137 @@ mod tests {
             )
             .await
             .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let json = body_json(response).await;
+        assert_eq!(json["code"], "csrf");
+    }
+
+    #[tokio::test]
+    async fn login_without_csrf_is_forbidden() {
+        let app = test_app().await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"email":"ada@chemlab.local","password":"secret123"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let json = body_json(response).await;
+        assert_eq!(json["code"], "csrf");
+    }
+
+    #[tokio::test]
+    async fn logout_without_csrf_is_forbidden() {
+        let app = test_app().await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/logout")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let json = body_json(response).await;
+        assert_eq!(json["code"], "csrf");
+    }
+
+    #[tokio::test]
+    async fn register_rejects_mismatched_csrf_token() {
+        let app = test_app().await;
+        let csrf = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/csrf")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let csrf_cookie = cookie_pair(&first_set_cookie(&csrf));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/register")
+                    .header("content-type", "application/json")
+                    .header("cookie", csrf_cookie)
+                    .header("x-csrf-token", "not-the-cookie-value")
+                    .body(Body::from(
+                        r#"{"email":"ada@chemlab.local","password":"secret123","display_name":"Ada"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let json = body_json(response).await;
+        assert_eq!(json["code"], "csrf");
+    }
+
+    #[tokio::test]
+    async fn me_does_not_require_csrf() {
+        let app = test_app().await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/me")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = body_json(response).await;
+        assert_eq!(json["authenticated"], false);
+    }
+
+    #[tokio::test]
+    async fn register_login_me_logout_flow() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie) = issue_csrf(&app).await;
+
+        let register = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/register")
+                    .header("content-type", "application/json")
+                    .header("cookie", &csrf_cookie)
+                    .header("x-csrf-token", &csrf_token)
+                    .body(Body::from(
+                        r#"{"email":"ada@chemlab.local","password":"secret123","display_name":"Ada"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(register.status(), StatusCode::CREATED);
-        let set_cookie = register
-            .headers()
-            .get("set-cookie")
-            .expect("session cookie")
-            .to_str()
-            .unwrap()
-            .to_string();
-        assert!(set_cookie.contains("chemlab_session="));
+        let session_cookie = cookie_pair(&first_set_cookie(&register));
+        assert!(session_cookie.contains("chemlab_session="));
 
         let me = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/api/auth/me")
-                    .header("cookie", set_cookie.split(';').next().unwrap())
+                    .header("cookie", &session_cookie)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -143,7 +311,8 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/api/auth/logout")
-                    .header("cookie", set_cookie.split(';').next().unwrap())
+                    .header("cookie", format!("{session_cookie}; {csrf_cookie}"))
+                    .header("x-csrf-token", &csrf_token)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -151,13 +320,14 @@ mod tests {
             .unwrap();
         assert_eq!(logout.status(), StatusCode::NO_CONTENT);
 
-        // Fresh login
         let login = app
             .oneshot(
                 Request::builder()
                     .method("POST")
                     .uri("/api/auth/login")
                     .header("content-type", "application/json")
+                    .header("cookie", &csrf_cookie)
+                    .header("x-csrf-token", &csrf_token)
                     .body(Body::from(
                         r#"{"email":"ada@chemlab.local","password":"secret123"}"#,
                     ))

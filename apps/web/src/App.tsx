@@ -214,8 +214,8 @@ export default function App() {
                 </button>
 
                 <p className="text-xs leading-relaxed text-[var(--ink-soft)]">
-                  Session cookie stub: HttpOnly <code>chemlab_session</code> backed by SQLite.
-                  CSRF and rate limits are next.
+                  Session cookie: HttpOnly <code>chemlab_session</code> plus CSRF
+                  (<code>X-CSRF-Token</code>). Rate limits are next.
                 </p>
               </form>
             )}

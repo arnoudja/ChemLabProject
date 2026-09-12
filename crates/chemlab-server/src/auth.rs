@@ -1,16 +1,23 @@
-//! Password hashing + opaque session cookie helpers (v0.1 stub).
+//! Password hashing, opaque session cookie, and CSRF synchronizer helpers.
 //!
-//! TODO(v0.2+): CSRF synchronizer token, session rotation on privilege change,
-//! rate limits on /auth/*, Secure cookie default in production deploy docs.
+//! TODO(v0.2+): session rotation on privilege change, rate limits on /auth/*,
+//! Secure cookie default in production deploy docs.
 
+use crate::error::ApiError;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
+use axum::extract::Request;
+use axum::middleware::Next;
+use axum::response::Response;
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::Duration;
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 
 pub const SESSION_COOKIE: &str = "chemlab_session";
+pub const CSRF_COOKIE: &str = "chemlab_csrf";
+/// Clients send this header; HTTP field names are case-insensitive.
+pub const CSRF_HEADER: &str = "x-csrf-token";
 
 pub fn hash_password(password: &str) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
@@ -68,6 +75,51 @@ pub fn token_from_jar(jar: &CookieJar) -> Option<String> {
     jar.get(SESSION_COOKIE).map(|c| c.value().to_string())
 }
 
+pub fn csrf_cookie(token: &str, secure: bool, ttl: Duration) -> Cookie<'static> {
+    let mut cookie = Cookie::build((CSRF_COOKIE, token.to_string()))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .path("/")
+        .max_age(cookie::time::Duration::seconds(ttl.num_seconds()))
+        .build();
+    if secure {
+        cookie.set_secure(true);
+    }
+    cookie
+}
+
+pub fn csrf_token_from_jar(jar: &CookieJar) -> Option<String> {
+    jar.get(CSRF_COOKIE)
+        .map(|c| c.value().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub fn csrf_tokens_match(header: &str, cookie: &str) -> bool {
+    if header.is_empty() || cookie.is_empty() {
+        return false;
+    }
+    hash_token(header) == hash_token(cookie)
+}
+
+/// Double-submit CSRF check for mutating routes (auth today, lab POSTs later).
+pub async fn require_csrf(
+    jar: CookieJar,
+    request: Request,
+    next: Next,
+) -> Result<Response, ApiError> {
+    let header = request
+        .headers()
+        .get(CSRF_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    let cookie = csrf_token_from_jar(&jar).unwrap_or_default();
+    if csrf_tokens_match(header, &cookie) {
+        Ok(next.run(request).await)
+    } else {
+        Err(ApiError::forbidden("csrf", "Missing or invalid CSRF token"))
+    }
+}
+
 pub fn validate_credentials(
     email: &str,
     password: &str,
@@ -107,5 +159,14 @@ mod tests {
     fn token_hash_is_stable() {
         assert_eq!(hash_token("abc"), hash_token("abc"));
         assert_ne!(hash_token("abc"), hash_token("abd"));
+    }
+
+    #[test]
+    fn csrf_tokens_match_rejects_empty_or_mismatch() {
+        assert!(csrf_tokens_match("same-token", "same-token"));
+        assert!(!csrf_tokens_match("same-token", "other-token"));
+        assert!(!csrf_tokens_match("", "same-token"));
+        assert!(!csrf_tokens_match("same-token", ""));
+        assert!(!csrf_tokens_match("", ""));
     }
 }

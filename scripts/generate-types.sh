@@ -14,6 +14,7 @@ export type { LoginRequest } from './LoginRequest'
 export type { AuthUserResponse } from './AuthUserResponse'
 export type { ErrorResponse } from './ErrorResponse'
 export type { MeResponse } from './MeResponse'
+export type { CsrfResponse } from './CsrfResponse'
 EOF
 echo "OK: apps/web/src/generated/"
 ls -1 apps/web/src/generated/

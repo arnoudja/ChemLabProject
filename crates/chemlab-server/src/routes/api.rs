@@ -1,16 +1,18 @@
 use crate::auth::{
-    clear_session_cookie, generate_session_token, hash_password, hash_token, session_cookie,
-    token_from_jar, validate_credentials, verify_password,
+    clear_session_cookie, csrf_cookie, csrf_token_from_jar, generate_session_token, hash_password,
+    hash_token, require_csrf, session_cookie, token_from_jar, validate_credentials,
+    verify_password,
 };
 use crate::error::ApiError;
 use crate::state::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::middleware;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::cookie::CookieJar;
 use chemlab_contracts::{
-    AuthUserResponse, HealthResponse, LoginRequest, MeResponse, RegisterRequest,
+    AuthUserResponse, CsrfResponse, HealthResponse, LoginRequest, MeResponse, RegisterRequest,
 };
 use chemlab_db::{
     create_session, delete_session_by_token_hash, find_user_by_email,
@@ -21,10 +23,28 @@ use chrono::Duration;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/auth/csrf", get(csrf))
+        .route("/api/auth/me", get(me))
+        .merge(csrf_protected())
+}
+
+/// Mutating JSON routes. Later lab POSTs should join this router (or `.layer(from_fn(require_csrf))`).
+fn csrf_protected() -> Router<AppState> {
+    Router::new()
         .route("/api/auth/register", post(register))
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
-        .route("/api/auth/me", get(me))
+        .layer(middleware::from_fn(require_csrf))
+}
+
+async fn csrf(State(state): State<AppState>, jar: CookieJar) -> (CookieJar, Json<CsrfResponse>) {
+    if let Some(token) = csrf_token_from_jar(&jar) {
+        return (jar, Json(CsrfResponse { csrf_token: token }));
+    }
+    let token = generate_session_token();
+    let ttl = Duration::hours(state.inner.session_ttl_hours);
+    let jar = jar.add(csrf_cookie(&token, state.inner.cookie_secure, ttl));
+    (jar, Json(CsrfResponse { csrf_token: token }))
 }
 
 async fn health() -> Json<HealthResponse> {

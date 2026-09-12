@@ -67,6 +67,13 @@ pub struct MeResponse {
     pub user: Option<AuthUserResponse>,
 }
 
+/// CSRF synchronizer token from `GET /api/auth/csrf` (cookie + `X-CSRF-Token` header).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "../../../apps/web/src/generated/")]
+pub struct CsrfResponse {
+    pub csrf_token: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

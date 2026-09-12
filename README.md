@@ -96,15 +96,17 @@ Working thin stub (not a fake button):
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| `POST` | `/api/auth/register` | email, password (≥8), display_name → sets session cookie |
-| `POST` | `/api/auth/login` | email, password → sets session cookie |
-| `POST` | `/api/auth/logout` | clears cookie + deletes server session |
+| `GET`  | `/api/auth/csrf` | issues HttpOnly `chemlab_csrf` cookie + `{ csrf_token }` |
+| `POST` | `/api/auth/register` | email, password (≥8), display_name → sets session cookie; requires CSRF |
+| `POST` | `/api/auth/login` | email, password → sets session cookie; requires CSRF |
+| `POST` | `/api/auth/logout` | clears cookie + deletes server session; requires CSRF |
 | `GET`  | `/api/auth/me` | `{ authenticated, user }` |
 
 - Passwords: Argon2  
-- Cookie: `chemlab_session` (HttpOnly, SameSite=Lax; Secure when configured)  
+- Session cookie: `chemlab_session` (HttpOnly, SameSite=Lax; Secure when configured)  
+- CSRF: double-submit synchronizer — `GET /api/auth/csrf`, then send `X-CSRF-Token` matching `chemlab_csrf` on mutating POSTs (auth today; later lab POSTs reuse `require_csrf` + `mutateHeaders()`)  
 - Store: SQLite `users` + `sessions` (token **hash** only)  
-- TODO next: CSRF token, rate limits, session rotation
+- TODO next: rate limits, session rotation
 
 ## Tests
 

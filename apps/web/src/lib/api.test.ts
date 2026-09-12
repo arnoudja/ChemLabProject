@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearCsrfTokenCache,
+  dissolve,
   fetchHealth,
   login,
   logout,
@@ -46,6 +47,13 @@ describe('api client', () => {
         }
         if (url === '/api/auth/logout') {
           return new Response(null, { status: 204 })
+        }
+        if (url === '/api/lab/dissolve') {
+          return jsonResponse({
+            dissolved: true,
+            explanation:
+              'Sodium chloride (NaCl) dissolves in water at bench temperature.',
+          })
         }
         return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
       }),
@@ -108,5 +116,97 @@ describe('api client', () => {
         headers: expect.objectContaining({ 'X-CSRF-Token': 'tok-123' }),
       }),
     )
+  })
+
+  it('dissolve posts CSRF JSON and returns the server payload as-is', async () => {
+    const outcome = await dissolve({
+      substance_id: 'nacl',
+      solvent_id: 'water',
+      temperature_c: 20,
+    })
+
+    expect(fetch).toHaveBeenCalledWith('/api/auth/csrf', {
+      credentials: 'include',
+    })
+    expect(fetch).toHaveBeenCalledWith('/api/lab/dissolve', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+        'X-CSRF-Token': 'tok-123',
+      },
+      body: JSON.stringify({
+        substance_id: 'nacl',
+        solvent_id: 'water',
+        temperature_c: 20,
+      }),
+    })
+    expect(outcome).toEqual({
+      dissolved: true,
+      explanation: 'Sodium chloride (NaCl) dissolves in water at bench temperature.',
+    })
+  })
+
+  it('dissolve forwards ids as-is and does not decide dissolved locally', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/auth/csrf') {
+        return jsonResponse({ csrf_token: 'tok-123' })
+      }
+      if (url === '/api/lab/dissolve') {
+        return jsonResponse({
+          dissolved: false,
+          explanation: 'Sand (silica) does not dissolve in water at bench temperature.',
+        })
+      }
+      return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
+    })
+
+    const outcome = await dissolve({
+      substance_id: 'sand',
+      solvent_id: 'water',
+      temperature_c: 20,
+    })
+
+    const dissolveCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url]) => String(url) === '/api/lab/dissolve')
+    expect(dissolveCall?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({
+          substance_id: 'sand',
+          solvent_id: 'water',
+          temperature_c: 20,
+        }),
+      }),
+    )
+    expect(outcome.dissolved).toBe(false)
+    expect(outcome.explanation).toBe(
+      'Sand (silica) does not dissolve in water at bench temperature.',
+    )
+  })
+
+  it('dissolve surfaces the server error body', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/auth/csrf') {
+        return jsonResponse({ csrf_token: 'tok-123' })
+      }
+      if (url === '/api/lab/dissolve') {
+        return jsonResponse(
+          { error: 'Login required', code: 'unauthenticated' },
+          401,
+        )
+      }
+      return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
+    })
+
+    await expect(
+      dissolve({
+        substance_id: 'nacl',
+        solvent_id: 'water',
+        temperature_c: 20,
+      }),
+    ).rejects.toThrow('Login required')
   })
 })

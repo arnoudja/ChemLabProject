@@ -1,9 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { AuthUserResponse, HealthResponse } from './generated/contracts'
-import { fetchHealth, fetchMe, login, logout, register } from './lib/api'
+import type {
+  AuthUserResponse,
+  DissolveResponse,
+  HealthResponse,
+} from './generated/contracts'
+import { dissolve, fetchHealth, fetchMe, login, logout, register } from './lib/api'
 import { LabBackdrop } from './components/LabBackdrop'
 
 type Mode = 'login' | 'register'
+type SubstanceId = 'nacl' | 'sand'
 
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
@@ -16,6 +21,10 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [sessionLoading, setSessionLoading] = useState(true)
+  const [substanceId, setSubstanceId] = useState<SubstanceId>('nacl')
+  const [dissolveResult, setDissolveResult] = useState<DissolveResponse | null>(null)
+  const [dissolveError, setDissolveError] = useState<string | null>(null)
+  const [dissolveBusy, setDissolveBusy] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -65,10 +74,30 @@ export default function App() {
     try {
       await logout()
       setUser(null)
+      setDissolveResult(null)
+      setDissolveError(null)
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Logout failed')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function onDissolve() {
+    setDissolveError(null)
+    setDissolveBusy(true)
+    try {
+      const outcome = await dissolve({
+        substance_id: substanceId,
+        solvent_id: 'water',
+        temperature_c: 20,
+      })
+      setDissolveResult(outcome)
+    } catch (err) {
+      setDissolveResult(null)
+      setDissolveError(err instanceof Error ? err.message : 'Dissolve failed')
+    } finally {
+      setDissolveBusy(false)
     }
   }
 
@@ -114,9 +143,49 @@ export default function App() {
                   Welcome back, {user.display_name}
                 </p>
                 <p className="text-sm text-[var(--ink-soft)]">
-                  Signed in as {user.email}. Lab benches unlock in a later build — your account is
-                  ready from day one.
+                  Signed in as {user.email}. Water at 20 °C is already on the bench — pick a solid
+                  and ask the server whether it dissolves.
                 </p>
+                <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--input-bg)]/70 p-3">
+                  <label className="block space-y-1.5 text-sm">
+                    <span className="font-medium text-[var(--ink)]">Solid</span>
+                    <select
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--ink)] outline-none ring-[var(--accent)] focus:ring-2"
+                      value={substanceId}
+                      onChange={(e) => {
+                        const next = e.target.value
+                        if (next === 'nacl' || next === 'sand') {
+                          setSubstanceId(next)
+                        }
+                      }}
+                    >
+                      <option value="nacl">Sodium chloride (NaCl)</option>
+                      <option value="sand">Sand</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={onDissolve}
+                    disabled={dissolveBusy}
+                    className="w-full rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--glass)] transition hover:brightness-110 disabled:opacity-60"
+                  >
+                    {dissolveBusy ? 'Asking the server…' : 'Dissolve'}
+                  </button>
+                  {dissolveError && (
+                    <p className="text-sm text-[var(--danger)]" role="alert">
+                      {dissolveError}
+                    </p>
+                  )}
+                  {dissolveResult && (
+                    <div className="space-y-1 text-sm" role="status" aria-live="polite">
+                      <p className="font-medium text-[var(--ink)]">
+                        Server outcome:{' '}
+                        {dissolveResult.dissolved ? 'dissolved' : 'did not dissolve'}
+                      </p>
+                      <p className="text-[var(--ink-soft)]">{dissolveResult.explanation}</p>
+                    </div>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={onLogout}

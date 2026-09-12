@@ -1,6 +1,8 @@
 import type {
   AuthUserResponse,
   CsrfResponse,
+  DissolveRequest,
+  DissolveResponse,
   ErrorResponse,
   HealthResponse,
   LoginRequest,
@@ -46,7 +48,7 @@ async function ensureCsrfToken(): Promise<string> {
   return csrfTokenCache ?? (await fetchCsrfToken())
 }
 
-/** Headers for mutating `/api/*` requests (auth today; lab POSTs later). */
+/** Headers for mutating `/api/*` requests (auth + lab POSTs). */
 export async function mutateHeaders(jsonBody = false): Promise<Record<string, string>> {
   const token = await ensureCsrfToken()
   const headers: Record<string, string> = { [CSRF_HEADER]: token }
@@ -85,4 +87,14 @@ export async function logout(): Promise<void> {
   if (!response.ok && response.status !== 204) {
     throw new Error('Could not log out')
   }
+}
+
+export async function dissolve(body: DissolveRequest): Promise<DissolveResponse> {
+  const response = await fetch('/api/lab/dissolve', {
+    method: 'POST',
+    credentials: 'include',
+    headers: await mutateHeaders(true),
+    body: JSON.stringify(body),
+  })
+  return parseJson<DissolveResponse>(response)
 }

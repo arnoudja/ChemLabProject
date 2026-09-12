@@ -1,7 +1,7 @@
 # ChemLabProject
 
 ChemLab is a web lab game that is fun and as realistic as practical.  
-**v0.1** is framework plus the first chemistry API — welcome page, login/session stub, and session-gated `POST /api/lab/dissolve` (NaCl vs sand). No evaporate or welcome-page dissolve control yet.
+**v0.1** is framework plus the first chemistry API — welcome page, login/session stub, session-gated `POST /api/lab/dissolve` (NaCl vs sand), and a signed-in welcome-page control that shows the server result. No evaporate yet.
 
 Primary browsers: **Firefox**. Backend targets **Linux** (Ubuntu / Omarchy). Production shape later: Raspberry Pi 4 + Caddy.
 
@@ -173,7 +173,7 @@ v0.1 also keeps `apps/web/src/generated/contracts.ts` in sync by hand when neede
 
 - Chemistry rules live in `chemlab-core` (server-authoritative). Browser never decides “did NaCl dissolve?”
 - Login is required even for single-player (see project context).
-- No welcome-page dissolve control yet (issue #9); no evaporate.
+- Welcome-page dissolve control shows the server result only (issue #9); no evaporate.
 
 ## License
 

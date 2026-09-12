@@ -60,6 +60,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn favicon_is_served_without_spa() {
+        let app = test_app().await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/favicon.ico")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "image/svg+xml"
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_path_is_not_found_not_unavailable() {
+        let app = test_app().await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/does-not-exist")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
     async fn register_login_me_logout_flow() {
         let app = test_app().await;
 

@@ -16,7 +16,12 @@ use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
 
 pub fn router(state: AppState) -> Router<AppState> {
-    let mut router = Router::new().route("/", get(welcome));
+    // Always serve the favicon so opening /api/health (or the embedded welcome)
+    // does not produce a 5xx when the browser auto-requests /favicon.ico.
+    let mut router = Router::new()
+        .route("/", get(welcome))
+        .route("/favicon.svg", get(favicon_svg))
+        .route("/favicon.ico", get(favicon_svg));
 
     if state.inner.vite_dev_proxy.is_some() {
         router = router.fallback(proxy_to_vite);
@@ -29,6 +34,15 @@ pub fn router(state: AppState) -> Router<AppState> {
     }
 
     router
+}
+
+async fn favicon_svg() -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "image/svg+xml")
+        .header("cache-control", "public, max-age=86400")
+        .body(Body::from(include_str!("../../../../apps/web/public/favicon.svg")))
+        .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "favicon").into_response())
 }
 
 async fn welcome(State(state): State<AppState>) -> Response {
@@ -100,8 +114,10 @@ async fn missing_frontend() -> Response {
 }
 
 fn missing_frontend_message() -> (StatusCode, Html<&'static str>) {
+    // 404 (not 503): unknown paths like /favicon.ico used to 503 and make
+    // tower_http::trace log ERROR when browsing /api/health with no SPA configured.
     (
-        StatusCode::SERVICE_UNAVAILABLE,
+        StatusCode::NOT_FOUND,
         Html(
             "<!doctype html><html><body style='font-family:sans-serif;padding:2rem'>\
              <h1>ChemLab frontend not configured</h1>\
@@ -119,6 +135,7 @@ fn embedded_welcome_html() -> String {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>ChemLab</title>
   <style>
     :root { color-scheme: light; --ink:#0f2a2e; --accent:#c45c26; }

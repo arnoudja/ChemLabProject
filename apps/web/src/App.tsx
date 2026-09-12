@@ -93,7 +93,7 @@ export default function App() {
             ChemLab
           </h1>
           <p className="animate-rise-delay mt-5 max-w-md text-lg leading-relaxed text-[var(--ink-soft)] sm:text-xl">
-            Kerbal chemistry for the curious — scarce materials, real reactions, and a lab that
+            Hands-on chemistry for the curious — scarce materials, real reactions, and a lab that
             remembers what you did.
           </p>
           <p className="mt-6 text-sm text-[var(--deep)]/80">

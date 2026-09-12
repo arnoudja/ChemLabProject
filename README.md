@@ -1,6 +1,6 @@
 # ChemLabProject
 
-Kerbal chemistry: a web lab game that is fun and as realistic as practical.  
+ChemLab is a web lab game that is fun and as realistic as practical.  
 **v0.1** is framework only — welcome page, Cargo workspace, Axum API health, and a thin login/session stub. No dissolve/evaporate simulation yet.
 
 Primary browsers: **Firefox**. Backend targets **Linux** (Ubuntu / Omarchy). Production shape later: Raspberry Pi 4 + Caddy.
@@ -128,3 +128,7 @@ v0.1 also keeps `apps/web/src/generated/contracts.ts` in sync by hand when neede
 - Chemistry rules will live in `chemlab-core` (server-authoritative). Browser never decides “did NaCl dissolve?”
 - Login is required even for single-player (see project context).
 - No chemistry gameplay in 0.1.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

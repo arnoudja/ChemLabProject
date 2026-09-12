@@ -135,7 +135,7 @@ fn embedded_welcome_html() -> String {
 <body>
   <main>
     <p class="brand">ChemLab</p>
-    <p>Kerbal chemistry is warming up. Start the Vite app for the full welcome page, or hit the API.</p>
+    <p>ChemLab is warming up. Start the Vite app for the full welcome page, or hit the API.</p>
     <p><a href="/api/health">API health</a></p>
   </main>
 </body>

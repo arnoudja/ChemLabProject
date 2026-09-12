@@ -167,7 +167,7 @@ export default function App() {
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                       autoComplete="nickname"
-                      placeholder="Ada"
+                      placeholder="Player"
                     />
                   </label>
                 )}

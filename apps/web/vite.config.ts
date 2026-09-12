@@ -37,6 +37,16 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'node',
       include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'json-summary'],
+        all: true,
+        include: ['src/**/*.{ts,tsx}'],
+        exclude: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/generated/**', 'src/main.tsx'],
+        thresholds: {
+          lines: 60,
+        },
+      },
     },
   }
 })

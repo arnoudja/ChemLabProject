@@ -6,6 +6,7 @@ import type {
 } from './generated/contracts'
 import { dissolve, fetchHealth, fetchMe, login, logout, register } from './lib/api'
 import { LabBackdrop } from './components/LabBackdrop'
+import { LabBench } from './components/LabBench'
 
 type Mode = 'login' | 'register'
 type SubstanceId = 'nacl' | 'sand'
@@ -116,8 +117,9 @@ export default function App() {
         </span>
       </header>
 
-      <main className="relative z-10 mx-auto grid min-h-[calc(100vh-4.5rem)] max-w-6xl items-center gap-10 px-5 pb-16 pt-4 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:gap-14">
-        <section className="animate-rise max-w-xl">
+      <main className="relative z-10 mx-auto flex min-h-[calc(100vh-4.5rem)] max-w-6xl flex-col gap-10 px-5 pb-16 pt-4 sm:px-8">
+        <div className="grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-14">
+          <section className="animate-rise max-w-xl">
           <h1 className="font-[family-name:var(--font-display)] text-[clamp(3.4rem,10vw,5.6rem)] font-extrabold leading-[0.92] tracking-[-0.04em] text-[var(--ink)]">
             ChemLab
           </h1>
@@ -290,6 +292,8 @@ export default function App() {
             )}
           </div>
         </section>
+        </div>
+        {user ? <LabBench /> : null}
       </main>
     </div>
   )

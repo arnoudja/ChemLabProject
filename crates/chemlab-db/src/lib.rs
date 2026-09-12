@@ -202,6 +202,15 @@ pub async fn delete_session_by_token_hash(pool: &DbPool, token_hash: &str) -> Re
     Ok(())
 }
 
+/// Drop every session for this user so login can issue a replacement token.
+pub async fn delete_sessions_for_user(pool: &DbPool, user_id: &str) -> Result<(), DbError> {
+    sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 #[derive(sqlx::FromRow)]
 struct UserRow {
     id: String,
@@ -305,5 +314,31 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, DbError::EmailTaken));
+    }
+
+    #[tokio::test]
+    async fn delete_sessions_for_user_rejects_old_and_allows_new() {
+        let pool = test_pool().await;
+        let user = insert_user(&pool, "lab@chemlab.local", "Lab Rat", "hash")
+            .await
+            .unwrap();
+        create_session(&pool, &user.id, "oldhash", Duration::hours(24))
+            .await
+            .unwrap();
+
+        delete_sessions_for_user(&pool, &user.id).await.unwrap();
+        let err = find_valid_session_by_token_hash(&pool, "oldhash")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DbError::SessionInvalid));
+
+        let session = create_session(&pool, &user.id, "newhash", Duration::hours(24))
+            .await
+            .unwrap();
+        let (found, found_user) = find_valid_session_by_token_hash(&pool, "newhash")
+            .await
+            .unwrap();
+        assert_eq!(found.id, session.id);
+        assert_eq!(found_user.id, user.id);
     }
 }

@@ -17,7 +17,7 @@ use chemlab_contracts::{
     LoginRequest, MeResponse, RegisterRequest,
 };
 use chemlab_db::{
-    create_session, delete_session_by_token_hash, find_user_by_email,
+    create_session, delete_session_by_token_hash, delete_sessions_for_user, find_user_by_email,
     find_valid_session_by_token_hash, insert_user, UserRecord,
 };
 use chrono::Duration;
@@ -99,6 +99,7 @@ async fn login(
         ));
     }
 
+    delete_sessions_for_user(state.pool(), &user.id).await?;
     let (jar, response) = issue_session(&state, jar, &user).await?;
     Ok((jar, Json(response)))
 }

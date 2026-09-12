@@ -1,6 +1,11 @@
 //! ChemLab core domain.
 //!
-//! Chemistry simulation lives here in later versions. v0.1 is a scaffold only.
+//! Chemistry rules live here. This crate currently exposes a two-row dissolve
+//! lookup (NaCl vs sand in water at bench temperature), not a general simulator.
+
+mod dissolve;
+
+pub use dissolve::{dissolve, DissolveError, DissolveOutcome};
 
 /// Semantic version of the ChemLab core crate.
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");

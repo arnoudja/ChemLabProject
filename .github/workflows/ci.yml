@@ -22,6 +22,19 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+  rust-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.1"
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Line coverage
+        run: cargo llvm-cov --workspace --fail-under-lines 50
+
   web:
     runs-on: ubuntu-latest
     defaults:
@@ -38,6 +51,21 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  web-coverage:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run test:coverage
 
   deb:
     runs-on: ubuntu-latest

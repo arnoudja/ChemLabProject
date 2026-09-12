@@ -47,13 +47,13 @@ Default ports avoid clashes with other apps:
 
 ```bash
 cd /path/to/ChemLabProject
-cp -n .env.example .env   # optional
+cp -n .env.example .env   # optional; auto-loaded on startup
 cargo run -p chemlab-server
 ```
 
 Useful env vars (also in `.env.example`):
 
-- `CHEMLAB_BIND` — default `127.0.0.1:3847`
+- `CHEMLAB_BIND` — default `127.0.0.1:3847` (use `0.0.0.0:3847` for LAN access)
 - `CHEMLAB_DATABASE_URL` — default `sqlite://chemlab.db`
 - `CHEMLAB_VITE_PROXY` — e.g. `http://127.0.0.1:5179` so Axum serves `/` by proxying Vite
 - `CHEMLAB_STATIC_DIR` — e.g. `apps/web/dist` after `npm run build`

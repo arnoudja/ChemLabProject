@@ -41,4 +41,5 @@ cookie = "0.18"
 http = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 anyhow = "1"
+dotenvy = "0.15"
 tempfile = "3"

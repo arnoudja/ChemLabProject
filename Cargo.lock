@@ -288,6 +288,7 @@ dependencies = [
  "chemlab-db",
  "chrono",
  "cookie",
+ "dotenvy",
  "hex",
  "http",
  "http-body-util",

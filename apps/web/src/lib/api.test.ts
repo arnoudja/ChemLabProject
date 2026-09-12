@@ -3,6 +3,7 @@ import {
   clearCsrfTokenCache,
   dissolve,
   fetchHealth,
+  fetchMe,
   login,
   logout,
   register,
@@ -35,6 +36,9 @@ describe('api client', () => {
             version: '0.1.0',
             service: 'chemlab-server',
           })
+        }
+        if (url === '/api/auth/me') {
+          return jsonResponse({ authenticated: true, user: userPayload })
         }
         if (url === '/api/auth/csrf') {
           return jsonResponse({ csrf_token: 'tok-123' })
@@ -186,17 +190,41 @@ describe('api client', () => {
     )
   })
 
-  it('dissolve surfaces the server error body', async () => {
+  it('fetchMe includes the session cookie', async () => {
+    const me = await fetchMe()
+    expect(me).toEqual({ authenticated: true, user: userPayload })
+    expect(fetch).toHaveBeenCalledWith('/api/auth/me', { credentials: 'include' })
+  })
+
+  it.each([
+    {
+      error: 'unknown substance',
+      code: 'unknown_substance',
+      status: 400,
+    },
+    {
+      error: 'unsupported solvent',
+      code: 'unsupported_solvent',
+      status: 400,
+    },
+    {
+      error: 'unsupported temperature',
+      code: 'unsupported_temperature',
+      status: 400,
+    },
+    {
+      error: 'Login required',
+      code: 'unauthenticated',
+      status: 401,
+    },
+  ])('dissolve surfaces $code from the server body', async ({ error, code, status }) => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/auth/csrf') {
         return jsonResponse({ csrf_token: 'tok-123' })
       }
       if (url === '/api/lab/dissolve') {
-        return jsonResponse(
-          { error: 'Login required', code: 'unauthenticated' },
-          401,
-        )
+        return jsonResponse({ error, code }, status)
       }
       return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
     })
@@ -207,6 +235,42 @@ describe('api client', () => {
         solvent_id: 'water',
         temperature_c: 20,
       }),
-    ).rejects.toThrow('Login required')
+    ).rejects.toThrow(error)
+  })
+
+  it('parseJson falls back to the HTTP status when the error body has no message', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/auth/csrf') {
+        return jsonResponse({ csrf_token: 'tok-123' })
+      }
+      if (url === '/api/lab/dissolve') {
+        return jsonResponse({}, 503)
+      }
+      return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
+    })
+
+    await expect(
+      dissolve({
+        substance_id: 'nacl',
+        solvent_id: 'water',
+        temperature_c: 20,
+      }),
+    ).rejects.toThrow('Request failed (503)')
+  })
+
+  it('logout throws when the server rejects the session teardown', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/auth/csrf') {
+        return jsonResponse({ csrf_token: 'tok-123' })
+      }
+      if (url === '/api/auth/logout') {
+        return jsonResponse({ error: 'Database error', code: 'internal' }, 500)
+      }
+      return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
+    })
+
+    await expect(logout()).rejects.toThrow('Could not log out')
   })
 })

@@ -44,7 +44,7 @@ export default defineConfig(({ mode }) => {
         include: ['src/**/*.{ts,tsx}'],
         exclude: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/generated/**', 'src/main.tsx'],
         thresholds: {
-          lines: 60,
+          lines: 94,
         },
       },
     },

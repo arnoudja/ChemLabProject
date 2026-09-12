@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+/*
+  Omarchy Hackerman palette
+  Source: https://github.com/omacom/omarchy/blob/master/themes/hackerman/colors.toml
+  (no local Omarchy install on this Ubuntu machine)
+*/
+:root {
+  --hackerman-bg: #0b0c16;
+  --hackerman-fg: #ddf7ff;
+  --hackerman-accent: #82fb9c;
+  --hackerman-cursor: #ddf7ff;
+  --hackerman-black: #3e4058;
+  --hackerman-green: #50f872;
+  --hackerman-green2: #4fe88f;
+  --hackerman-aqua: #50f7d4;
+  --hackerman-blue: #829dd4;
+  --hackerman-lavender: #86a7df;
+  --hackerman-cyan: #7cf8f7;
+  --hackerman-sky: #85e1fb;
+  --hackerman-bright-black: #6a6e95;
+  --hackerman-bright-green: #85ff9d;
+  --hackerman-bright-green2: #9cf7c2;
+  --hackerman-bright-aqua: #a4ffec;
+  --hackerman-bright-blue: #c4d2ed;
+  --hackerman-bright-lavender: #cddbf4;
+  --hackerman-bright-cyan: #d1fffe;
+  --hackerman-bright-white: #ddf7ff;
+
+  /* ChemLab semantic mapping */
+  --ink: var(--hackerman-fg);
+  --ink-soft: var(--hackerman-lavender);
+  --glass: var(--hackerman-bg);
+  --mist: var(--hackerman-black);
+  --deep: var(--hackerman-bright-black);
+  --accent: var(--hackerman-accent);
+  --accent-soft: #14261c;
+  --danger: #e07070; /* Hackerman has no red slot; muted red for form errors only */
+  --surface: rgba(62, 64, 88, 0.5);
+  --surface-hover: rgba(106, 110, 149, 0.4);
+  --input-bg: rgba(11, 12, 22, 0.88);
+  --border: rgba(106, 110, 149, 0.58);
+  --shadow: 0 22px 55px rgba(0, 0, 0, 0.55);
+  --font-display: "Bricolage Grotesque", "Segoe UI", sans-serif;
+  --font-body: "Figtree", "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  background:
+    radial-gradient(1000px 560px at 10% 0%, rgba(130, 251, 156, 0.1) 0%, transparent 55%),
+    radial-gradient(780px 480px at 92% 10%, rgba(124, 248, 247, 0.08) 0%, transparent 48%),
+    linear-gradient(168deg, #0b0c16 0%, #12131f 48%, #0b0c16 100%);
+  background-attachment: fixed;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(133, 225, 251, 0.35) 1px, transparent 0);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float-flask {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-rise {
+  animation: rise-in 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-rise-delay {
+  animation: rise-in 800ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+}
+
+.animate-float {
+  animation: float-flask 5.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-rise-delay,
+  .animate-float {
+    animation: none;
+  }
+}

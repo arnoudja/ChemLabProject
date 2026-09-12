@@ -1,0 +1,53 @@
+//! ChemLab HTTP server (v0.1 scaffold).
+
+mod auth;
+mod config;
+mod error;
+mod routes;
+mod state;
+
+use crate::config::Config;
+use crate::state::AppState;
+use anyhow::Context;
+use tracing_subscriber::EnvFilter;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Load `.env` from the current working directory if present (no-op if missing).
+    // Existing process env vars win over `.env` values.
+    let _ = dotenvy::dotenv();
+
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
+
+    let config = Config::from_env()?;
+    let state = AppState::new(&config)
+        .await
+        .context("failed to initialize application state")?;
+
+    let app = routes::router(state.clone());
+    let listener = tokio::net::TcpListener::bind(&config.bind_addr)
+        .await
+        .with_context(|| format!("failed to bind {}", config.bind_addr))?;
+
+    tracing::info!(
+        bind = %config.bind_addr,
+        version = env!("CARGO_PKG_VERSION"),
+        "chemlab-server listening"
+    );
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .context("server error")?;
+
+    Ok(())
+}
+
+async fn shutdown_signal() {
+    let _ = tokio::signal::ctrl_c().await;
+    tracing::info!("shutdown signal received");
+}

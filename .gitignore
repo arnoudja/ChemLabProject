@@ -1,0 +1,30 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+chemlab.db
+chemlab.db-*
+
+# Node
+node_modules/
+apps/web/dist/
+npm-debug.log*
+.pnpm-store/
+
+# Env / OS
+.env
+.env.*
+!.env.example
+.DS_Store
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Coverage / tooling
+coverage/
+lcov.info
+*.profraw

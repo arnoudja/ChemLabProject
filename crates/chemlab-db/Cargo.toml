@@ -1,0 +1,20 @@
+[package]
+name = "chemlab-db"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SQLite persistence via sqlx"
+
+[dependencies]
+chemlab-contracts.workspace = true
+sqlx.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tempfile.workspace = true

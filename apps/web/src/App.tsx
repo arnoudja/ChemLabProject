@@ -105,7 +105,7 @@ export default function App() {
           className="animate-rise-delay w-full max-w-md justify-self-start lg:justify-self-end"
           aria-label="Account"
         >
-          <div className="rounded-2xl border border-white/50 bg-[var(--surface)] p-5 shadow-[0_20px_50px_rgba(15,42,46,0.12)] backdrop-blur-md sm:p-6">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[var(--shadow)] backdrop-blur-md sm:p-6">
             {sessionLoading ? (
               <p className="text-[var(--ink-soft)]">Checking session…</p>
             ) : user ? (
@@ -121,7 +121,7 @@ export default function App() {
                   type="button"
                   onClick={onLogout}
                   disabled={busy}
-                  className="rounded-lg bg-[var(--ink)] px-4 py-2.5 text-sm font-semibold text-[var(--glass)] transition hover:bg-[var(--deep)] disabled:opacity-60"
+                  className="rounded-lg bg-[var(--ink)] px-4 py-2.5 text-sm font-semibold text-[var(--glass)] transition hover:opacity-90 disabled:opacity-60"
                 >
                   {busy ? 'Signing out…' : 'Sign out'}
                 </button>
@@ -134,7 +134,7 @@ export default function App() {
                     className={`rounded-md px-3 py-1.5 font-medium ${
                       mode === 'register'
                         ? 'bg-[var(--ink)] text-[var(--glass)]'
-                        : 'text-[var(--ink-soft)] hover:bg-white/40'
+                        : 'text-[var(--ink-soft)] hover:bg-[var(--surface-hover)]'
                     }`}
                     onClick={() => {
                       setMode('register')
@@ -148,7 +148,7 @@ export default function App() {
                     className={`rounded-md px-3 py-1.5 font-medium ${
                       mode === 'login'
                         ? 'bg-[var(--ink)] text-[var(--glass)]'
-                        : 'text-[var(--ink-soft)] hover:bg-white/40'
+                        : 'text-[var(--ink-soft)] hover:bg-[var(--surface-hover)]'
                     }`}
                     onClick={() => {
                       setMode('login')
@@ -163,7 +163,7 @@ export default function App() {
                   <label className="block space-y-1.5 text-sm">
                     <span className="font-medium text-[var(--ink)]">Display name</span>
                     <input
-                      className="w-full rounded-lg border border-[var(--deep)]/20 bg-white/70 px-3 py-2 outline-none ring-[var(--accent)] focus:ring-2"
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--ink)] outline-none ring-[var(--accent)] placeholder:text-[var(--ink-soft)] focus:ring-2"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                       autoComplete="nickname"
@@ -177,7 +177,7 @@ export default function App() {
                   <input
                     required
                     type="email"
-                    className="w-full rounded-lg border border-[var(--deep)]/20 bg-white/70 px-3 py-2 outline-none ring-[var(--accent)] focus:ring-2"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--ink)] outline-none ring-[var(--accent)] placeholder:text-[var(--ink-soft)] focus:ring-2"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     autoComplete="email"
@@ -191,7 +191,7 @@ export default function App() {
                     required
                     type="password"
                     minLength={8}
-                    className="w-full rounded-lg border border-[var(--deep)]/20 bg-white/70 px-3 py-2 outline-none ring-[var(--accent)] focus:ring-2"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--ink)] outline-none ring-[var(--accent)] placeholder:text-[var(--ink-soft)] focus:ring-2"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
@@ -200,7 +200,7 @@ export default function App() {
                 </label>
 
                 {authError && (
-                  <p className="text-sm text-[var(--accent)]" role="alert">
+                  <p className="text-sm text-[var(--danger)]" role="alert">
                     {authError}
                   </p>
                 )}
@@ -208,7 +208,7 @@ export default function App() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="w-full rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-105 disabled:opacity-60"
+                  className="w-full rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--glass)] transition hover:brightness-110 disabled:opacity-60"
                 >
                   {busy ? 'Working…' : mode === 'register' ? 'Create account' : 'Sign in'}
                 </button>

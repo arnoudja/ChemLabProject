@@ -138,14 +138,14 @@ fn embedded_welcome_html() -> String {
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>ChemLab</title>
   <style>
-    :root { color-scheme: light; --ink:#0f2a2e; --accent:#c45c26; }
+    :root { color-scheme: dark; --ink:#e7ece9; --ink-soft:#9aa8a3; --accent:#c4a574; }
     body { margin:0; min-height:100vh; font-family: Georgia, "Times New Roman", serif;
-      background: radial-gradient(1200px 600px at 20% 10%, #b7ece6 0%, transparent 55%),
-                  linear-gradient(160deg, #f3fbfa 0%, #d5ebe8 45%, #9ec5c0 100%);
+      background: radial-gradient(1000px 560px at 10% 0%, rgba(45,70,64,0.28) 0%, transparent 55%),
+                  linear-gradient(168deg, #0b0f0e 0%, #121917 42%, #0e1412 100%);
       color: var(--ink); display:grid; place-items:center; }
     main { max-width: 36rem; padding: 2rem; text-align: left; }
     .brand { font-size: clamp(2.8rem, 8vw, 4.5rem); letter-spacing: -0.03em; margin:0; font-weight:700; }
-    p { font-size: 1.15rem; line-height: 1.5; opacity: 0.9; }
+    p { font-size: 1.15rem; line-height: 1.5; color: var(--ink-soft); }
     a { color: var(--accent); }
   </style>
 </head>

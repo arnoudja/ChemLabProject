@@ -1,17 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --ink: #0f2a2e;
-  --ink-soft: #2a4a4f;
-  --glass: #e7f7f4;
-  --mist: #b9e4de;
-  --deep: #1a4f55;
-  --accent: #c45c26;
-  --accent-soft: #f0d0bc;
-  --surface: rgba(255, 255, 255, 0.55);
+  /* Dark lab bench — deep neutrals, muted brass/teal; no pastels or neon */
+  --ink: #e7ece9;
+  --ink-soft: #9aa8a3;
+  --glass: #0c1210;
+  --mist: #1a2220;
+  --deep: #4a6b64;
+  --accent: #c4a574;
+  --accent-soft: #2a241c;
+  --danger: #d4867a;
+  --surface: rgba(18, 24, 22, 0.78);
+  --surface-hover: rgba(36, 44, 41, 0.55);
+  --input-bg: rgba(8, 12, 11, 0.72);
+  --border: rgba(154, 168, 163, 0.2);
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
   --font-display: "Bricolage Grotesque", "Segoe UI", sans-serif;
   --font-body: "Figtree", "Segoe UI", sans-serif;
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 * {
@@ -29,9 +35,9 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   background:
-    radial-gradient(900px 520px at 12% 8%, rgba(183, 236, 230, 0.95) 0%, transparent 58%),
-    radial-gradient(700px 480px at 88% 18%, rgba(240, 208, 188, 0.55) 0%, transparent 50%),
-    linear-gradient(165deg, #f5fcfb 0%, #d7ebe8 42%, #9ebfbb 100%);
+    radial-gradient(1000px 560px at 10% 0%, rgba(45, 70, 64, 0.28) 0%, transparent 55%),
+    radial-gradient(800px 500px at 92% 12%, rgba(90, 70, 42, 0.16) 0%, transparent 48%),
+    linear-gradient(168deg, #0b0f0e 0%, #121917 42%, #0e1412 100%);
   background-attachment: fixed;
 }
 
@@ -40,9 +46,9 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.18;
+  opacity: 0.22;
   background-image:
-    radial-gradient(circle at 1px 1px, rgba(15, 42, 46, 0.35) 1px, transparent 0);
+    radial-gradient(circle at 1px 1px, rgba(180, 200, 190, 0.22) 1px, transparent 0);
   background-size: 28px 28px;
   mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
 }

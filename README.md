@@ -40,8 +40,8 @@ Default ports avoid clashes with other apps:
 
 | Process | Bind |
 | --- | --- |
-| Axum API | `127.0.0.1:3847` |
-| Vite FE  | `127.0.0.1:5179` |
+| Axum API | `127.0.0.1:3847` (or `0.0.0.0:3847` via `CHEMLAB_BIND`) |
+| Vite FE  | `127.0.0.1:5179` (or `0.0.0.0:5179` via `CHEMLAB_VITE_HOST`) |
 
 ### 1. Backend
 
@@ -70,6 +70,9 @@ npm run dev
 ```
 
 Open [http://127.0.0.1:5179/](http://127.0.0.1:5179/). Vite proxies `/api/*` to Axum on `:3847`.
+
+**LAN:** set `CHEMLAB_VITE_HOST=0.0.0.0` in the repo-root `.env`, restart `npm run dev`, then open
+`http://<lan-ip>:5179/` from another machine (API proxy still targets local Axum on `:3847`).
 
 **Alternate (single origin via Axum):** start Vite, then:
 

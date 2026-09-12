@@ -1,6 +1,6 @@
 //! Password hashing, opaque session cookie, and CSRF synchronizer helpers.
 //!
-//! TODO(v0.2+): session rotation on privilege change, rate limits on /auth/*,
+//! TODO(v0.2+): session rotation on privilege change,
 //! Secure cookie default in production deploy docs.
 
 use crate::error::ApiError;

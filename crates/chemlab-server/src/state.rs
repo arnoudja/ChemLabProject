@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::rate_limit::AuthRateLimiter;
 use chemlab_db::{connect, DbPool};
 use std::sync::Arc;
 
@@ -13,6 +14,7 @@ pub struct AppStateInner {
     pub session_ttl_hours: i64,
     pub static_dir: Option<std::path::PathBuf>,
     pub vite_dev_proxy: Option<String>,
+    pub auth_rate_limiter: AuthRateLimiter,
 }
 
 impl AppState {
@@ -25,6 +27,7 @@ impl AppState {
                 session_ttl_hours: config.session_ttl_hours,
                 static_dir: config.static_dir.clone(),
                 vite_dev_proxy: config.vite_dev_proxy.clone(),
+                auth_rate_limiter: AuthRateLimiter::default(),
             }),
         })
     }

@@ -4,6 +4,7 @@ use crate::auth::{
     verify_password,
 };
 use crate::error::ApiError;
+use crate::rate_limit::{check_auth_attempt, ClientIp};
 use crate::state::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -54,8 +55,10 @@ async fn health() -> Json<HealthResponse> {
 async fn register(
     State(state): State<AppState>,
     jar: CookieJar,
+    ClientIp(ip): ClientIp,
     Json(body): Json<RegisterRequest>,
 ) -> Result<(StatusCode, CookieJar, Json<AuthUserResponse>), ApiError> {
+    check_auth_attempt(&state.inner.auth_rate_limiter, "register", &ip, &body.email)?;
     validate_credentials(&body.email, &body.password, Some(&body.display_name))
         .map_err(|m| ApiError::bad_request("validation", m))?;
 
@@ -77,8 +80,10 @@ async fn register(
 async fn login(
     State(state): State<AppState>,
     jar: CookieJar,
+    ClientIp(ip): ClientIp,
     Json(body): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<AuthUserResponse>), ApiError> {
+    check_auth_attempt(&state.inner.auth_rate_limiter, "login", &ip, &body.email)?;
     validate_credentials(&body.email, &body.password, None)
         .map_err(|m| ApiError::bad_request("validation", m))?;
 

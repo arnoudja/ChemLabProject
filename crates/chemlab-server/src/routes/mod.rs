@@ -339,4 +339,140 @@ mod tests {
         let login_json = body_json(login).await;
         assert_eq!(login_json["email"], "ada@chemlab.local");
     }
+
+    async fn post_login(
+        app: &Router,
+        csrf_token: &str,
+        csrf_cookie: &str,
+        email: &str,
+        password: &str,
+        forwarded_for: Option<&str>,
+    ) -> axum::response::Response {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri("/api/auth/login")
+            .header("content-type", "application/json")
+            .header("cookie", csrf_cookie)
+            .header("x-csrf-token", csrf_token);
+        if let Some(ip) = forwarded_for {
+            builder = builder.header("x-forwarded-for", ip);
+        }
+        let body = format!(r#"{{"email":"{email}","password":"{password}"}}"#);
+        app.clone()
+            .oneshot(builder.body(Body::from(body)).unwrap())
+            .await
+            .unwrap()
+    }
+
+    async fn post_register(
+        app: &Router,
+        csrf_token: &str,
+        csrf_cookie: &str,
+        email: &str,
+    ) -> axum::response::Response {
+        let body = format!(r#"{{"email":"{email}","password":"secret123","display_name":"Ada"}}"#);
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/register")
+                    .header("content-type", "application/json")
+                    .header("cookie", csrf_cookie)
+                    .header("x-csrf-token", csrf_token)
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn login_burst_is_rate_limited() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie) = issue_csrf(&app).await;
+
+        let mut last_status = StatusCode::OK;
+        let mut last_json = serde_json::json!({});
+        for i in 0..6 {
+            let response = post_login(
+                &app,
+                &csrf_token,
+                &csrf_cookie,
+                "burst@chemlab.local",
+                "wrong-password",
+                Some("203.0.113.10"),
+            )
+            .await;
+            last_status = response.status();
+            last_json = body_json(response).await;
+            if i < 5 {
+                assert_ne!(
+                    last_status,
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "attempt {i} should not be rate-limited yet"
+                );
+            }
+        }
+
+        assert_eq!(last_status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(last_json["code"], "rate_limited");
+        assert!(last_json["error"]
+            .as_str()
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .contains("too many"));
+    }
+
+    #[tokio::test]
+    async fn register_burst_is_rate_limited() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie) = issue_csrf(&app).await;
+
+        let mut last_status = StatusCode::OK;
+        let mut last_json = serde_json::json!({});
+        for i in 0..6 {
+            let response = post_register(
+                &app,
+                &csrf_token,
+                &csrf_cookie,
+                &format!("burst{i}@chemlab.local"),
+            )
+            .await;
+            last_status = response.status();
+            last_json = body_json(response).await;
+            if i < 5 {
+                assert_eq!(last_status, StatusCode::CREATED, "attempt {i}");
+            }
+        }
+
+        assert_eq!(last_status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(last_json["code"], "rate_limited");
+    }
+
+    #[tokio::test]
+    async fn logout_is_not_rate_limited() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie) = issue_csrf(&app).await;
+
+        for i in 0..6 {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/auth/logout")
+                        .header("cookie", &csrf_cookie)
+                        .header("x-csrf-token", &csrf_token)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::NO_CONTENT,
+                "logout {i} should stay unlimited"
+            );
+        }
+    }
 }

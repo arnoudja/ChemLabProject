@@ -3,12 +3,14 @@
 mod auth;
 mod config;
 mod error;
+mod rate_limit;
 mod routes;
 mod state;
 
 use crate::config::Config;
 use crate::state::AppState;
 use anyhow::Context;
+use std::net::SocketAddr;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -39,10 +41,13 @@ async fn main() -> anyhow::Result<()> {
         "chemlab-server listening"
     );
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context("server error")?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .context("server error")?;
 
     Ok(())
 }

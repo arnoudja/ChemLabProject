@@ -1,19 +1,46 @@
 @import "tailwindcss";
 
+/*
+  Omarchy Ethereal palette
+  Source: https://github.com/omacom/omarchy/blob/master/themes/ethereal/colors.toml
+  (also mirrored in themes/ethereal/btop.theme)
+*/
 :root {
-  /* Cool dark lab — charcoal/slate/teal; high contrast; no brown/sepia */
-  --ink: #f1f5f7;
-  --ink-soft: #aebbc6;
-  --glass: #070a0d;
-  --mist: #151b22;
-  --deep: #6a9e98;
-  --accent: #5eb8b0;
-  --accent-soft: #12302e;
-  --danger: #e89a90;
-  --surface: rgba(22, 28, 36, 0.9);
-  --surface-hover: rgba(42, 52, 64, 0.75);
-  --input-bg: rgba(10, 14, 20, 0.92);
-  --border: rgba(170, 190, 205, 0.4);
+  /* Terminal tokens from colors.toml */
+  --ethereal-bg: #060b1e;
+  --ethereal-fg: #ffcead;
+  --ethereal-accent: #7d82d9;
+  --ethereal-cursor: #ffcead;
+  --ethereal-black: #3c486d;
+  --ethereal-red: #ed5b5a;
+  --ethereal-green: #92a593;
+  --ethereal-yellow: #e9bb4f;
+  --ethereal-blue: #7d82d9;
+  --ethereal-magenta: #c89dc1;
+  --ethereal-cyan: #a3bfd1;
+  --ethereal-white: #f99957;
+  --ethereal-bright-black: #6d7db6;
+  --ethereal-bright-red: #faaaa9;
+  --ethereal-bright-green: #c4cfc4;
+  --ethereal-bright-yellow: #f7dc9c;
+  --ethereal-bright-blue: #c2c4f0;
+  --ethereal-bright-magenta: #ead7e7;
+  --ethereal-bright-cyan: #dfeaf0;
+  --ethereal-bright-white: #ffcead;
+
+  /* ChemLab semantic mapping */
+  --ink: var(--ethereal-fg);
+  --ink-soft: var(--ethereal-cyan);
+  --glass: var(--ethereal-bg);
+  --mist: var(--ethereal-black);
+  --deep: var(--ethereal-bright-black);
+  --accent: var(--ethereal-accent);
+  --accent-soft: #1a1e3d;
+  --danger: var(--ethereal-red);
+  --surface: rgba(60, 72, 109, 0.45);
+  --surface-hover: rgba(109, 125, 182, 0.35);
+  --input-bg: rgba(6, 11, 30, 0.85);
+  --border: rgba(109, 125, 182, 0.55);
   --shadow: 0 22px 55px rgba(0, 0, 0, 0.55);
   --font-display: "Bricolage Grotesque", "Segoe UI", sans-serif;
   --font-body: "Figtree", "Segoe UI", sans-serif;
@@ -35,9 +62,9 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   background:
-    radial-gradient(1000px 560px at 8% 0%, rgba(55, 110, 120, 0.22) 0%, transparent 55%),
-    radial-gradient(720px 480px at 95% 8%, rgba(70, 100, 130, 0.14) 0%, transparent 48%),
-    linear-gradient(168deg, #070a0d 0%, #0e1318 45%, #0a1014 100%);
+    radial-gradient(1000px 560px at 10% 0%, rgba(125, 130, 217, 0.18) 0%, transparent 55%),
+    radial-gradient(780px 480px at 92% 10%, rgba(163, 191, 209, 0.12) 0%, transparent 48%),
+    linear-gradient(168deg, #060b1e 0%, #0c1228 48%, #060b1e 100%);
   background-attachment: fixed;
 }
 
@@ -46,9 +73,9 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.2;
+  opacity: 0.18;
   background-image:
-    radial-gradient(circle at 1px 1px, rgba(190, 210, 220, 0.28) 1px, transparent 0);
+    radial-gradient(circle at 1px 1px, rgba(194, 196, 240, 0.35) 1px, transparent 0);
   background-size: 28px 28px;
   mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
 }

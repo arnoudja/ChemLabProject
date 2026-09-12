@@ -28,3 +28,7 @@ npm-debug.log*
 coverage/
 lcov.info
 *.profraw
+
+# Packaging output
+/dist/
+*.deb

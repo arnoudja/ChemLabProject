@@ -1,0 +1,11 @@
+Package: chemlab
+Version: @VERSION@
+Section: science
+Priority: optional
+Architecture: amd64
+Maintainer: ChemLabProject contributors <arnoudja@users.noreply.github.com>
+Homepage: https://github.com/arnoudja/ChemLabProject
+Depends: adduser, libc6, systemd
+Description: ChemLab lab game server
+ ChemLab is a web lab game. This package installs chemlab-server, the
+ built web UI, and a systemd unit that listens on 0.0.0.0:3847.

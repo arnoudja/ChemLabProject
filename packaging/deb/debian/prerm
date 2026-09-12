@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+if [ -d /run/systemd/system ]; then
+    if [ "$1" = "remove" ] || [ "$1" = "upgrade" ] || [ "$1" = "deconfigure" ]; then
+        systemctl stop chemlab.service || true
+    fi
+    if [ "$1" = "remove" ]; then
+        systemctl disable chemlab.service || true
+    fi
+fi
+
+exit 0

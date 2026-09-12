@@ -1,46 +1,45 @@
 @import "tailwindcss";
 
 /*
-  Omarchy Ethereal palette
-  Source: https://github.com/omacom/omarchy/blob/master/themes/ethereal/colors.toml
-  (also mirrored in themes/ethereal/btop.theme)
+  Omarchy Hackerman palette
+  Source: https://github.com/omacom/omarchy/blob/master/themes/hackerman/colors.toml
+  (no local Omarchy install on this Ubuntu machine)
 */
 :root {
-  /* Terminal tokens from colors.toml */
-  --ethereal-bg: #060b1e;
-  --ethereal-fg: #ffcead;
-  --ethereal-accent: #7d82d9;
-  --ethereal-cursor: #ffcead;
-  --ethereal-black: #3c486d;
-  --ethereal-red: #ed5b5a;
-  --ethereal-green: #92a593;
-  --ethereal-yellow: #e9bb4f;
-  --ethereal-blue: #7d82d9;
-  --ethereal-magenta: #c89dc1;
-  --ethereal-cyan: #a3bfd1;
-  --ethereal-white: #f99957;
-  --ethereal-bright-black: #6d7db6;
-  --ethereal-bright-red: #faaaa9;
-  --ethereal-bright-green: #c4cfc4;
-  --ethereal-bright-yellow: #f7dc9c;
-  --ethereal-bright-blue: #c2c4f0;
-  --ethereal-bright-magenta: #ead7e7;
-  --ethereal-bright-cyan: #dfeaf0;
-  --ethereal-bright-white: #ffcead;
+  --hackerman-bg: #0b0c16;
+  --hackerman-fg: #ddf7ff;
+  --hackerman-accent: #82fb9c;
+  --hackerman-cursor: #ddf7ff;
+  --hackerman-black: #3e4058;
+  --hackerman-green: #50f872;
+  --hackerman-green2: #4fe88f;
+  --hackerman-aqua: #50f7d4;
+  --hackerman-blue: #829dd4;
+  --hackerman-lavender: #86a7df;
+  --hackerman-cyan: #7cf8f7;
+  --hackerman-sky: #85e1fb;
+  --hackerman-bright-black: #6a6e95;
+  --hackerman-bright-green: #85ff9d;
+  --hackerman-bright-green2: #9cf7c2;
+  --hackerman-bright-aqua: #a4ffec;
+  --hackerman-bright-blue: #c4d2ed;
+  --hackerman-bright-lavender: #cddbf4;
+  --hackerman-bright-cyan: #d1fffe;
+  --hackerman-bright-white: #ddf7ff;
 
   /* ChemLab semantic mapping */
-  --ink: var(--ethereal-fg);
-  --ink-soft: var(--ethereal-cyan);
-  --glass: var(--ethereal-bg);
-  --mist: var(--ethereal-black);
-  --deep: var(--ethereal-bright-black);
-  --accent: var(--ethereal-accent);
-  --accent-soft: #1a1e3d;
-  --danger: var(--ethereal-red);
-  --surface: rgba(60, 72, 109, 0.45);
-  --surface-hover: rgba(109, 125, 182, 0.35);
-  --input-bg: rgba(6, 11, 30, 0.85);
-  --border: rgba(109, 125, 182, 0.55);
+  --ink: var(--hackerman-fg);
+  --ink-soft: var(--hackerman-lavender);
+  --glass: var(--hackerman-bg);
+  --mist: var(--hackerman-black);
+  --deep: var(--hackerman-bright-black);
+  --accent: var(--hackerman-accent);
+  --accent-soft: #14261c;
+  --danger: #e07070; /* Hackerman has no red slot; muted red for form errors only */
+  --surface: rgba(62, 64, 88, 0.5);
+  --surface-hover: rgba(106, 110, 149, 0.4);
+  --input-bg: rgba(11, 12, 22, 0.88);
+  --border: rgba(106, 110, 149, 0.58);
   --shadow: 0 22px 55px rgba(0, 0, 0, 0.55);
   --font-display: "Bricolage Grotesque", "Segoe UI", sans-serif;
   --font-body: "Figtree", "Segoe UI", sans-serif;
@@ -62,9 +61,9 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   background:
-    radial-gradient(1000px 560px at 10% 0%, rgba(125, 130, 217, 0.18) 0%, transparent 55%),
-    radial-gradient(780px 480px at 92% 10%, rgba(163, 191, 209, 0.12) 0%, transparent 48%),
-    linear-gradient(168deg, #060b1e 0%, #0c1228 48%, #060b1e 100%);
+    radial-gradient(1000px 560px at 10% 0%, rgba(130, 251, 156, 0.1) 0%, transparent 55%),
+    radial-gradient(780px 480px at 92% 10%, rgba(124, 248, 247, 0.08) 0%, transparent 48%),
+    linear-gradient(168deg, #0b0c16 0%, #12131f 48%, #0b0c16 100%);
   background-attachment: fixed;
 }
 
@@ -73,9 +72,9 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.18;
+  opacity: 0.16;
   background-image:
-    radial-gradient(circle at 1px 1px, rgba(194, 196, 240, 0.35) 1px, transparent 0);
+    radial-gradient(circle at 1px 1px, rgba(133, 225, 251, 0.35) 1px, transparent 0);
   background-size: 28px 28px;
   mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
 }

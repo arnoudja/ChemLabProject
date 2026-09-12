@@ -18,6 +18,8 @@ apps/
   web/                     # Vite + React + TypeScript + Tailwind
 scripts/
   generate-types.sh        # regenerate FE types from contracts
+  build-deb.sh             # Ubuntu amd64 .deb (binary + web UI + systemd)
+packaging/deb/             # systemd unit, env file, maintainer scripts
 ```
 
 ## Prerequisites (Ubuntu / Omarchy)
@@ -90,6 +92,42 @@ cd ../..
 CHEMLAB_STATIC_DIR=apps/web/dist cargo run -p chemlab-server
 ```
 
+## Install on Ubuntu (.deb)
+
+The package installs `chemlab-server`, the built web UI, and a systemd unit that
+starts on boot and listens on **`0.0.0.0:3847`**. `cargo run` defaults stay
+`127.0.0.1:3847`.
+
+Build on Ubuntu amd64 (needs Rust, Node 22+, `dpkg-deb`):
+
+```bash
+./scripts/build-deb.sh
+sudo apt install ./dist/chemlab_*.deb
+```
+
+Then open `http://<host>:3847/`. Health: `http://<host>:3847/api/health`.
+
+| Path | Role |
+| --- | --- |
+| `/usr/bin/chemlab-server` | release binary |
+| `/usr/share/chemlab/www/` | production web UI (`apps/web` `dist/`) |
+| `/etc/chemlab/chemlab.env` | daemon env (not world-writable) |
+| `/lib/systemd/system/chemlab.service` | systemd unit (`User=chemlab`) |
+| `/var/lib/chemlab/` | SQLite data dir |
+
+The unit env is `CHEMLAB_BIND=0.0.0.0:3847`, `CHEMLAB_STATIC_DIR=/usr/share/chemlab/www`,
+`CHEMLAB_DATABASE_URL=sqlite:///var/lib/chemlab/chemlab.db`, and
+`CHEMLAB_COOKIE_SECURE=false` (HTTP on the LAN). `postinst` enables and starts
+the service; `prerm` stops and disables it on remove.
+
+```bash
+sudo systemctl status chemlab
+sudo journalctl -u chemlab -e
+```
+
+CI uploads the `.deb` as the `chemlab-deb` artifact. Caddy / HTTPS / loopback
+bind are later changes.
+
 ## Auth stub (accounts from day one)
 
 Working thin stub (not a fake button):
@@ -118,7 +156,8 @@ cargo test --workspace
 cd apps/web && npm test
 ```
 
-CI runs `cargo test --workspace`, `cargo fmt --check`, `cargo clippy`, and a frontend build.
+CI runs `cargo test --workspace`, `cargo fmt --check`, `cargo clippy`, a frontend
+build, and an amd64 `.deb` package job.
 
 ## Generate shared TS types
 

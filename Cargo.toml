@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/chemlab-core",
+    "crates/chemlab-db",
+    "crates/chemlab-server",
+    "crates/chemlab-contracts",
+]
+default-members = ["crates/chemlab-server"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["ChemLabProject contributors"]
+repository = "https://github.com/ajagerman/ChemLabProject"
+
+[workspace.dependencies]
+chemlab-core = { path = "crates/chemlab-core" }
+chemlab-db = { path = "crates/chemlab-db" }
+chemlab-contracts = { path = "crates/chemlab-contracts" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "fs", "signal"] }
+axum = { version = "0.8", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "trace", "cors", "set-header"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono", "uuid", "migrate"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ts-rs = { version = "10", features = ["chrono-impl", "serde-compat"] }
+argon2 = "0.5"
+rand = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+axum-extra = { version = "0.10", features = ["cookie"] }
+cookie = "0.18"
+http = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+anyhow = "1"
+tempfile = "3"

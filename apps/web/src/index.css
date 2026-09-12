@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #0f2a2e;
+  --ink-soft: #2a4a4f;
+  --glass: #e7f7f4;
+  --mist: #b9e4de;
+  --deep: #1a4f55;
+  --accent: #c45c26;
+  --accent-soft: #f0d0bc;
+  --surface: rgba(255, 255, 255, 0.55);
+  --font-display: "Bricolage Grotesque", "Segoe UI", sans-serif;
+  --font-body: "Figtree", "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  background:
+    radial-gradient(900px 520px at 12% 8%, rgba(183, 236, 230, 0.95) 0%, transparent 58%),
+    radial-gradient(700px 480px at 88% 18%, rgba(240, 208, 188, 0.55) 0%, transparent 50%),
+    linear-gradient(165deg, #f5fcfb 0%, #d7ebe8 42%, #9ebfbb 100%);
+  background-attachment: fixed;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(15, 42, 46, 0.35) 1px, transparent 0);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float-flask {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-rise {
+  animation: rise-in 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-rise-delay {
+  animation: rise-in 800ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+}
+
+.animate-float {
+  animation: float-flask 5.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-rise-delay,
+  .animate-float {
+    animation: none;
+  }
+}

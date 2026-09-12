@@ -51,6 +51,7 @@ if [ ! -f apps/web/dist/index.html ]; then
 fi
 
 STAGE="$(mktemp -d)"
+chmod 0755 "$STAGE"
 trap 'rm -rf "$STAGE"' EXIT
 
 mkdir -p \
@@ -67,9 +68,12 @@ cp -a apps/web/dist/. "$STAGE/usr/share/chemlab/www/"
 install -m 0640 packaging/deb/chemlab.env "$STAGE/etc/chemlab/chemlab.env"
 install -m 0644 packaging/deb/chemlab.service "$STAGE/lib/systemd/system/chemlab.service"
 
-SIZE_KB="$(du -sk "$STAGE" | awk '{print $1}')"
-sed "s/@VERSION@/${VERSION}/g" packaging/deb/debian/control >"$STAGE/DEBIAN/control"
-printf 'Installed-Size: %s\n' "$SIZE_KB" >>"$STAGE/DEBIAN/control"
+SIZE_KB="$(du -sk --exclude=DEBIAN "$STAGE" | awk '{print $1}')"
+sed "s/@VERSION@/${VERSION}/g" packaging/deb/debian/control |
+    awk -v size="$SIZE_KB" '
+        /^Description:/ { print "Installed-Size: " size }
+        { print }
+    ' >"$STAGE/DEBIAN/control"
 
 install -m 0755 packaging/deb/debian/postinst "$STAGE/DEBIAN/postinst"
 install -m 0755 packaging/deb/debian/prerm "$STAGE/DEBIAN/prerm"

@@ -41,7 +41,9 @@ async fn favicon_svg() -> Response {
         .status(StatusCode::OK)
         .header("content-type", "image/svg+xml")
         .header("cache-control", "public, max-age=86400")
-        .body(Body::from(include_str!("../../../../apps/web/public/favicon.svg")))
+        .body(Body::from(include_str!(
+            "../../../../apps/web/public/favicon.svg"
+        )))
         .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "favicon").into_response())
 }
 

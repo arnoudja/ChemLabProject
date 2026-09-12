@@ -13,7 +13,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 authors = ["ChemLabProject contributors"]
-repository = "https://github.com/ajagerman/ChemLabProject"
+repository = "https://github.com/arnoudja/ChemLabProject"
 
 [workspace.dependencies]
 chemlab-core = { path = "crates/chemlab-core" }

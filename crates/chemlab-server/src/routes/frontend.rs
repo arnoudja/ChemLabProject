@@ -27,8 +27,15 @@ pub fn router(state: AppState) -> Router<AppState> {
         router = router.fallback(proxy_to_vite);
     } else if let Some(static_dir) = state.inner.static_dir.clone() {
         let index = static_dir.join("index.html");
-        let serve = ServeDir::new(static_dir).not_found_service(ServeFile::new(index));
-        router = router.fallback_service(serve);
+        // Only mount ServeDir when the SPA entry exists; otherwise unknown paths
+        // get a clear 404 HTML page instead of a broken file service.
+        if index.is_file() {
+            // SPA client routes: unknown paths serve index.html with 200 (not 404).
+            let serve = ServeDir::new(static_dir).fallback(ServeFile::new(index));
+            router = router.fallback_service(serve);
+        } else {
+            router = router.fallback(missing_frontend);
+        }
     } else {
         router = router.fallback(missing_frontend);
     }
@@ -123,8 +130,9 @@ fn missing_frontend_message() -> (StatusCode, Html<&'static str>) {
         Html(
             "<!doctype html><html><body style='font-family:sans-serif;padding:2rem'>\
              <h1>ChemLab frontend not configured</h1>\
-             <p>Set <code>CHEMLAB_VITE_PROXY</code> (dev) or <code>CHEMLAB_STATIC_DIR</code> (built assets),\
-             or open the Vite app directly. See README.</p>\
+             <p>Set <code>CHEMLAB_VITE_PROXY</code> (dev) or <code>CHEMLAB_STATIC_DIR</code> to a built SPA\
+             that contains <code>index.html</code>. If <code>CHEMLAB_STATIC_DIR</code> is set but the path\
+             is missing or incomplete, fix the directory and restart. See README.</p>\
              <p>API health: <a href='/api/health'>/api/health</a></p>\
              </body></html>",
         ),

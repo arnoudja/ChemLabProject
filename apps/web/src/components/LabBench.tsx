@@ -64,10 +64,16 @@ function WaterBeakerSvg({
   leftoverSolid,
   busy,
   amountMl,
+  hasAqueous,
+  dissolveCue,
 }: {
   leftoverSolid: 'nacl' | 'sand' | null
   busy: boolean
   amountMl?: number | null
+  /** Server-authored aqueous ions in the water beaker (not a client dissolve decision). */
+  hasAqueous?: boolean
+  /** Latest dissolve-related kind from scene `last_events`. */
+  dissolveCue?: 'dissolved' | 'did_not_dissolve' | null
 }) {
   const fill = waterFillRatio(amountMl)
   // Full liquid top ~86; empty sits at the beaker floor (~148).
@@ -76,12 +82,21 @@ function WaterBeakerSvg({
   const topY = floorY - fullHeight * fill
   const leftTop = 30 + 6 * fill
   const rightTop = 90 - 6 * fill
+  const liquidClass = [
+    busy ? 'lab-water-busy' : null,
+    dissolveCue === 'dissolved' ? 'lab-water-dissolved-cue' : null,
+    hasAqueous ? 'lab-water-aqueous' : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
   return (
     <svg
       viewBox="0 0 120 168"
       className="h-40 w-28"
       aria-hidden
       data-water-fill={fill.toFixed(2)}
+      data-water-aqueous={hasAqueous ? 'true' : 'false'}
+      data-dissolve-cue={dissolveCue ?? 'none'}
     >
       <defs>
         <linearGradient id="bench-glass" x1="20" y1="8" x2="100" y2="160" gradientUnits="userSpaceOnUse">
@@ -91,6 +106,10 @@ function WaterBeakerSvg({
         <linearGradient id="bench-water" x1="40" y1="80" x2="80" y2="150" gradientUnits="userSpaceOnUse">
           <stop stopColor="#7CF8F7" stopOpacity="0.72" />
           <stop offset="1" stopColor="#85E1FB" stopOpacity="0.38" />
+        </linearGradient>
+        <linearGradient id="bench-water-aqueous" x1="40" y1="80" x2="80" y2="150" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#A4FFEC" stopOpacity="0.78" />
+          <stop offset="1" stopColor="#7CF8F7" stopOpacity="0.48" />
         </linearGradient>
       </defs>
       <path d="M28 18h64v10H28z" fill="#86A7DF" opacity="0.85" />
@@ -102,9 +121,9 @@ function WaterBeakerSvg({
       />
       {fill > 0 ? (
         <path
-          className={busy ? 'lab-water-busy' : undefined}
+          className={liquidClass || undefined}
           d={`M${leftTop} ${topY} H${rightTop} L90 ${floorY - 10} C90 ${floorY - 4} 86 ${floorY} 80 ${floorY} H40 C34 ${floorY} 30 ${floorY - 4} 30 ${floorY - 10} Z`}
-          fill="url(#bench-water)"
+          fill={hasAqueous ? 'url(#bench-water-aqueous)' : 'url(#bench-water)'}
         />
       ) : null}
       {leftoverSolid ? (
@@ -207,11 +226,30 @@ function waterAmountMl(scene: LabScene): number | null {
   return entry?.amount_ml ?? null
 }
 
+/** True when the water beaker composition includes server-authored aqueous ions. */
+function waterHasAqueous(scene: LabScene): boolean {
+  const item = findItem(scene, WATER_ID)
+  return optionalArray(item?.properties.composition).some((c) => c.phase === 'aqueous')
+}
+
+/** Latest dissolve-related cue from server `last_events` (no client chemistry). */
+function dissolveCueFromEvents(
+  events: { kind: string; message: string }[],
+): 'dissolved' | 'did_not_dissolve' | null {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const kind = events[i]?.kind
+    if (kind === 'dissolved' || kind === 'did_not_dissolve') return kind
+  }
+  return null
+}
+
 function outcomeLabel(kind: string): string | null {
-  if (kind === 'dissolved') return 'dissolved'
-  if (kind === 'did_not_dissolve') return 'did not dissolve'
-  if (kind === 'returned') return 'returned'
-  if (kind === 'reset') return 'reset'
+  if (kind === 'dissolved') return 'Dissolved'
+  if (kind === 'did_not_dissolve') return 'Did not dissolve'
+  if (kind === 'returned') return 'Returned'
+  if (kind === 'reset') return 'Reset'
+  if (kind === 'scooped') return 'Scooped'
+  if (kind === 'poured') return 'Poured'
   return null
 }
 
@@ -377,6 +415,8 @@ export function LabBench() {
   const water = scene ? findItem(scene, WATER_ID) : undefined
   const spoon = scene ? findItem(scene, SPOON_ID) : undefined
   const lastEvents = scene ? optionalArray(scene.last_events) : []
+  const dissolveCue = dissolveCueFromEvents(lastEvents)
+  const hasAqueous = scene ? waterHasAqueous(scene) : false
   const inspectItem = scene && inspectItemId ? findItem(scene, inspectItemId) : undefined
 
   return (
@@ -422,6 +462,8 @@ export function LabBench() {
               leftoverSolid={leftoverSolid}
               busy={busy}
               amountMl={waterAmountMl(scene)}
+              hasAqueous={hasAqueous}
+              dissolveCue={dissolveCue}
             />
             <span className="lab-item-label">{water?.label ?? 'Water'}</span>
           </button>
@@ -487,18 +529,35 @@ export function LabBench() {
       ) : null}
 
       {lastEvents.length > 0 ? (
-        <div className="mt-3 space-y-2 text-sm" role="status" aria-live="polite">
-          {lastEvents.map((event, index) => {
-            const outcome = outcomeLabel(event.kind)
-            return (
-              <div key={`${event.kind}-${index}`} className="space-y-1">
-                {outcome ? (
-                  <p className="font-medium text-[var(--ink)]">Server outcome: {outcome}</p>
-                ) : null}
-                <p className="text-[var(--ink-soft)]">{event.message}</p>
-              </div>
-            )
-          })}
+        <div className="lab-bench-events mt-3 space-y-2 text-sm" role="status" aria-live="polite">
+          {dissolveCue ? (
+            <p
+              className="lab-bench-status text-[var(--ink)]"
+              data-bench-status={dissolveCue}
+            >
+              <span className="font-medium text-[var(--hackerman-bright-aqua)]">
+                {outcomeLabel(dissolveCue)}
+              </span>
+              {': '}
+              <span className="text-[var(--ink-soft)]">
+                {dissolveCue === 'dissolved'
+                  ? lastEvents.find((event) => event.kind === 'dissolved')?.message
+                  : lastEvents.find((event) => event.kind === 'did_not_dissolve')?.message}
+              </span>
+            </p>
+          ) : (
+            lastEvents.map((event, index) => {
+              const outcome = outcomeLabel(event.kind)
+              return (
+                <div key={`${event.kind}-${index}`} className="space-y-1" data-event-kind={event.kind}>
+                  {outcome ? (
+                    <p className="font-medium text-[var(--ink)]">{outcome}</p>
+                  ) : null}
+                  <p className="text-[var(--ink-soft)]">{event.message}</p>
+                </div>
+              )
+            })
+          )}
         </div>
       ) : null}
     </section>

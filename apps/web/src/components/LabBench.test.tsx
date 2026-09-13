@@ -745,7 +745,7 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '1.00')
     })
-    expect(screen.getByRole('status')).toHaveTextContent('returned')
+    expect(screen.getByRole('status')).toHaveTextContent('Returned')
     // Spoon holding cleared — cursor tool stays spoon without solid fill.
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
   })
@@ -806,7 +806,10 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent(NACL_EXPLANATION)
     })
-    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: dissolved')
+    expect(screen.getByRole('status')).toHaveTextContent('Dissolved')
+    expect(document.querySelector('[data-bench-status="dissolved"]')).toHaveTextContent(NACL_EXPLANATION)
+    expect(document.querySelector('[data-dissolve-cue="dissolved"]')).toBeTruthy()
+    expect(document.querySelector('[data-water-aqueous="true"]')).toBeTruthy()
     expect(lastActionInit(fetchMock)).toEqual(
       expect.objectContaining({
         method: 'POST',
@@ -855,7 +858,10 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent('Unexpected server sentence for sand.')
     })
-    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: dissolved')
+    expect(screen.getByRole('status')).toHaveTextContent('Dissolved')
+    expect(document.querySelector('[data-bench-status="dissolved"]')).toHaveTextContent(
+      'Unexpected server sentence for sand.',
+    )
     expect(screen.queryByText(SAND_EXPLANATION)).not.toBeInTheDocument()
     // No undissolved solid in the surprising payload → no leftover grains invented.
     expect(screen.getByRole('button', { name: 'Water beaker' }).querySelectorAll('circle')).toHaveLength(0)
@@ -878,7 +884,12 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent(SAND_EXPLANATION)
     })
-    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: did not dissolve')
+    expect(screen.getByRole('status')).toHaveTextContent('Did not dissolve')
+    expect(document.querySelector('[data-bench-status="did_not_dissolve"]')).toHaveTextContent(
+      SAND_EXPLANATION,
+    )
+    expect(document.querySelector('[data-dissolve-cue="did_not_dissolve"]')).toBeTruthy()
+    expect(document.querySelector('[data-water-aqueous="false"]')).toBeTruthy()
     // Leftover grains are SVG circles rendered only because the server put solid sand in water.
     expect(
       screen.getByRole('button', { name: 'Water beaker' }).querySelectorAll('circle').length,

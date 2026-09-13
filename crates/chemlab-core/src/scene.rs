@@ -1006,6 +1006,31 @@ mod tests {
     }
 
     #[test]
+    fn pour_into_dry_beaker_returns_invalid_action() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+
+        let err = apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-sand".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        let spoon = item(&scene, "spoon-1");
+        assert_eq!(spoon.properties.holding[0].substance_id, "nacl");
+    }
+
+    #[test]
     fn pour_into_wrong_temperature_solvent_surfaces_dissolve_error() {
         let mut scene = initial_bench_scene("lab-test");
         apply_action(

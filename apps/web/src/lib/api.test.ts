@@ -3,11 +3,54 @@ import {
   clearCsrfTokenCache,
   dissolve,
   fetchHealth,
+  fetchLabScene,
   fetchMe,
   login,
   logout,
+  postLabAction,
   register,
 } from './api'
+
+const initialScene = {
+  lab_id: 'lab-1',
+  version: 0,
+  temperature_c: 20,
+  last_events: [] as { kind: string; message: string }[],
+  items: [
+    {
+      id: 'spoon-1',
+      kind: 'spoon',
+      label: 'Spoon',
+      location: 'bench',
+      properties: {
+        volume_ml: null,
+        fill_ml: null,
+        transparent: null,
+        colourless: null,
+        temperature_c: null,
+        composition: [],
+        holding: [],
+      },
+    },
+    {
+      id: 'beaker-water',
+      kind: 'beaker',
+      label: 'Water',
+      location: 'bench',
+      properties: {
+        volume_ml: 250,
+        fill_ml: 200,
+        transparent: true,
+        colourless: true,
+        temperature_c: 20,
+        composition: [
+          { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null },
+        ],
+        holding: [],
+      },
+    },
+  ],
+}
 
 const userPayload = {
   id: 'u1',
@@ -57,6 +100,37 @@ describe('api client', () => {
             dissolved: true,
             explanation:
               'Sodium chloride (NaCl) dissolves in water at bench temperature.',
+          })
+        }
+        if (url === '/api/lab/scene') {
+          return jsonResponse(initialScene)
+        }
+        if (url === '/api/lab/action') {
+          return jsonResponse({
+            scene: {
+              ...initialScene,
+              version: 1,
+              last_events: [{ kind: 'scooped', message: 'Scooped nacl.' }],
+              items: initialScene.items.map((item) =>
+                item.id === 'spoon-1'
+                  ? {
+                      ...item,
+                      location: 'hand',
+                      properties: {
+                        ...item.properties,
+                        holding: [
+                          {
+                            substance_id: 'nacl',
+                            phase: 'solid',
+                            amount_ml: null,
+                            amount_scoop: 1,
+                          },
+                        ],
+                      },
+                    }
+                  : item,
+              ),
+            },
           })
         }
         return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
@@ -272,5 +346,62 @@ describe('api client', () => {
     })
 
     await expect(logout()).rejects.toThrow('Could not log out')
+  })
+
+  it('fetchLabScene includes credentials and returns the server snapshot', async () => {
+    const scene = await fetchLabScene()
+    expect(scene.lab_id).toBe('lab-1')
+    expect(scene.items.some((item) => item.id === 'beaker-water')).toBe(true)
+    expect(fetch).toHaveBeenCalledWith('/api/lab/scene', { credentials: 'include' })
+  })
+
+  it('postLabAction posts CSRF JSON and returns the updated scene as-is', async () => {
+    const response = await postLabAction({
+      type: 'use_tool',
+      tool_item_id: 'spoon-1',
+      target_item_id: 'beaker-nacl',
+    })
+
+    expect(fetch).toHaveBeenCalledWith('/api/auth/csrf', {
+      credentials: 'include',
+    })
+    expect(fetch).toHaveBeenCalledWith('/api/lab/action', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+        'X-CSRF-Token': 'tok-123',
+      },
+      body: JSON.stringify({
+        type: 'use_tool',
+        tool_item_id: 'spoon-1',
+        target_item_id: 'beaker-nacl',
+      }),
+    })
+    expect(response.scene.version).toBe(1)
+    expect(response.scene.last_events[0]?.message).toBe('Scooped nacl.')
+    const spoon = response.scene.items.find((item) => item.id === 'spoon-1')
+    expect(spoon?.properties.holding[0]?.substance_id).toBe('nacl')
+  })
+
+  it('postLabAction surfaces unauthenticated errors from the server body', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/auth/csrf') {
+        return jsonResponse({ csrf_token: 'tok-123' })
+      }
+      if (url === '/api/lab/action') {
+        return jsonResponse({ error: 'Login required', code: 'unauthenticated' }, 401)
+      }
+      return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
+    })
+
+    await expect(
+      postLabAction({
+        type: 'pour',
+        source_item_id: 'spoon-1',
+        target_item_id: 'beaker-water',
+      }),
+    ).rejects.toThrow('Login required')
   })
 })

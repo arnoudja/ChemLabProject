@@ -29,6 +29,77 @@ const SAND_SERVER = {
   explanation: 'Sand (silica) does not dissolve in water at bench temperature.',
 } as const
 
+const EMPTY_LAB_SCENE = {
+  lab_id: 'lab-1',
+  version: 0,
+  temperature_c: 20,
+  last_events: [] as { kind: string; message: string }[],
+  items: [
+    {
+      id: 'spoon-1',
+      kind: 'spoon',
+      label: 'Spoon',
+      location: 'bench',
+      properties: {
+        volume_ml: null,
+        fill_ml: null,
+        transparent: null,
+        colourless: null,
+        temperature_c: null,
+        composition: [],
+        holding: [],
+      },
+    },
+    {
+      id: 'beaker-nacl',
+      kind: 'beaker',
+      label: 'Sodium chloride',
+      location: 'bench',
+      properties: {
+        volume_ml: 250,
+        fill_ml: 100,
+        transparent: true,
+        colourless: true,
+        temperature_c: 20,
+        composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+        holding: [],
+      },
+    },
+    {
+      id: 'beaker-sand',
+      kind: 'beaker',
+      label: 'Sand',
+      location: 'bench',
+      properties: {
+        volume_ml: 250,
+        fill_ml: 100,
+        transparent: true,
+        colourless: true,
+        temperature_c: 20,
+        composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+        holding: [],
+      },
+    },
+    {
+      id: 'beaker-water',
+      kind: 'beaker',
+      label: 'Water',
+      location: 'bench',
+      properties: {
+        volume_ml: 250,
+        fill_ml: 200,
+        transparent: true,
+        colourless: true,
+        temperature_c: 20,
+        composition: [
+          { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null },
+        ],
+        holding: [],
+      },
+    },
+  ],
+}
+
 function stubAppFetch(options?: {
   authenticated?: boolean
   dissolveBody?: unknown
@@ -96,6 +167,12 @@ function stubAppFetch(options?: {
         options?.dissolveBody ?? NACL_SERVER,
         options?.dissolveStatus ?? 200,
       )
+    }
+    if (url === '/api/lab/scene') {
+      return jsonResponse(EMPTY_LAB_SCENE)
+    }
+    if (url === '/api/lab/action') {
+      return jsonResponse({ scene: EMPTY_LAB_SCENE })
     }
     return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
   })

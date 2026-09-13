@@ -315,9 +315,8 @@ fn apply_pour(
             .iter_mut()
             .find(|c| c.substance_id == held.substance_id && c.phase == "aqueous")
         {
-            existing.amount_scoop = Some(
-                existing.amount_scoop.unwrap_or(0) + held.amount_scoop.unwrap_or(1),
-            );
+            existing.amount_scoop =
+                Some(existing.amount_scoop.unwrap_or(0) + held.amount_scoop.unwrap_or(1));
             existing.amount_g = Some(existing.amount_g.unwrap_or(0.0) + mass_g);
         } else {
             target.properties.composition.push(CompositionEntry {
@@ -473,7 +472,10 @@ mod tests {
         assert_eq!(spoon.properties.holding[0].substance_id, "nacl");
         assert_eq!(spoon.properties.holding[0].phase, "solid");
         assert_eq!(spoon.properties.holding[0].amount_scoop, Some(1));
-        assert_eq!(spoon.properties.holding[0].amount_g, Some(SPOON_SCOOP_MASS_G));
+        assert_eq!(
+            spoon.properties.holding[0].amount_g,
+            Some(SPOON_SCOOP_MASS_G)
+        );
         assert_eq!(SPOON_SCOOP_MASS_G, 0.2);
 
         assert!(scene.last_events.iter().any(|e| e.kind == "scooped"));

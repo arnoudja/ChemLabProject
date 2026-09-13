@@ -106,6 +106,11 @@ function formatMassGrams(value: number): string {
   return value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
 }
 
+/** Format beaker/scene temperature for inspect labels (always two decimals). */
+export function formatTemperatureC(temperatureC: number): string {
+  return temperatureC.toFixed(2)
+}
+
 /** Label + optional amount for the beaker inspect list. */
 export function CompositionInspectLine({
   entry,

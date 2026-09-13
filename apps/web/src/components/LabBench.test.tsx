@@ -12,6 +12,11 @@ const NACL_EXPLANATION =
 const SAND_EXPLANATION =
   'Sand (silica) does not dissolve in water at bench temperature.'
 
+/** Mirror `chemlab-core::scene::NACL_DELTA_H_SOLUTION_J_PER_MOL` — keep in sync. */
+const NACL_DELTA_H_SOLUTION_J_PER_MOL = 3880
+/** Mirror `chemlab-core::scene::WATER_SPECIFIC_HEAT_J_PER_G_K` — keep in sync. */
+const WATER_SPECIFIC_HEAT_J_PER_G_K = 4.184
+
 function emptyProps() {
   return {
     volume_ml: null,
@@ -139,6 +144,15 @@ function afterNaclPour(scene: LabScene): LabScene {
       amount_mol: moles,
     },
   ]
+  // Mirror server endothermic cooling (water mass ≈ liquid amount_ml at 1 g/ml).
+  const waterMassG =
+    optionalArray(water.properties.composition).find(
+      (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
+    )?.amount_ml ?? 0
+  const heatJ = moles * NACL_DELTA_H_SOLUTION_J_PER_MOL
+  const currentT = water.properties.temperature_c ?? next.temperature_c
+  water.properties.temperature_c =
+    currentT - heatJ / (waterMassG * WATER_SPECIFIC_HEAT_J_PER_G_K)
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
     { kind: 'dissolved', message: NACL_EXPLANATION },
@@ -401,7 +415,7 @@ describe('LabBench', () => {
 
     const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
     expect(panel).toHaveTextContent('H2O (l)')
-    expect(panel).toHaveTextContent('Temperature: 20°C')
+    expect(panel).toHaveTextContent('Temperature: 20.00°C')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
   })
@@ -423,7 +437,7 @@ describe('LabBench', () => {
     expect(panel).toHaveTextContent('Cl− (aq)')
     expect(panel).toHaveTextContent('0.017 M')
     expect(panel.querySelectorAll('sup')).toHaveLength(2)
-    expect(panel).toHaveTextContent('Temperature: 20°C')
+    expect(panel).toHaveTextContent('Temperature: 19.98°C')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 

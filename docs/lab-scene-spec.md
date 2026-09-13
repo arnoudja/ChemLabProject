@@ -89,12 +89,14 @@ Pour into water is a separate action, e.g. `{ "type": "pour", "source_item_id": 
 
 - `CompositionEntry` — `substance_id`, `phase` (`solid` \| `liquid` \| `aqueous`), optional `amount_ml` / `amount_scoop` / `amount_g` / `amount_mol`
 - One spoon scoop of solid is **0.2 g** (`amount_g`). Dissolved NaCl authors aqueous `na+` / `cl-` with `amount_mol` (aggregated on repeat pours). Undissolved solids (e.g. sand / SiO₂) aggregate `amount_g` on one composition line.
-- `ItemProperties` — optional volume/fill/flags/temperature; `composition` and `holding` lists
+- `ItemProperties` — optional volume/fill/flags/temperature (°C as `f64`); `composition` and `holding` lists
 - `Item` — `id`, `kind`, `label`, `location`, `properties`
-- `LabScene` — `lab_id`, `version`, ambient `temperature_c` (default 20), `items`, optional `last_events`
+- `LabScene` — `lab_id`, `version`, ambient `temperature_c` (default `20.0`), `items`, optional `last_events`
 - `LabEvent` — `kind` (e.g. `scooped`, `poured`, `dissolved`, `did_not_dissolve`), `message`
 - `LabAction` — tagged `type`: `use_tool` \| `pour` \| `reset`
 - `LabActionResponse` — `{ "scene": LabScene }`
+
+When NaCl dissolves into water, the scene engine applies **endothermic** cooling to the water beaker's `properties.temperature_c` (ΔH_sol ≈ 3.88 kJ/mol; water c_p = 4.184 J/(g·K); water mass ≈ liquid `amount_ml`). Ambient `LabScene.temperature_c` is unchanged. Sand that does not dissolve leaves temperature unchanged. The frontend only formats the server value (two decimal places).
 
 ## Out of scope
 

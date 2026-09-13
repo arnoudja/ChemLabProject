@@ -10,6 +10,12 @@ pub const SPOON_SCOOP_MASS_G: f64 = 0.2;
 /// Molar mass of NaCl used when converting scoop mass to aqueous ion moles.
 const NACL_MOLAR_MASS_G_PER_MOL: f64 = 58.44;
 
+/// Enthalpy of solution of NaCl at bench conditions (endothermic), J/mol.
+pub const NACL_DELTA_H_SOLUTION_J_PER_MOL: f64 = 3880.0;
+
+/// Specific heat capacity of liquid water, J/(g·K). Mass of water ≈ volume in ml.
+pub const WATER_SPECIFIC_HEAT_J_PER_G_K: f64 = 4.184;
+
 /// One substance entry in an item's composition or holding list.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompositionEntry {
@@ -31,7 +37,7 @@ pub struct ItemProperties {
     pub fill_ml: Option<f64>,
     pub transparent: Option<bool>,
     pub colourless: Option<bool>,
-    pub temperature_c: Option<i32>,
+    pub temperature_c: Option<f64>,
     pub composition: Vec<CompositionEntry>,
     pub holding: Vec<CompositionEntry>,
 }
@@ -61,7 +67,7 @@ pub struct SceneEvent {
 pub struct Scene {
     pub lab_id: String,
     pub version: u32,
-    pub temperature_c: i32,
+    pub temperature_c: f64,
     pub items: Vec<SceneItem>,
     pub last_events: Vec<SceneEvent>,
 }
@@ -99,7 +105,7 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
     Scene {
         lab_id: lab_id.into(),
         version: 0,
-        temperature_c: 20,
+        temperature_c: 20.0,
         last_events: Vec::new(),
         items: vec![
             SceneItem {
@@ -119,7 +125,7 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                     fill_ml: Some(100.0),
                     transparent: Some(true),
                     colourless: Some(true),
-                    temperature_c: Some(20),
+                    temperature_c: Some(20.0),
                     composition: vec![CompositionEntry {
                         substance_id: "nacl".into(),
                         phase: "solid".into(),
@@ -141,7 +147,7 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                     fill_ml: Some(100.0),
                     transparent: Some(true),
                     colourless: Some(true),
-                    temperature_c: Some(20),
+                    temperature_c: Some(20.0),
                     composition: vec![CompositionEntry {
                         substance_id: "sand".into(),
                         phase: "solid".into(),
@@ -163,7 +169,7 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                     fill_ml: Some(200.0),
                     transparent: Some(true),
                     colourless: Some(true),
-                    temperature_c: Some(20),
+                    temperature_c: Some(20.0),
                     composition: vec![CompositionEntry {
                         substance_id: "water".into(),
                         phase: "liquid".into(),
@@ -290,7 +296,8 @@ fn apply_pour(
         .temperature_c
         .unwrap_or(scene.temperature_c);
 
-    let outcome = dissolve(&held.substance_id, "water", temperature_c)?;
+    // Qualitative dissolve table is still keyed on integer bench °C.
+    let outcome = dissolve(&held.substance_id, "water", temperature_c.round() as i32)?;
 
     // Clear source holding before mutating target (indices stay valid).
     scene.items[source_idx].properties.holding.clear();
@@ -309,6 +316,7 @@ fn apply_pour(
             let moles = mass_g / NACL_MOLAR_MASS_G_PER_MOL;
             add_or_increase_mol(target, "na+", "aqueous", moles);
             add_or_increase_mol(target, "cl-", "aqueous", moles);
+            apply_nacl_dissolution_cooling(target, mass_g, temperature_c);
         } else if let Some(existing) = target
             .properties
             .composition
@@ -343,6 +351,27 @@ fn apply_pour(
     }
 
     Ok(())
+}
+
+/// Apply endothermic NaCl dissolution cooling to the solvent beaker.
+///
+/// Uses q = n·ΔH_sol and ΔT = −q / (m_water · c_p), with water mass ≈ liquid
+/// `amount_ml` (density ≈ 1 g/ml).
+fn apply_nacl_dissolution_cooling(target: &mut SceneItem, mass_g: f64, current_temperature_c: f64) {
+    let water_ml = target
+        .properties
+        .composition
+        .iter()
+        .find(|c| c.substance_id == "water" && c.phase == "liquid")
+        .and_then(|c| c.amount_ml)
+        .unwrap_or(0.0);
+    if water_ml <= 0.0 || mass_g <= 0.0 {
+        return;
+    }
+    let moles = mass_g / NACL_MOLAR_MASS_G_PER_MOL;
+    let heat_j = moles * NACL_DELTA_H_SOLUTION_J_PER_MOL;
+    let delta_t = -heat_j / (water_ml * WATER_SPECIFIC_HEAT_J_PER_G_K);
+    target.properties.temperature_c = Some(current_temperature_c + delta_t);
 }
 
 fn add_or_increase_mol(target: &mut SceneItem, substance_id: &str, phase: &str, moles: f64) {
@@ -411,7 +440,7 @@ mod tests {
     fn initial_bench_scene_has_four_items_with_water_properties() {
         let scene = initial_bench_scene("lab-test");
         assert_eq!(scene.lab_id, "lab-test");
-        assert_eq!(scene.temperature_c, 20);
+        assert_eq!(scene.temperature_c, 20.0);
         assert_eq!(scene.version, 0);
         assert!(scene.last_events.is_empty());
 
@@ -429,7 +458,7 @@ mod tests {
         assert_eq!(water.properties.fill_ml, Some(200.0));
         assert_eq!(water.properties.transparent, Some(true));
         assert_eq!(water.properties.colourless, Some(true));
-        assert_eq!(water.properties.temperature_c, Some(20));
+        assert_eq!(water.properties.temperature_c, Some(20.0));
         assert_eq!(water.properties.composition.len(), 1);
         assert_eq!(water.properties.composition[0].substance_id, "water");
         assert_eq!(water.properties.composition[0].phase, "liquid");
@@ -546,6 +575,71 @@ mod tests {
             e.kind == "dissolved"
                 && e.message == "Sodium chloride (NaCl) dissolves in water at bench temperature."
         }));
+    }
+
+    #[test]
+    fn pour_nacl_into_water_cools_solution_endothermically() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+
+        let water = item(&scene, "beaker-water");
+        let moles = SPOON_SCOOP_MASS_G / NACL_MOLAR_MASS_G_PER_MOL;
+        let expected_delta_t =
+            -(moles * NACL_DELTA_H_SOLUTION_J_PER_MOL) / (200.0 * WATER_SPECIFIC_HEAT_J_PER_G_K);
+        let expected_t = 20.0 + expected_delta_t;
+        assert!(
+            expected_delta_t < 0.0,
+            "NaCl dissolution must be endothermic (negative ΔT)"
+        );
+        let actual = water
+            .properties
+            .temperature_c
+            .expect("water beaker should keep a temperature");
+        assert!(
+            (actual - expected_t).abs() < 1e-9,
+            "expected {expected_t}, got {actual}"
+        );
+        // Ambient bench temperature is unchanged; only the solution cools.
+        assert_eq!(scene.temperature_c, 20.0);
+    }
+
+    #[test]
+    fn pour_sand_into_water_does_not_change_temperature() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-sand".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+
+        let water = item(&scene, "beaker-water");
+        assert_eq!(water.properties.temperature_c, Some(20.0));
     }
 
     #[test]
@@ -763,7 +857,7 @@ mod tests {
             .iter_mut()
             .find(|i| i.id == "beaker-water")
             .unwrap();
-        water.properties.temperature_c = Some(21);
+        water.properties.temperature_c = Some(21.0);
 
         let err = apply_action(
             &mut scene,

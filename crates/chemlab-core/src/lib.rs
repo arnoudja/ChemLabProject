@@ -9,7 +9,8 @@ mod scene;
 pub use dissolve::{dissolve, DissolveError, DissolveOutcome};
 pub use scene::{
     apply_action, initial_bench_scene, Action, CompositionEntry, ItemProperties, Scene, SceneError,
-    SceneEvent, SceneItem, SPOON_SCOOP_MASS_G,
+    SceneEvent, SceneItem, NACL_DELTA_H_SOLUTION_J_PER_MOL, SPOON_SCOOP_MASS_G,
+    WATER_SPECIFIC_HEAT_J_PER_G_K,
 };
 
 /// Semantic version of the ChemLab core crate.

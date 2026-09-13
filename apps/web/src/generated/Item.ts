@@ -6,7 +6,7 @@ import type { ItemProperties } from "./ItemProperties";
  */
 export type Item = { id: string, 
 /**
- * `"beaker"` | `"spoon"` | …
+ * `"beaker"` | `"spoon"` | `"pipette"` | `"evaporation_dish"` | `"burner"` | …
  */
 kind: string, label: string, 
 /**

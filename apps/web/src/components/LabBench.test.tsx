@@ -12,6 +12,11 @@ const NACL_EXPLANATION =
 const SAND_EXPLANATION =
   'Sand (silica) does not dissolve in water at bench temperature.'
 
+/** Mirror `chemlab-core::scene::NACL_DELTA_H_SOLUTION_J_PER_MOL` — keep in sync. */
+const NACL_DELTA_H_SOLUTION_J_PER_MOL = 3880
+/** Mirror `chemlab-core::scene::WATER_SPECIFIC_HEAT_J_PER_G_K` — keep in sync. */
+const WATER_SPECIFIC_HEAT_J_PER_G_K = 4.184
+
 function emptyProps() {
   return {
     volume_ml: null,
@@ -139,10 +144,15 @@ function afterNaclPour(scene: LabScene): LabScene {
       amount_mol: moles,
     },
   ]
-  // Mirror server endothermic cooling (ΔH_sol = 3.88 kJ/mol, c_p water = 4.184 J/(g·K)).
-  const heatJ = moles * 3880
+  // Mirror server endothermic cooling (water mass ≈ liquid amount_ml at 1 g/ml).
+  const waterMassG =
+    optionalArray(water.properties.composition).find(
+      (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
+    )?.amount_ml ?? 0
+  const heatJ = moles * NACL_DELTA_H_SOLUTION_J_PER_MOL
   const currentT = water.properties.temperature_c ?? next.temperature_c
-  water.properties.temperature_c = currentT - heatJ / (200 * 4.184)
+  water.properties.temperature_c =
+    currentT - heatJ / (waterMassG * WATER_SPECIFIC_HEAT_J_PER_G_K)
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
     { kind: 'dissolved', message: NACL_EXPLANATION },

@@ -340,7 +340,10 @@ mod tests {
         let resp_json = serde_json::to_string(&response).unwrap();
         let resp_back: LabActionResponse = serde_json::from_str(&resp_json).unwrap();
         assert_eq!(response, resp_back);
-        assert_eq!(resp_back.scene.items[0].properties.holding[0].substance_id, "nacl");
+        assert_eq!(
+            resp_back.scene.items[0].properties.holding[0].substance_id,
+            "nacl"
+        );
     }
 
     #[test]

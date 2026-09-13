@@ -322,6 +322,8 @@ fn composition_to_contract(
         phase: entry.phase,
         amount_ml: entry.amount_ml,
         amount_scoop: entry.amount_scoop,
+        amount_g: entry.amount_g,
+        amount_mol: entry.amount_mol,
     }
 }
 
@@ -378,6 +380,8 @@ fn composition_to_core(
         phase: entry.phase,
         amount_ml: entry.amount_ml,
         amount_scoop: entry.amount_scoop,
+        amount_g: entry.amount_g,
+        amount_mol: entry.amount_mol,
     }
 }
 

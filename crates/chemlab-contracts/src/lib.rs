@@ -105,6 +105,12 @@ pub struct CompositionEntry {
     pub amount_ml: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amount_scoop: Option<u32>,
+    /// Mass in grams (solids). One spoon scoop is 0.2 g.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount_g: Option<f64>,
+    /// Amount of substance in moles (aqueous species).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount_mol: Option<f64>,
 }
 
 /// Physical / chemical properties of a lab item (server-authored).
@@ -327,6 +333,8 @@ mod tests {
                     phase: "solid".into(),
                     amount_ml: None,
                     amount_scoop: Some(1),
+                    amount_g: Some(0.2),
+                    amount_mol: None,
                 }],
             },
         };

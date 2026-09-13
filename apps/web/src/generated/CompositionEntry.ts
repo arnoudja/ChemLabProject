@@ -7,4 +7,12 @@ export type CompositionEntry = { substance_id: string,
 /**
  * `"solid"` | `"liquid"` | `"aqueous"` for this slice.
  */
-phase: string, amount_ml: number | null, amount_scoop: number | null, };
+phase: string, amount_ml: number | null, amount_scoop: number | null, 
+/**
+ * Mass in grams (solids). One spoon scoop is 0.2 g.
+ */
+amount_g: number | null, 
+/**
+ * Amount of substance in moles (aqueous species).
+ */
+amount_mol: number | null, };

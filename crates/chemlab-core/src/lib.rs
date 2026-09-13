@@ -9,6 +9,7 @@ mod scene;
 pub use dissolve::{dissolve, DissolveError, DissolveOutcome};
 pub use scene::{
     apply_action, initial_bench_scene, Action, CompositionEntry, ItemProperties, Scene, SceneError,
+    SPOON_SCOOP_MASS_G,
     SceneEvent, SceneItem,
 };
 

@@ -49,7 +49,7 @@ function initialScene(): LabScene {
           transparent: true,
           colourless: true,
           temperature_c: 20,
-          composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+          composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10 , amount_g: null, amount_mol: null}],
           holding: [],
         },
       },
@@ -64,7 +64,7 @@ function initialScene(): LabScene {
           transparent: true,
           colourless: true,
           temperature_c: 20,
-          composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+          composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10 , amount_g: null, amount_mol: null}],
           holding: [],
         },
       },
@@ -80,7 +80,7 @@ function initialScene(): LabScene {
           colourless: true,
           temperature_c: 20,
           composition: [
-            { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null },
+            { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null , amount_g: null, amount_mol: null},
           ],
           holding: [],
         },
@@ -98,7 +98,14 @@ function withScoop(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
   spoon.location = 'hand'
   spoon.properties.holding = [
-    { substance_id: substance, phase: 'solid', amount_ml: null, amount_scoop: 1 },
+    {
+      substance_id: substance,
+      phase: 'solid',
+      amount_ml: null,
+      amount_scoop: 1,
+      amount_g: 0.2,
+      amount_mol: null,
+    },
   ]
   next.last_events = [{ kind: 'scooped', message: `Scooped ${substance}.` }]
   next.version += 1
@@ -111,10 +118,26 @@ function afterNaclPour(scene: LabScene): LabScene {
   const water = next.items.find((item) => item.id === 'beaker-water')!
   spoon.properties.holding = []
   // Mirror server-authored aqueous ions after NaCl dissolve (not client dissociation).
+  // 0.2 g NaCl / 58.44 g·mol⁻¹ ≈ 0.003422 mol
+  const moles = 0.2 / 58.44
   water.properties.composition = [
     ...optionalArray(water.properties.composition),
-    { substance_id: 'na+', phase: 'aqueous', amount_ml: null, amount_scoop: null },
-    { substance_id: 'cl-', phase: 'aqueous', amount_ml: null, amount_scoop: null },
+    {
+      substance_id: 'na+',
+      phase: 'aqueous',
+      amount_ml: null,
+      amount_scoop: null,
+      amount_g: null,
+      amount_mol: moles,
+    },
+    {
+      substance_id: 'cl-',
+      phase: 'aqueous',
+      amount_ml: null,
+      amount_scoop: null,
+      amount_g: null,
+      amount_mol: moles,
+    },
   ]
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
@@ -136,6 +159,8 @@ function afterSandPour(scene: LabScene): LabScene {
       phase: 'solid',
       amount_ml: null,
       amount_scoop: 1,
+      amount_g: 0.2,
+      amount_mol: null,
     },
   ]
   next.last_events = [
@@ -241,6 +266,14 @@ describe('LabBench', () => {
     expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sand' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Water beaker' })).toBeInTheDocument()
+    const saltLabel = document.querySelector('[data-stock-label="nacl"]')
+    expect(saltLabel?.textContent).toContain('NaCl')
+    expect(saltLabel?.textContent).toContain('(Sodium chloride)')
+    expect(saltLabel?.textContent).toContain('(Table salt)')
+    const sandLabel = document.querySelector('[data-stock-label="sand"]')
+    expect(sandLabel?.querySelector('sub')?.textContent).toBe('2')
+    expect(sandLabel?.textContent).toContain('(Silicon dioxide)')
+    expect(sandLabel?.textContent).toContain('(Sand)')
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
     expect(fetchMock).toHaveBeenCalledWith('/api/lab/scene', { credentials: 'include' })
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
@@ -272,7 +305,7 @@ describe('LabBench', () => {
             transparent: true,
             colourless: true,
             temperature_c: 20,
-            composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+            composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10 , amount_g: null, amount_mol: null}],
           },
         },
         {
@@ -286,7 +319,7 @@ describe('LabBench', () => {
             transparent: true,
             colourless: true,
             temperature_c: 20,
-            composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+            composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10 , amount_g: null, amount_mol: null}],
           },
         },
         {
@@ -301,7 +334,7 @@ describe('LabBench', () => {
             colourless: true,
             temperature_c: 20,
             composition: [
-              { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null },
+              { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null , amount_g: null, amount_mol: null},
             ],
           },
         },
@@ -379,8 +412,29 @@ describe('LabBench', () => {
     const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
     expect(panel).toHaveTextContent('H2O (l)')
     expect(panel).toHaveTextContent('Na+ (aq)')
-    expect(panel).toHaveTextContent('Cl- (aq)')
+    expect(panel).toHaveTextContent('Cl− (aq)')
+    expect(panel).toHaveTextContent('0.017 M')
+    expect(panel.querySelectorAll('sup')).toHaveLength(2)
     expect(panel).toHaveTextContent('Temperature: 20°C')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+  })
+
+  it('idle inspect after sand pour shows aggregated SiO2 mass not molarity', async () => {
+    const leftover = afterSandPour(withScoop(initialScene(), 'sand'))
+    leftover.items.find((item) => item.id === 'spoon-1')!.properties.holding = []
+    const fetchMock = stubLabFetch({ scene: leftover })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    expect(panel).toHaveTextContent('SiO2 (s)')
+    expect(panel).toHaveTextContent('0.2 g')
+    expect(panel.querySelector('sub')?.textContent).toBe('2')
+    expect(panel).not.toHaveTextContent(' M')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 

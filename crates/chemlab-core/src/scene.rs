@@ -4,6 +4,12 @@ use thiserror::Error;
 
 use crate::dissolve::{dissolve, DissolveError};
 
+/// Mass of one spoon scoop of solid, in grams.
+pub const SPOON_SCOOP_MASS_G: f64 = 0.2;
+
+/// Molar mass of NaCl used when converting scoop mass to aqueous ion moles.
+const NACL_MOLAR_MASS_G_PER_MOL: f64 = 58.44;
+
 /// One substance entry in an item's composition or holding list.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompositionEntry {
@@ -12,6 +18,10 @@ pub struct CompositionEntry {
     pub phase: String,
     pub amount_ml: Option<f64>,
     pub amount_scoop: Option<u32>,
+    /// Mass in grams (solids). One spoon scoop is [`SPOON_SCOOP_MASS_G`].
+    pub amount_g: Option<f64>,
+    /// Amount of substance in moles (aqueous species).
+    pub amount_mol: Option<f64>,
 }
 
 /// Physical / chemical properties of a lab item (server-authored).
@@ -113,6 +123,8 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                         phase: "solid".into(),
                         amount_ml: None,
                         amount_scoop: Some(10),
+                        amount_g: Some(10.0 * SPOON_SCOOP_MASS_G),
+                        amount_mol: None,
                     }],
                     holding: Vec::new(),
                 },
@@ -133,6 +145,8 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                         phase: "solid".into(),
                         amount_ml: None,
                         amount_scoop: Some(10),
+                        amount_g: Some(10.0 * SPOON_SCOOP_MASS_G),
+                        amount_mol: None,
                     }],
                     holding: Vec::new(),
                 },
@@ -153,6 +167,8 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                         phase: "liquid".into(),
                         amount_ml: Some(200.0),
                         amount_scoop: None,
+                        amount_g: None,
+                        amount_mol: None,
                     }],
                     holding: Vec::new(),
                 },
@@ -210,6 +226,8 @@ fn apply_use_tool(
         phase: "solid".into(),
         amount_ml: None,
         amount_scoop: Some(1),
+        amount_g: Some(SPOON_SCOOP_MASS_G),
+        amount_mol: None,
     };
 
     let tool = &mut scene.items[tool_idx];
@@ -269,25 +287,29 @@ fn apply_pour(
     if outcome.dissolved {
         // Server-authored composition for inspection. Dissolved NaCl is exposed as
         // aqueous ions (not a client-side dissociation of a substance_id blob).
+        let mass_g = held.amount_g.unwrap_or(SPOON_SCOOP_MASS_G);
         if held.substance_id == "nacl" {
-            target.properties.composition.push(CompositionEntry {
-                substance_id: "na+".into(),
-                phase: "aqueous".into(),
-                amount_ml: None,
-                amount_scoop: None,
-            });
-            target.properties.composition.push(CompositionEntry {
-                substance_id: "cl-".into(),
-                phase: "aqueous".into(),
-                amount_ml: None,
-                amount_scoop: None,
-            });
+            let moles = mass_g / NACL_MOLAR_MASS_G_PER_MOL;
+            add_or_increase_mol(target, "na+", "aqueous", moles);
+            add_or_increase_mol(target, "cl-", "aqueous", moles);
+        } else if let Some(existing) = target
+            .properties
+            .composition
+            .iter_mut()
+            .find(|c| c.substance_id == held.substance_id && c.phase == "aqueous")
+        {
+            existing.amount_scoop = Some(
+                existing.amount_scoop.unwrap_or(0) + held.amount_scoop.unwrap_or(1),
+            );
+            existing.amount_g = Some(existing.amount_g.unwrap_or(0.0) + mass_g);
         } else {
             target.properties.composition.push(CompositionEntry {
                 substance_id: held.substance_id,
                 phase: "aqueous".into(),
                 amount_ml: None,
                 amount_scoop: held.amount_scoop,
+                amount_g: Some(mass_g),
+                amount_mol: None,
             });
         }
         scene.last_events.push(SceneEvent {
@@ -295,12 +317,9 @@ fn apply_pour(
             message: outcome.explanation.into(),
         });
     } else {
-        target.properties.composition.push(CompositionEntry {
-            substance_id: held.substance_id,
-            phase: "solid".into(),
-            amount_ml: None,
-            amount_scoop: held.amount_scoop.or(Some(1)),
-        });
+        let scoops = held.amount_scoop.or(Some(1));
+        let mass_g = held.amount_g.or(Some(SPOON_SCOOP_MASS_G));
+        add_or_increase_solid(target, &held.substance_id, scoops, mass_g);
         scene.last_events.push(SceneEvent {
             kind: "did_not_dissolve".into(),
             message: outcome.explanation.into(),
@@ -308,6 +327,56 @@ fn apply_pour(
     }
 
     Ok(())
+}
+
+fn add_or_increase_mol(target: &mut SceneItem, substance_id: &str, phase: &str, moles: f64) {
+    if let Some(existing) = target
+        .properties
+        .composition
+        .iter_mut()
+        .find(|c| c.substance_id == substance_id && c.phase == phase)
+    {
+        existing.amount_mol = Some(existing.amount_mol.unwrap_or(0.0) + moles);
+        return;
+    }
+    target.properties.composition.push(CompositionEntry {
+        substance_id: substance_id.into(),
+        phase: phase.into(),
+        amount_ml: None,
+        amount_scoop: None,
+        amount_g: None,
+        amount_mol: Some(moles),
+    });
+}
+
+fn add_or_increase_solid(
+    target: &mut SceneItem,
+    substance_id: &str,
+    scoops: Option<u32>,
+    mass_g: Option<f64>,
+) {
+    if let Some(existing) = target
+        .properties
+        .composition
+        .iter_mut()
+        .find(|c| c.substance_id == substance_id && c.phase == "solid")
+    {
+        if let Some(add) = scoops {
+            existing.amount_scoop = Some(existing.amount_scoop.unwrap_or(0) + add);
+        }
+        if let Some(add) = mass_g {
+            existing.amount_g = Some(existing.amount_g.unwrap_or(0.0) + add);
+        }
+        return;
+    }
+    target.properties.composition.push(CompositionEntry {
+        substance_id: substance_id.into(),
+        phase: "solid".into(),
+        amount_ml: None,
+        amount_scoop: scoops,
+        amount_g: mass_g,
+        amount_mol: None,
+    });
 }
 
 #[cfg(test)]
@@ -387,6 +456,8 @@ mod tests {
         assert_eq!(spoon.properties.holding[0].substance_id, "nacl");
         assert_eq!(spoon.properties.holding[0].phase, "solid");
         assert_eq!(spoon.properties.holding[0].amount_scoop, Some(1));
+        assert_eq!(spoon.properties.holding[0].amount_g, Some(SPOON_SCOOP_MASS_G));
+        assert_eq!(SPOON_SCOOP_MASS_G, 0.2);
 
         assert!(scene.last_events.iter().any(|e| e.kind == "scooped"));
         // Dissolve must not run yet — water still only water.
@@ -432,6 +503,21 @@ mod tests {
             .composition
             .iter()
             .any(|c| c.substance_id == "cl-" && c.phase == "aqueous"));
+        let expected_mol = SPOON_SCOOP_MASS_G / NACL_MOLAR_MASS_G_PER_MOL;
+        let na = water
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "na+" && c.phase == "aqueous")
+            .unwrap();
+        let cl = water
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "cl-" && c.phase == "aqueous")
+            .unwrap();
+        assert!((na.amount_mol.unwrap() - expected_mol).abs() < 1e-12);
+        assert!((cl.amount_mol.unwrap() - expected_mol).abs() < 1e-12);
         assert!(!water
             .properties
             .composition
@@ -441,6 +527,87 @@ mod tests {
             e.kind == "dissolved"
                 && e.message == "Sodium chloride (NaCl) dissolves in water at bench temperature."
         }));
+    }
+
+    #[test]
+    fn second_nacl_pour_updates_existing_ion_moles_without_duplicate_lines() {
+        let mut scene = initial_bench_scene("lab-test");
+        for _ in 0..2 {
+            apply_action(
+                &mut scene,
+                Action::UseTool {
+                    tool_item_id: "spoon-1".into(),
+                    target_item_id: "beaker-nacl".into(),
+                },
+            )
+            .unwrap();
+            apply_action(
+                &mut scene,
+                Action::Pour {
+                    source_item_id: "spoon-1".into(),
+                    target_item_id: "beaker-water".into(),
+                },
+            )
+            .unwrap();
+        }
+
+        let water = item(&scene, "beaker-water");
+        let na_count = water
+            .properties
+            .composition
+            .iter()
+            .filter(|c| c.substance_id == "na+" && c.phase == "aqueous")
+            .count();
+        let cl_count = water
+            .properties
+            .composition
+            .iter()
+            .filter(|c| c.substance_id == "cl-" && c.phase == "aqueous")
+            .count();
+        assert_eq!(na_count, 1);
+        assert_eq!(cl_count, 1);
+        let expected_mol = 2.0 * SPOON_SCOOP_MASS_G / NACL_MOLAR_MASS_G_PER_MOL;
+        let na = water
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "na+")
+            .unwrap();
+        assert!((na.amount_mol.unwrap() - expected_mol).abs() < 1e-12);
+    }
+
+    #[test]
+    fn second_sand_pour_aggregates_solid_mass_on_one_line() {
+        let mut scene = initial_bench_scene("lab-test");
+        for _ in 0..2 {
+            apply_action(
+                &mut scene,
+                Action::UseTool {
+                    tool_item_id: "spoon-1".into(),
+                    target_item_id: "beaker-sand".into(),
+                },
+            )
+            .unwrap();
+            apply_action(
+                &mut scene,
+                Action::Pour {
+                    source_item_id: "spoon-1".into(),
+                    target_item_id: "beaker-water".into(),
+                },
+            )
+            .unwrap();
+        }
+
+        let water = item(&scene, "beaker-water");
+        let sand_rows: Vec<_> = water
+            .properties
+            .composition
+            .iter()
+            .filter(|c| c.substance_id == "sand" && c.phase == "solid")
+            .collect();
+        assert_eq!(sand_rows.len(), 1);
+        assert_eq!(sand_rows[0].amount_scoop, Some(2));
+        assert!((sand_rows[0].amount_g.unwrap() - 2.0 * SPOON_SCOOP_MASS_G).abs() < 1e-12);
     }
 
     #[test]
@@ -468,7 +635,10 @@ mod tests {
 
         let water = item(&scene, "beaker-water");
         assert!(water.properties.composition.iter().any(|c| {
-            c.substance_id == "sand" && c.phase == "solid" && c.amount_scoop == Some(1)
+            c.substance_id == "sand"
+                && c.phase == "solid"
+                && c.amount_scoop == Some(1)
+                && c.amount_g == Some(SPOON_SCOOP_MASS_G)
         }));
         assert!(!water
             .properties

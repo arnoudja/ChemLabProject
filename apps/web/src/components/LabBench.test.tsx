@@ -8,7 +8,9 @@ import {
   SPOON_SCOOP_MASS_G,
   STOCK_FULL_MASS_G,
   STOCK_FULL_SCOOPS,
+  WATER_FULL_ML,
   stockFillRatio,
+  waterFillRatio,
 } from './LabBench'
 import { clearCsrfTokenCache } from '../lib/api'
 import { optionalArray } from '../lib/scene'
@@ -652,6 +654,78 @@ describe('LabBench', () => {
       expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '0.90')
     })
     expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
+  })
+
+  it('shows water fill from server amount_ml and updates after pour and reset', async () => {
+    const fetchMock = stubLabFetch({
+      actionHandler: (action, scene) => {
+        if (action.type === 'use_tool' && action.target_item_id === 'beaker-nacl') {
+          return withScoop(scene, 'nacl')
+        }
+        if (action.type === 'pour') {
+          const next = afterNaclPour(scene)
+          const water = next.items.find((item) => item.id === 'beaker-water')!
+          const liquid = optionalArray(water.properties.composition).find(
+            (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
+          )
+          // Exercise fill tracking when the server reports a different volume after pour.
+          if (liquid) liquid.amount_ml = WATER_FULL_ML / 2
+          return next
+        }
+        if (action.type === 'reset') {
+          const next = initialScene()
+          next.lab_id = scene.lab_id
+          next.version = scene.version + 1
+          next.last_events = [{ kind: 'reset', message: 'Lab reset to the starting bench.' }]
+          return next
+        }
+        return { error: 'invalid action', code: 'invalid_action', status: 400 }
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
+    expect(waterFillRatio(WATER_FULL_ML)).toBe(1)
+    expect(waterFillRatio(WATER_FULL_ML / 2)).toBeCloseTo(0.5)
+    expect(waterFillRatio(0)).toBe(0)
+    expect(waterFillRatio(null)).toBe(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+    // Scoop does not change water volume — fill stays full from server amount_ml.
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.50')
+    })
+    expect(screen.getByRole('status')).toHaveTextContent(NACL_EXPLANATION)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset lab' }))
+    await waitFor(() => {
+      expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
+    })
+  })
+
+  it('renders half-full water when the initial scene reports half amount_ml', async () => {
+    const scene = initialScene()
+    const water = scene.items.find((item) => item.id === 'beaker-water')!
+    const liquid = optionalArray(water.properties.composition).find(
+      (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
+    )!
+    liquid.amount_ml = WATER_FULL_ML / 2
+    vi.stubGlobal('fetch', stubLabFetch({ scene }))
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.50')
   })
 
   it('puts salt back into the salt stock and restores fill from the server scene', async () => {

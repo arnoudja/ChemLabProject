@@ -9,7 +9,7 @@ import {
   postLabAction,
   register,
 } from './api'
-import { SPOON_SCOOP_MASS_G } from './scoopMass'
+import { SPOON_SCOOP_MASS_G } from './benchAmounts'
 
 const initialScene = {
   lab_id: 'lab-1',

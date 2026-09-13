@@ -57,7 +57,7 @@ pub struct SceneItem {
 /// UI-facing event from the last applied action(s).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SceneEvent {
-    /// e.g. `"scooped"`, `"poured"`, `"dissolved"`, `"did_not_dissolve"`.
+    /// e.g. `"scooped"`, `"returned"`, `"poured"`, `"dissolved"`, `"did_not_dissolve"`.
     pub kind: String,
     pub message: String,
 }
@@ -236,16 +236,33 @@ fn apply_use_tool(
         return Err(SceneError::InvalidAction);
     }
 
-    let solid = scene.items[target_idx]
+    // Spoon already holding a solid → put it back into the matching stock beaker only.
+    if let Some(held) = scene.items[tool_idx].properties.holding.first().cloned() {
+        return apply_return_to_stock(scene, tool_idx, target_idx, held);
+    }
+
+    let solid_idx = scene.items[target_idx]
         .properties
         .composition
         .iter()
-        .find(|c| c.phase == "solid" && (c.substance_id == "nacl" || c.substance_id == "sand"))
-        .cloned()
+        .position(|c| c.phase == "solid" && (c.substance_id == "nacl" || c.substance_id == "sand"))
         .ok_or(SceneError::InvalidAction)?;
 
+    let solid = &mut scene.items[target_idx].properties.composition[solid_idx];
+    let scoops_available = solid.amount_scoop.unwrap_or(0);
+    let mass_available = solid.amount_g.unwrap_or(0.0);
+    if scoops_available < 1 || mass_available + 1e-12 < SPOON_SCOOP_MASS_G {
+        return Err(SceneError::InvalidAction);
+    }
+
+    let substance_id = solid.substance_id.clone();
+    let scoops_remaining = scoops_available - 1;
+    solid.amount_scoop = Some(scoops_remaining);
+    // Derive grams from scoop count so stock stays aligned with SPOON_SCOOP_MASS_G.
+    solid.amount_g = Some(scoops_remaining as f64 * SPOON_SCOOP_MASS_G);
+
     let scoop = CompositionEntry {
-        substance_id: solid.substance_id.clone(),
+        substance_id: substance_id.clone(),
         phase: "solid".into(),
         amount_ml: None,
         amount_scoop: Some(1),
@@ -259,7 +276,41 @@ fn apply_use_tool(
 
     scene.last_events.push(SceneEvent {
         kind: "scooped".into(),
-        message: format!("Scooped {} onto the spoon.", solid.substance_id),
+        message: format!("Scooped {substance_id} onto the spoon."),
+    });
+    Ok(())
+}
+
+/// Return held solid to its matching stock beaker (nacl→nacl, sand→sand only).
+fn apply_return_to_stock(
+    scene: &mut Scene,
+    tool_idx: usize,
+    target_idx: usize,
+    held: CompositionEntry,
+) -> Result<(), SceneError> {
+    if held.phase != "solid" || (held.substance_id != "nacl" && held.substance_id != "sand") {
+        return Err(SceneError::InvalidAction);
+    }
+
+    let solid_idx = scene.items[target_idx]
+        .properties
+        .composition
+        .iter()
+        .position(|c| c.phase == "solid" && c.substance_id == held.substance_id)
+        .ok_or(SceneError::InvalidAction)?;
+
+    let scoops_add = held.amount_scoop.unwrap_or(1);
+    let solid = &mut scene.items[target_idx].properties.composition[solid_idx];
+    let scoops = solid.amount_scoop.unwrap_or(0).saturating_add(scoops_add);
+    solid.amount_scoop = Some(scoops);
+    solid.amount_g = Some(scoops as f64 * SPOON_SCOOP_MASS_G);
+
+    let substance_id = held.substance_id;
+    scene.items[tool_idx].properties.holding.clear();
+
+    scene.last_events.push(SceneEvent {
+        kind: "returned".into(),
+        message: format!("Returned {substance_id} to the stock beaker."),
     });
     Ok(())
 }
@@ -507,6 +558,16 @@ mod tests {
         );
         assert_eq!(SPOON_SCOOP_MASS_G, 0.2);
 
+        let nacl = item(&scene, "beaker-nacl");
+        let stock = nacl
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "nacl" && c.phase == "solid")
+            .unwrap();
+        assert_eq!(stock.amount_scoop, Some(9));
+        assert_eq!(stock.amount_g, Some(9.0 * SPOON_SCOOP_MASS_G));
+
         assert!(scene.last_events.iter().any(|e| e.kind == "scooped"));
         // Dissolve must not run yet — water still only water.
         let water = item(&scene, "beaker-water");
@@ -515,6 +576,110 @@ mod tests {
             .composition
             .iter()
             .all(|c| c.substance_id == "water"));
+    }
+
+    #[test]
+    fn use_tool_fails_when_stock_is_empty() {
+        let mut scene = initial_bench_scene("lab-test");
+        let nacl = scene
+            .items
+            .iter_mut()
+            .find(|i| i.id == "beaker-nacl")
+            .unwrap();
+        let stock = nacl
+            .properties
+            .composition
+            .iter_mut()
+            .find(|c| c.substance_id == "nacl")
+            .unwrap();
+        stock.amount_scoop = Some(0);
+        stock.amount_g = Some(0.0);
+
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        let spoon = item(&scene, "spoon-1");
+        assert!(spoon.properties.holding.is_empty());
+    }
+
+    #[test]
+    fn use_tool_returns_held_nacl_to_matching_stock() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+
+        let spoon = item(&scene, "spoon-1");
+        assert!(spoon.properties.holding.is_empty());
+        let nacl = item(&scene, "beaker-nacl");
+        let stock = nacl
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "nacl" && c.phase == "solid")
+            .unwrap();
+        assert_eq!(stock.amount_scoop, Some(10));
+        assert_eq!(stock.amount_g, Some(10.0 * SPOON_SCOOP_MASS_G));
+        assert!(scene.last_events.iter().any(|e| e.kind == "returned"));
+    }
+
+    #[test]
+    fn use_tool_rejects_returning_nacl_into_sand_stock() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-sand".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        let spoon = item(&scene, "spoon-1");
+        assert_eq!(spoon.properties.holding[0].substance_id, "nacl");
+        let sand = item(&scene, "beaker-sand");
+        let stock = sand
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "sand")
+            .unwrap();
+        assert_eq!(stock.amount_scoop, Some(10));
+        let nacl = item(&scene, "beaker-nacl");
+        let nacl_stock = nacl
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "nacl")
+            .unwrap();
+        assert_eq!(nacl_stock.amount_scoop, Some(9));
     }
 
     #[test]

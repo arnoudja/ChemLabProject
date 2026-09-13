@@ -79,7 +79,7 @@ export function solventVolumeLitres(composition: CompositionEntry[]): number | n
   return water.amount_ml / 1000
 }
 
-/** Format molarity or mass suffix from server amounts (display only). */
+/** Format molarity, mass, or volume suffix from server amounts (display only). */
 export function formatCompositionAmount(
   entry: CompositionEntry,
   solventVolumeL: number | null,
@@ -89,7 +89,10 @@ export function formatCompositionAmount(
     return `${formatMolarity(molarity)} M`
   }
   if (entry.phase === 'solid' && entry.amount_g != null) {
-    return `${formatMassGrams(entry.amount_g)} g`
+    return `${formatFixedAmount(entry.amount_g)} g`
+  }
+  if (entry.phase === 'liquid' && entry.amount_ml != null) {
+    return `${formatFixedAmount(entry.amount_ml)} ml`
   }
   return null
 }
@@ -101,7 +104,8 @@ function formatMolarity(value: number): string {
   return value.toExponential(2)
 }
 
-function formatMassGrams(value: number): string {
+/** Shared number formatting for mass (g) and volume (ml) suffixes. */
+function formatFixedAmount(value: number): string {
   if (Number.isInteger(value)) return String(value)
   return value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
 }

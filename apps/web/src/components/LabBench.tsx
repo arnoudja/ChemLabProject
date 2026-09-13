@@ -267,7 +267,7 @@ export function LabBench() {
 
   function onSpoon(event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
-    setInspectItemId(null)
+    // Keep inspect open across tool pick-up / put-away; only Close dismisses it.
     setSelectedToolItemId((current) => (current === SPOON_ID ? null : SPOON_ID))
   }
 
@@ -330,7 +330,7 @@ export function LabBench() {
       const response = await postLabAction({ type: 'reset' })
       setScene(response.scene)
       setSelectedToolItemId(null)
-      setInspectItemId(null)
+      // Inspect stays open and rebinds to the reset scene item by id.
       setPointer(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Reset failed')

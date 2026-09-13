@@ -549,6 +549,89 @@ describe('LabBench', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 
+  it('inspect stays open across scoop and refreshes stock mass', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Sodium chloride (NaCl)' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Sodium chloride' })
+    expect(panel).toHaveTextContent(`${STOCK_FULL_MASS_G} g`)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    expect(screen.getByRole('dialog', { name: 'Contents of Sodium chloride' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: 'Contents of Sodium chloride' })).toHaveTextContent(
+        `${STOCK_FULL_MASS_G - SPOON_SCOOP_MASS_G} g`,
+      )
+    })
+    expect(fetchMock).toHaveBeenCalledWith('/api/lab/action', expect.anything())
+  })
+
+  it('inspect stays open across pour/dissolve and refreshes composition and temperature', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    expect(panel).toHaveTextContent('H2O (l)')
+    expect(panel).toHaveTextContent('Temperature: 20.00°C')
+    expect(panel).not.toHaveTextContent('Na+')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+    expect(screen.getByRole('dialog', { name: 'Contents of Water' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      const open = screen.getByRole('dialog', { name: 'Contents of Water' })
+      expect(open).toHaveTextContent('Na+ (aq)')
+      expect(open).toHaveTextContent('Cl− (aq)')
+      expect(open).toHaveTextContent('0.017 M')
+      expect(open).toHaveTextContent('Temperature: 19.98°C')
+    })
+  })
+
+  it('inspect stays open across put-back and only Close dismisses it', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Sodium chloride (NaCl)' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    expect(await screen.findByRole('dialog', { name: 'Contents of Sodium chloride' })).toHaveTextContent(
+      `${STOCK_FULL_MASS_G} g`,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toHaveTextContent(
+        `${STOCK_FULL_MASS_G - SPOON_SCOOP_MASS_G} g`,
+      )
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toHaveTextContent(`${STOCK_FULL_MASS_G} g`)
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Returned nacl.')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
 
   it('shows full stock fill from server amount_g and lowers after scoop', async () => {
     const fetchMock = stubLabFetch()
@@ -822,10 +905,8 @@ describe('LabBench', () => {
       }),
     )
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
-    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    // Reset refreshes inspect in place; it does not auto-dismiss.
+    const panel = screen.getByRole('dialog', { name: 'Contents of Water' })
     expect(panel).toHaveTextContent('H2O (l)')
     expect(panel).not.toHaveTextContent('Na+')
     expect(panel).not.toHaveTextContent('(aq)')

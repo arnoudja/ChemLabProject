@@ -722,6 +722,36 @@ export function LabBench() {
 
       {scene ? (
         <div className="lab-bench-surface flex flex-wrap items-end justify-center gap-6 rounded-xl px-4 pb-4 pt-8 sm:gap-10">
+          {dish || burner ? (
+            <div className="lab-evap-stack">
+              {dish ? (
+                <button
+                  type="button"
+                  className="lab-item"
+                  aria-label="Evaporation dish"
+                  disabled={busy}
+                  onClick={onDish}
+                >
+                  <EvaporationDishSvg amountMl={dishAmountMl(scene)} />
+                  <span className="lab-item-label">{dish.label}</span>
+                </button>
+              ) : null}
+              {burner ? (
+                <button
+                  type="button"
+                  className="lab-item"
+                  aria-label="Burner"
+                  aria-pressed={burnerOn}
+                  disabled={busy}
+                  onClick={onBurner}
+                >
+                  <BurnerSvg on={burnerOn} />
+                  <span className="lab-item-label">{burner.label}</span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
           <button
             type="button"
             className="lab-item"
@@ -772,61 +802,33 @@ export function LabBench() {
             <StockSubstanceLabel substanceId="sand" />
           </button>
 
-          {pipette ? (
+          <div className="lab-tool-well">
+            {pipette ? (
+              <button
+                type="button"
+                className={`lab-item ${pipetteSelected ? 'opacity-40' : ''}`}
+                aria-label="Pipette"
+                aria-pressed={pipetteSelected}
+                disabled={busy}
+                onClick={onPipette}
+              >
+                <PipetteSvg filled={pipetteFilled} />
+                <span className="lab-item-label">{pipette.label}</span>
+              </button>
+            ) : null}
+
             <button
               type="button"
-              className={`lab-item ${pipetteSelected ? 'opacity-40' : ''}`}
-              aria-label="Pipette"
-              aria-pressed={pipetteSelected}
+              className={`lab-item ${spoonSelected ? 'opacity-40' : ''}`}
+              aria-label="Spoon"
+              aria-pressed={spoonSelected}
               disabled={busy}
-              onClick={onPipette}
+              onClick={onSpoon}
             >
-              <PipetteSvg filled={pipetteFilled} />
-              <span className="lab-item-label">{pipette.label}</span>
+              <SpoonSvg fill={null} />
+              <span className="lab-item-label">{spoon?.label ?? 'Spoon'}</span>
             </button>
-          ) : null}
-
-          {dish || burner ? (
-            <div className="lab-evap-stack">
-              {dish ? (
-                <button
-                  type="button"
-                  className="lab-item"
-                  aria-label="Evaporation dish"
-                  disabled={busy}
-                  onClick={onDish}
-                >
-                  <EvaporationDishSvg amountMl={dishAmountMl(scene)} />
-                  <span className="lab-item-label">{dish.label}</span>
-                </button>
-              ) : null}
-              {burner ? (
-                <button
-                  type="button"
-                  className="lab-item"
-                  aria-label="Burner"
-                  aria-pressed={burnerOn}
-                  disabled={busy}
-                  onClick={onBurner}
-                >
-                  <BurnerSvg on={burnerOn} />
-                  <span className="lab-item-label">{burner.label}</span>
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-
-          <button
-            type="button"
-            className={`lab-item ${spoonSelected ? 'opacity-40' : ''}`}
-            aria-label="Spoon"
-            aria-pressed={spoonSelected}
-            disabled={busy}
-            onClick={onSpoon}
-          >
-            <SpoonSvg fill={null} />
-            <span className="lab-item-label">{spoon?.label ?? 'Spoon'}</span>
-          </button>
+          </div>
         </div>
       ) : null}
 

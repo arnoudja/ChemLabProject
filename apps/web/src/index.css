@@ -157,6 +157,29 @@ body::before {
   color: var(--ink-soft);
 }
 
+.lab-item-label-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  line-height: 1.2;
+  text-align: center;
+  max-width: 7.5rem;
+}
+
+.lab-item-label-formula {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.lab-item-label-name,
+.lab-item-label-common {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
 .lab-bench--holding {
   cursor: none;
 }

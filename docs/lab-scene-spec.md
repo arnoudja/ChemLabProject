@@ -77,7 +77,7 @@ After this action the spoon item should carry scooped NaCl in its properties (se
   "location": "hand",
   "properties": {
     "holding": [
-      { "substance_id": "nacl", "phase": "solid", "amount_scoop": 1 }
+      { "substance_id": "nacl", "phase": "solid", "amount_scoop": 1, "amount_g": 0.2 }
     ]
   }
 }
@@ -87,12 +87,13 @@ Pour into water is a separate action, e.g. `{ "type": "pour", "source_item_id": 
 
 ## Wire types (summary)
 
-- `CompositionEntry` — `substance_id`, `phase` (`solid` \| `liquid` \| `aqueous`), optional `amount_ml` / `amount_scoop`
+- `CompositionEntry` — `substance_id`, `phase` (`solid` \| `liquid` \| `aqueous`), optional `amount_ml` / `amount_scoop` / `amount_g` / `amount_mol`
+- One spoon scoop of solid is **0.2 g** (`amount_g`). Dissolved NaCl authors aqueous `na+` / `cl-` with `amount_mol` (aggregated on repeat pours). Undissolved solids (e.g. sand / SiO₂) aggregate `amount_g` on one composition line.
 - `ItemProperties` — optional volume/fill/flags/temperature; `composition` and `holding` lists
 - `Item` — `id`, `kind`, `label`, `location`, `properties`
 - `LabScene` — `lab_id`, `version`, ambient `temperature_c` (default 20), `items`, optional `last_events`
 - `LabEvent` — `kind` (e.g. `scooped`, `poured`, `dissolved`, `did_not_dissolve`), `message`
-- `LabAction` — tagged `type`: `use_tool` \| `pour`
+- `LabAction` — tagged `type`: `use_tool` \| `pour` \| `reset`
 - `LabActionResponse` — `{ "scene": LabScene }`
 
 ## Out of scope

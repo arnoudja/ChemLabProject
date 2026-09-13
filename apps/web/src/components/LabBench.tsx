@@ -1,7 +1,12 @@
 import { useEffect, useState, type MouseEvent } from 'react'
 import type { Item, LabScene } from '../generated/contracts'
 import { fetchLabScene, postLabAction } from '../lib/api'
-import { formatCompositionLabel } from '../lib/compositionDisplay'
+import {
+  CompositionInspectLine,
+  solventVolumeLitres,
+  StockSubstanceLabel,
+  stockSubstanceAriaLabel,
+} from '../lib/compositionDisplay'
 import { optionalArray } from '../lib/scene'
 
 const SPOON_ID = 'spoon-1'
@@ -123,6 +128,7 @@ function SpoonSvg({ fill, floating }: { fill: 'nacl' | 'sand' | null; floating?:
 function outcomeLabel(kind: string): string | null {
   if (kind === 'dissolved') return 'dissolved'
   if (kind === 'did_not_dissolve') return 'did not dissolve'
+  if (kind === 'reset') return 'reset'
   return null
 }
 
@@ -137,6 +143,7 @@ function BeakerInspectPanel({
 }) {
   const composition = optionalArray(item.properties.composition)
   const temperatureC = itemTemperatureC(scene, item)
+  const solventL = solventVolumeLitres(composition)
 
   return (
     <aside
@@ -162,7 +169,7 @@ function BeakerInspectPanel({
         <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--ink)]">
           {composition.map((entry, index) => (
             <li key={`${entry.substance_id}-${entry.phase}-${index}`}>
-              {formatCompositionLabel(entry.substance_id, entry.phase)}
+              <CompositionInspectLine entry={entry} solventVolumeL={solventL} />
             </li>
           ))}
         </ul>
@@ -263,12 +270,27 @@ export function LabBench() {
     }
   }
 
+  async function onReset() {
+    if (busy) return
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await postLabAction({ type: 'reset' })
+      setScene(response.scene)
+      setSelectedToolItemId(null)
+      setInspectItemId(null)
+      setPointer(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reset failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const holdingSelected = selectedToolItemId === SPOON_ID
   const spoonFill = scene ? spoonHoldingSubstance(scene) : null
   const leftoverSolid = scene ? undissolvedSolidInWater(scene) : null
   const toolUi: ToolUi = !holdingSelected ? 'none' : spoonFill ?? 'spoon'
-  const nacl = scene ? findItem(scene, NACL_ID) : undefined
-  const sand = scene ? findItem(scene, SAND_ID) : undefined
   const water = scene ? findItem(scene, WATER_ID) : undefined
   const spoon = scene ? findItem(scene, SPOON_ID) : undefined
   const lastEvents = scene ? optionalArray(scene.last_events) : []
@@ -284,10 +306,21 @@ export function LabBench() {
       }`}
       onMouseMove={holdingSelected ? trackPointer : undefined}
     >
-      <p className="mb-3 text-sm text-[var(--ink-soft)]">
-        Pick up the spoon, scoop a solid, then click the water. With the spoon put away, click a
-        beaker to inspect its contents.
-      </p>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <p className="text-sm text-[var(--ink-soft)]">
+          Pick up the spoon, scoop a solid, then click the water. With the spoon put away, click a
+          beaker to inspect its contents.
+        </p>
+        <button
+          type="button"
+          className="lab-bench-reset shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--ink-soft)] hover:bg-[var(--surface-hover)] disabled:opacity-50"
+          aria-label="Reset lab"
+          disabled={busy || !scene}
+          onClick={onReset}
+        >
+          Reset
+        </button>
+      </div>
 
       {!scene && !error ? (
         <p className="text-sm text-[var(--ink-soft)]">Loading lab scene…</p>
@@ -309,23 +342,23 @@ export function LabBench() {
           <button
             type="button"
             className="lab-item"
-            aria-label="Sodium chloride (NaCl)"
+            aria-label={stockSubstanceAriaLabel('nacl')}
             disabled={busy}
             onClick={(event) => onSolid(NACL_ID, event)}
           >
             <SolidBeakerSvg solid="nacl" />
-            <span className="lab-item-label">{nacl?.label ?? 'NaCl'}</span>
+            <StockSubstanceLabel substanceId="nacl" />
           </button>
 
           <button
             type="button"
             className="lab-item"
-            aria-label="Sand"
+            aria-label={stockSubstanceAriaLabel('sand')}
             disabled={busy}
             onClick={(event) => onSolid(SAND_ID, event)}
           >
             <SolidBeakerSvg solid="sand" />
-            <span className="lab-item-label">{sand?.label ?? 'Sand'}</span>
+            <StockSubstanceLabel substanceId="sand" />
           </button>
 
           <button

@@ -266,6 +266,7 @@ fn action_to_core(action: LabAction) -> chemlab_core::Action {
             source_item_id,
             target_item_id,
         },
+        LabAction::Reset => chemlab_core::Action::Reset,
     }
 }
 
@@ -322,6 +323,8 @@ fn composition_to_contract(
         phase: entry.phase,
         amount_ml: entry.amount_ml,
         amount_scoop: entry.amount_scoop,
+        amount_g: entry.amount_g,
+        amount_mol: entry.amount_mol,
     }
 }
 
@@ -378,6 +381,8 @@ fn composition_to_core(
         phase: entry.phase,
         amount_ml: entry.amount_ml,
         amount_scoop: entry.amount_scoop,
+        amount_g: entry.amount_g,
+        amount_mol: entry.amount_mol,
     }
 }
 

@@ -174,6 +174,7 @@ function withPutBack(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand'): Lab
     solid.amount_g = scoops * SPOON_SCOOP_MASS_G
   }
   spoon.properties.holding = []
+  spoon.location = 'bench'
   next.last_events = [{ kind: 'returned', message: `Returned ${substance}.` }]
   next.version += 1
   return next
@@ -346,6 +347,22 @@ function stubLabFetch(options?: {
           return jsonResponse({ error: 'invalid action', code: 'invalid_action' }, 400)
         }
         scene = withScoop(scene, targetSubstance)
+        return jsonResponse({ scene })
+      }
+      if (action.type === 'put_away') {
+        const held = optionalArray(
+          scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
+        )[0]
+        if (held && (held.substance_id === 'nacl' || held.substance_id === 'cacl2' || held.substance_id === 'sand')) {
+          scene = withPutBack(scene, held.substance_id)
+          return jsonResponse({ scene })
+        }
+        const next = cloneScene(scene)
+        const spoon = next.items.find((item) => item.id === 'spoon-1')!
+        spoon.location = 'bench'
+        next.last_events = []
+        next.version += 1
+        scene = next
         return jsonResponse({ scene })
       }
       if (action.type === 'pour') {
@@ -1045,6 +1062,64 @@ describe('LabBench', () => {
 
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['nacl', 'Sodium chloride (NaCl)', 'beaker-nacl'] as const,
+    ['sand', 'Sand', 'beaker-sand'] as const,
+    ['cacl2', 'Calcium chloride (CaCl2)', 'beaker-cacl2'] as const,
+  ])(
+    'scoop %s then put spoon away restores stock and empties the spoon',
+    async (substance, label) => {
+      const fetchMock = stubLabFetch()
+      vi.stubGlobal('fetch', fetchMock)
+
+      render(<LabBench />)
+      await screen.findByRole('button', { name: 'Spoon' })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+      fireEvent.click(screen.getByRole('button', { name: label }))
+      await waitFor(() => {
+        expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute(
+          'data-tool',
+          substance,
+        )
+      })
+      expect(document.querySelector(`[data-stock-solid="${substance}"]`)).toHaveAttribute(
+        'data-stock-fill',
+        '0.90',
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+      })
+      expect(document.querySelector(`[data-stock-solid="${substance}"]`)).toHaveAttribute(
+        'data-stock-fill',
+        '1.00',
+      )
+      expect(screen.getByRole('status')).toHaveTextContent(`Returned ${substance}.`)
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+        type: 'put_away',
+        tool_item_id: 'spoon-1',
+      })
+    },
+  )
+
+  it('empty spoon put-away is a no-op with no server action', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 
   it('shows the server action error and no outcome after a pour', async () => {

@@ -266,6 +266,7 @@ fn action_to_core(action: LabAction) -> chemlab_core::Action {
             source_item_id,
             target_item_id,
         },
+        LabAction::PutAway { tool_item_id } => chemlab_core::Action::PutAway { tool_item_id },
         LabAction::Reset => chemlab_core::Action::Reset,
     }
 }

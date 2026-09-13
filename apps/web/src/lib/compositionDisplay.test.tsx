@@ -8,6 +8,7 @@ import {
   formatCompositionLabel,
   formatFormulaNodes,
   formatFormulaPlain,
+  formatTemperatureC,
   solventVolumeLitres,
   StockSubstanceLabel,
   stockSubstanceAriaLabel,
@@ -95,6 +96,14 @@ describe('solventVolumeLitres', () => {
         entry({ substance_id: 'na+', phase: 'aqueous', amount_mol: 0.01 }),
       ]),
     ).toBe(0.2)
+  })
+})
+
+describe('formatTemperatureC', () => {
+  it('always shows two decimal places for beaker/scene temperatures', () => {
+    expect(formatTemperatureC(20)).toBe('20.00')
+    expect(formatTemperatureC(19.98413172)).toBe('19.98')
+    expect(formatTemperatureC(20.0)).toBe('20.00')
   })
 })
 

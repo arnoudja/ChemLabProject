@@ -3,6 +3,7 @@ import type { Item, LabScene } from '../generated/contracts'
 import { fetchLabScene, postLabAction } from '../lib/api'
 import {
   CompositionInspectLine,
+  formatTemperatureC,
   solventVolumeLitres,
   StockSubstanceLabel,
   stockSubstanceAriaLabel,
@@ -155,7 +156,7 @@ function BeakerInspectPanel({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-medium text-[var(--ink)]">{item.label}</p>
-          <p className="mt-1 text-[var(--ink-soft)]">Temperature: {temperatureC}°C</p>
+          <p className="mt-1 text-[var(--ink-soft)]">Temperature: {formatTemperatureC(temperatureC)}°C</p>
         </div>
         <button
           type="button"

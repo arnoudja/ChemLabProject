@@ -126,7 +126,7 @@ pub struct ItemProperties {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub colourless: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature_c: Option<i32>,
+    pub temperature_c: Option<f64>,
     /// Omitted from JSON when empty; treat as `[]` on the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub composition: Vec<CompositionEntry>,
@@ -164,7 +164,7 @@ pub struct LabScene {
     pub lab_id: String,
     pub version: u32,
     /// Bench ambient temperature; default 20.
-    pub temperature_c: i32,
+    pub temperature_c: f64,
     pub items: Vec<Item>,
     /// Omitted from JSON when empty; treat as `[]` on the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -266,7 +266,7 @@ mod tests {
         assert_eq!(item.properties.fill_ml, Some(200.0));
         assert_eq!(item.properties.transparent, Some(true));
         assert_eq!(item.properties.colourless, Some(true));
-        assert_eq!(item.properties.temperature_c, Some(20));
+        assert_eq!(item.properties.temperature_c, Some(20.0));
         assert!(item.properties.holding.is_empty());
         assert_eq!(item.properties.composition.len(), 1);
         assert_eq!(item.properties.composition[0].substance_id, "water");
@@ -277,7 +277,7 @@ mod tests {
         let scene = LabScene {
             lab_id: "lab-1".into(),
             version: 1,
-            temperature_c: 20,
+            temperature_c: 20.0,
             items: vec![item.clone()],
             last_events: vec![],
         };
@@ -354,7 +354,7 @@ mod tests {
         let scene = LabScene {
             lab_id: "lab-1".into(),
             version: 2,
-            temperature_c: 20,
+            temperature_c: 20.0,
             items: vec![spoon],
             last_events: vec![LabEvent {
                 kind: "scooped".into(),

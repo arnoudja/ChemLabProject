@@ -553,7 +553,7 @@ mod tests {
         assert_eq!(water["properties"]["fill_ml"], 200.0);
         assert_eq!(water["properties"]["transparent"], true);
         assert_eq!(water["properties"]["colourless"], true);
-        assert_eq!(water["properties"]["temperature_c"], 20);
+        assert_eq!(water["properties"]["temperature_c"], 20.0);
         assert_eq!(
             water["properties"]["composition"][0]["substance_id"],
             "water"
@@ -670,6 +670,16 @@ mod tests {
         assert!(!composition
             .iter()
             .any(|entry| entry["substance_id"] == "nacl"));
+        let cooled = water["properties"]["temperature_c"].as_f64().unwrap();
+        let moles = 0.2 / 58.44;
+        let expected = 20.0
+            - (moles * chemlab_core::NACL_DELTA_H_SOLUTION_J_PER_MOL)
+                / (200.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K);
+        assert!(
+            (cooled - expected).abs() < 1e-9,
+            "expected cooled temperature {expected}, got {cooled}"
+        );
+        assert!(cooled < 20.0);
     }
 
     #[tokio::test]

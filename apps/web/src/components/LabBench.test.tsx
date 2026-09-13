@@ -139,6 +139,10 @@ function afterNaclPour(scene: LabScene): LabScene {
       amount_mol: moles,
     },
   ]
+  // Mirror server endothermic cooling (ΔH_sol = 3.88 kJ/mol, c_p water = 4.184 J/(g·K)).
+  const heatJ = moles * 3880
+  const currentT = water.properties.temperature_c ?? next.temperature_c
+  water.properties.temperature_c = currentT - heatJ / (200 * 4.184)
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
     { kind: 'dissolved', message: NACL_EXPLANATION },
@@ -401,7 +405,7 @@ describe('LabBench', () => {
 
     const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
     expect(panel).toHaveTextContent('H2O (l)')
-    expect(panel).toHaveTextContent('Temperature: 20°C')
+    expect(panel).toHaveTextContent('Temperature: 20.00°C')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
   })
@@ -423,7 +427,7 @@ describe('LabBench', () => {
     expect(panel).toHaveTextContent('Cl− (aq)')
     expect(panel).toHaveTextContent('0.017 M')
     expect(panel.querySelectorAll('sup')).toHaveLength(2)
-    expect(panel).toHaveTextContent('Temperature: 20°C')
+    expect(panel).toHaveTextContent('Temperature: 19.98°C')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 

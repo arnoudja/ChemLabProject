@@ -343,7 +343,38 @@ export function LabBench() {
   function onSpoon(event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
     // Keep inspect open across tool pick-up / put-away; only Close dismisses it.
-    setSelectedToolItemId((current) => (current === SPOON_ID ? null : SPOON_ID))
+    if (selectedToolItemId === SPOON_ID) {
+      void putSpoonAway()
+      return
+    }
+    setSelectedToolItemId(SPOON_ID)
+  }
+
+  async function putSpoonAway() {
+    if (!scene) {
+      setSelectedToolItemId(null)
+      return
+    }
+    // Empty spoon put-away is a client no-op (no server round-trip).
+    if (!spoonHoldingSubstance(scene)) {
+      setSelectedToolItemId(null)
+      return
+    }
+    if (busy) return
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await postLabAction({
+        type: 'put_away',
+        tool_item_id: SPOON_ID,
+      })
+      setScene(response.scene)
+      setSelectedToolItemId(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function onSolid(targetItemId: string, event: MouseEvent<HTMLButtonElement>) {

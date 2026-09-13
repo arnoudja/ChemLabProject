@@ -93,6 +93,8 @@ pub enum Action {
         source_item_id: String,
         target_item_id: String,
     },
+    /// Return the spoon to the bench holder. If holding a scoop, restore it to matching stock.
+    PutAway { tool_item_id: String },
     /// Replace the scene with a fresh default bench (same `lab_id` / `version`).
     Reset,
 }
@@ -229,6 +231,7 @@ pub fn apply_action(scene: &mut Scene, action: Action) -> Result<(), SceneError>
             source_item_id,
             target_item_id,
         } => apply_pour(scene, &source_item_id, &target_item_id),
+        Action::PutAway { tool_item_id } => apply_put_away(scene, &tool_item_id),
         Action::Reset => {
             apply_reset(scene);
             Ok(())
@@ -345,6 +348,37 @@ fn apply_return_to_stock(
         message: format!("Returned {substance_id} to the stock beaker."),
     });
     Ok(())
+}
+
+/// Put the spoon back on the bench. Held scoops return to the matching stock beaker.
+fn apply_put_away(scene: &mut Scene, tool_item_id: &str) -> Result<(), SceneError> {
+    let tool_idx = find_item_index(scene, tool_item_id)?;
+    if scene.items[tool_idx].kind.as_str() != "spoon" {
+        return Err(SceneError::InvalidAction);
+    }
+
+    if let Some(held) = scene.items[tool_idx].properties.holding.first().cloned() {
+        let target_idx = find_matching_stock_index(scene, &held.substance_id)?;
+        apply_return_to_stock(scene, tool_idx, target_idx, held)?;
+    }
+
+    scene.items[tool_idx].location = "bench".into();
+    Ok(())
+}
+
+fn find_matching_stock_index(scene: &Scene, substance_id: &str) -> Result<usize, SceneError> {
+    scene
+        .items
+        .iter()
+        .position(|item| {
+            item.kind == "beaker"
+                && item.properties.composition.iter().any(|c| {
+                    c.phase == "solid"
+                        && c.substance_id == substance_id
+                        && is_stock_solid(substance_id)
+                })
+        })
+        .ok_or(SceneError::InvalidAction)
 }
 
 fn apply_pour(
@@ -1423,5 +1457,133 @@ mod tests {
             e.kind == "dissolved"
                 && e.message == "Sodium chloride (NaCl) dissolves in water at bench temperature."
         }));
+    }
+
+    #[test]
+    fn put_away_returns_held_nacl_to_stock_and_empties_spoon() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::PutAway {
+                tool_item_id: "spoon-1".into(),
+            },
+        )
+        .unwrap();
+
+        let spoon = item(&scene, "spoon-1");
+        assert!(spoon.properties.holding.is_empty());
+        assert_eq!(spoon.location, "bench");
+        let stock = item(&scene, "beaker-nacl")
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "nacl" && c.phase == "solid")
+            .unwrap();
+        assert_eq!(stock.amount_scoop, Some(10));
+        assert_eq!(stock.amount_g, Some(10.0 * SPOON_SCOOP_MASS_G));
+        assert!(scene.last_events.iter().any(|e| e.kind == "returned"));
+    }
+
+    #[test]
+    fn put_away_returns_held_sand_to_stock_and_empties_spoon() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-sand".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::PutAway {
+                tool_item_id: "spoon-1".into(),
+            },
+        )
+        .unwrap();
+
+        let spoon = item(&scene, "spoon-1");
+        assert!(spoon.properties.holding.is_empty());
+        assert_eq!(spoon.location, "bench");
+        let stock = item(&scene, "beaker-sand")
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "sand" && c.phase == "solid")
+            .unwrap();
+        assert_eq!(stock.amount_scoop, Some(10));
+        assert_eq!(stock.amount_g, Some(10.0 * SPOON_SCOOP_MASS_G));
+        assert!(scene.last_events.iter().any(|e| e.kind == "returned"));
+    }
+
+    #[test]
+    fn put_away_returns_held_cacl2_to_stock_and_empties_spoon() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-cacl2".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::PutAway {
+                tool_item_id: "spoon-1".into(),
+            },
+        )
+        .unwrap();
+
+        let spoon = item(&scene, "spoon-1");
+        assert!(spoon.properties.holding.is_empty());
+        assert_eq!(spoon.location, "bench");
+        let stock = item(&scene, "beaker-cacl2")
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "cacl2" && c.phase == "solid")
+            .unwrap();
+        assert_eq!(stock.amount_scoop, Some(10));
+        assert_eq!(stock.amount_g, Some(10.0 * SPOON_SCOOP_MASS_G));
+        assert!(scene.last_events.iter().any(|e| e.kind == "returned"));
+    }
+
+    #[test]
+    fn put_away_empty_spoon_is_noop() {
+        let mut scene = initial_bench_scene("lab-test");
+        let before = scene.clone();
+        apply_action(
+            &mut scene,
+            Action::PutAway {
+                tool_item_id: "spoon-1".into(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(item(&scene, "spoon-1").properties.holding, Vec::new());
+        assert_eq!(item(&scene, "spoon-1").location, "bench");
+        assert_eq!(
+            item(&scene, "beaker-nacl").properties.composition,
+            item(&before, "beaker-nacl").properties.composition
+        );
+        assert_eq!(
+            item(&scene, "beaker-sand").properties.composition,
+            item(&before, "beaker-sand").properties.composition
+        );
+        assert_eq!(
+            item(&scene, "beaker-cacl2").properties.composition,
+            item(&before, "beaker-cacl2").properties.composition
+        );
+        assert!(scene.last_events.is_empty());
     }
 }

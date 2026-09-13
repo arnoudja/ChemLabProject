@@ -1019,6 +1019,136 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn put_away_returns_scoop_to_matching_stock_for_each_solid() {
+        let app = test_app().await;
+        for (email, beaker_id, substance) in [
+            ("putaway-nacl@chemlab.local", "beaker-nacl", "nacl"),
+            ("putaway-sand@chemlab.local", "beaker-sand", "sand"),
+            ("putaway-cacl2@chemlab.local", "beaker-cacl2", "cacl2"),
+        ] {
+            let (csrf_token, csrf_cookie, session_cookie) = register_user(&app, email).await;
+            let cookies = format!("{session_cookie}; {csrf_cookie}");
+            assert_eq!(
+                post_action(
+                    &app,
+                    &cookies,
+                    Some(&csrf_token),
+                    serde_json::json!({
+                        "type": "use_tool",
+                        "tool_item_id": "spoon-1",
+                        "target_item_id": beaker_id
+                    }),
+                )
+                .await
+                .status(),
+                StatusCode::OK
+            );
+
+            let response = post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "put_away",
+                    "tool_item_id": "spoon-1"
+                }),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let scene = body_json(response).await["scene"].clone();
+            assert_eq!(scene["last_events"][0]["kind"], "returned");
+            let spoon = scene["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == "spoon-1")
+                .unwrap();
+            assert_eq!(spoon["location"], "bench");
+            assert!(
+                spoon["properties"].get("holding").is_none()
+                    || spoon["properties"]["holding"]
+                        .as_array()
+                        .is_some_and(|holding| holding.is_empty())
+            );
+            let stock = scene["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == beaker_id)
+                .unwrap();
+            let solid = stock["properties"]["composition"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["substance_id"] == substance && c["phase"] == "solid")
+                .unwrap();
+            assert_eq!(solid["amount_scoop"], 10);
+            assert_eq!(solid["amount_g"], 2.0);
+
+            let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
+            assert_eq!(persisted, scene);
+        }
+    }
+
+    #[tokio::test]
+    async fn put_away_empty_spoon_is_noop() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "putaway-empty@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        let before = body_json(get_scene(&app, Some(&cookies)).await).await;
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "put_away",
+                "tool_item_id": "spoon-1"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let scene = body_json(response).await["scene"].clone();
+        assert!(
+            scene.get("last_events").is_none()
+                || scene["last_events"]
+                    .as_array()
+                    .is_some_and(|events| events.is_empty())
+        );
+        for beaker_id in ["beaker-nacl", "beaker-sand", "beaker-cacl2"] {
+            let before_stock = before["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == beaker_id)
+                .unwrap();
+            let after_stock = scene["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == beaker_id)
+                .unwrap();
+            assert_eq!(
+                after_stock["properties"]["composition"],
+                before_stock["properties"]["composition"]
+            );
+        }
+        let spoon = scene["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "spoon-1")
+            .unwrap();
+        assert_eq!(spoon["location"], "bench");
+        assert!(
+            spoon["properties"].get("holding").is_none()
+                || spoon["properties"]["holding"]
+                    .as_array()
+                    .is_some_and(|holding| holding.is_empty())
+        );
+    }
+
+    #[tokio::test]
     async fn use_tool_rejects_putting_nacl_into_sand_stock() {
         let app = test_app().await;
         let (csrf_token, csrf_cookie, session_cookie) =

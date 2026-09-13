@@ -110,14 +110,11 @@ function afterNaclPour(scene: LabScene): LabScene {
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
   const water = next.items.find((item) => item.id === 'beaker-water')!
   spoon.properties.holding = []
+  // Mirror server-authored aqueous ions after NaCl dissolve (not client dissociation).
   water.properties.composition = [
     ...optionalArray(water.properties.composition),
-    {
-      substance_id: 'nacl',
-      phase: 'aqueous',
-      amount_ml: null,
-      amount_scoop: 1,
-    },
+    { substance_id: 'na+', phase: 'aqueous', amount_ml: null, amount_scoop: null },
+    { substance_id: 'cl-', phase: 'aqueous', amount_ml: null, amount_scoop: null },
   ]
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
@@ -349,6 +346,57 @@ describe('LabBench', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
 
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+  })
+
+  it('idle water click shows beaker contents and temperature from the scene', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    expect(panel).toHaveTextContent('H2O (l)')
+    expect(panel).toHaveTextContent('Temperature: 20°C')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+  })
+
+  it('idle inspect after dissolve shows aqueous ions from the server composition', async () => {
+    const dissolved = afterNaclPour(withScoop(initialScene(), 'nacl'))
+    dissolved.items.find((item) => item.id === 'spoon-1')!.properties.holding = []
+    const fetchMock = stubLabFetch({ scene: dissolved })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    expect(panel).toHaveTextContent('H2O (l)')
+    expect(panel).toHaveTextContent('Na+ (aq)')
+    expect(panel).toHaveTextContent('Cl- (aq)')
+    expect(panel).toHaveTextContent('Temperature: 20°C')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+  })
+
+  it('with spoon selected, water click does not open inspect', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 

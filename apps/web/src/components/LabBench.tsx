@@ -14,7 +14,7 @@ import {
   STOCK_FULL_MASS_G,
   STOCK_FULL_SCOOPS,
   WATER_FULL_ML,
-} from '../lib/scoopMass'
+} from '../lib/benchAmounts'
 
 export { SPOON_SCOOP_MASS_G, STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS, WATER_FULL_ML }
 

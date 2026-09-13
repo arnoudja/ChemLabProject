@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { clearCsrfTokenCache } from './lib/api'
-import { STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS } from './lib/scoopMass'
+import { STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS } from './lib/benchAmounts'
 
 const userPayload = {
   id: 'u1',

@@ -719,7 +719,7 @@ describe('LabBench', () => {
     const liquid = optionalArray(water.properties.composition).find(
       (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
     )!
-    liquid.amount_ml = 100
+    liquid.amount_ml = WATER_FULL_ML / 2
     vi.stubGlobal('fetch', stubLabFetch({ scene }))
 
     render(<LabBench />)

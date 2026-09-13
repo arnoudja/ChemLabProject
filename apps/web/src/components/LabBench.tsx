@@ -13,9 +13,10 @@ import {
   SPOON_SCOOP_MASS_G,
   STOCK_FULL_MASS_G,
   STOCK_FULL_SCOOPS,
+  WATER_FULL_ML,
 } from '../lib/scoopMass'
 
-export { SPOON_SCOOP_MASS_G, STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS }
+export { SPOON_SCOOP_MASS_G, STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS, WATER_FULL_ML }
 
 const SPOON_ID = 'spoon-1'
 const NACL_ID = 'beaker-nacl'
@@ -53,15 +54,35 @@ function itemTemperatureC(scene: LabScene, item: Item): number {
   return item.properties.temperature_c ?? scene.temperature_c
 }
 
+/** Fill fraction 0..1 from server amount_ml relative to initial water volume. */
+export function waterFillRatio(amountMl: number | null | undefined): number {
+  if (amountMl == null || amountMl <= 0) return 0
+  return Math.min(1, amountMl / WATER_FULL_ML)
+}
+
 function WaterBeakerSvg({
   leftoverSolid,
   busy,
+  amountMl,
 }: {
   leftoverSolid: 'nacl' | 'sand' | null
   busy: boolean
+  amountMl?: number | null
 }) {
+  const fill = waterFillRatio(amountMl)
+  // Full liquid top ~86; empty sits at the beaker floor (~148).
+  const floorY = 148
+  const fullHeight = 62
+  const topY = floorY - fullHeight * fill
+  const leftTop = 30 + 6 * fill
+  const rightTop = 90 - 6 * fill
   return (
-    <svg viewBox="0 0 120 168" className="h-40 w-28" aria-hidden>
+    <svg
+      viewBox="0 0 120 168"
+      className="h-40 w-28"
+      aria-hidden
+      data-water-fill={fill.toFixed(2)}
+    >
       <defs>
         <linearGradient id="bench-glass" x1="20" y1="8" x2="100" y2="160" gradientUnits="userSpaceOnUse">
           <stop stopColor="#3E4058" stopOpacity="0.55" />
@@ -79,11 +100,13 @@ function WaterBeakerSvg({
         stroke="#C4D2ED"
         strokeWidth="2.4"
       />
-      <path
-        className={busy ? 'lab-water-busy' : undefined}
-        d="M36 86h48l6 62c0 6-4 10-10 10H40c-6 0-10-4-10-10l6-62z"
-        fill="url(#bench-water)"
-      />
+      {fill > 0 ? (
+        <path
+          className={busy ? 'lab-water-busy' : undefined}
+          d={`M${leftTop} ${topY} H${rightTop} L90 ${floorY - 10} C90 ${floorY - 4} 86 ${floorY} 80 ${floorY} H40 C34 ${floorY} 30 ${floorY - 4} 30 ${floorY - 10} Z`}
+          fill="url(#bench-water)"
+        />
+      ) : null}
       {leftoverSolid ? (
         <g fill={leftoverSolid === 'nacl' ? '#F4FBFF' : '#C9B48A'} opacity="0.9">
           <circle cx="48" cy="142" r="3.2" />
@@ -174,6 +197,14 @@ function stockAmountG(scene: LabScene, itemId: string, substanceId: 'nacl' | 'sa
     (c) => c.substance_id === substanceId && c.phase === 'solid',
   )
   return entry?.amount_g ?? null
+}
+
+function waterAmountMl(scene: LabScene): number | null {
+  const item = findItem(scene, WATER_ID)
+  const entry = optionalArray(item?.properties.composition).find(
+    (c) => c.substance_id === 'water' && c.phase === 'liquid',
+  )
+  return entry?.amount_ml ?? null
 }
 
 function outcomeLabel(kind: string): string | null {
@@ -387,7 +418,11 @@ export function LabBench() {
             disabled={busy}
             onClick={onWater}
           >
-            <WaterBeakerSvg leftoverSolid={leftoverSolid} busy={busy} />
+            <WaterBeakerSvg
+              leftoverSolid={leftoverSolid}
+              busy={busy}
+              amountMl={waterAmountMl(scene)}
+            />
             <span className="lab-item-label">{water?.label ?? 'Water'}</span>
           </button>
 

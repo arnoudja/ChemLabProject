@@ -10,11 +10,21 @@ pub const SPOON_SCOOP_MASS_G: f64 = 0.2;
 /// Molar mass of NaCl used when converting scoop mass to aqueous ion moles.
 const NACL_MOLAR_MASS_G_PER_MOL: f64 = 58.44;
 
+/// Molar mass of anhydrous CaCl₂ (g/mol).
+const CACL2_MOLAR_MASS_G_PER_MOL: f64 = 110.98;
+
 /// Enthalpy of solution of NaCl at bench conditions (endothermic), J/mol.
 pub const NACL_DELTA_H_SOLUTION_J_PER_MOL: f64 = 3880.0;
 
+/// Enthalpy of solution of anhydrous CaCl₂ (exothermic), J/mol.
+pub const CACL2_DELTA_H_SOLUTION_J_PER_MOL: f64 = -81300.0;
+
 /// Specific heat capacity of liquid water, J/(g·K). Mass of water ≈ volume in ml.
 pub const WATER_SPECIFIC_HEAT_J_PER_G_K: f64 = 4.184;
+
+fn is_stock_solid(substance_id: &str) -> bool {
+    matches!(substance_id, "nacl" | "cacl2" | "sand")
+}
 
 /// One substance entry in an item's composition or holding list.
 #[derive(Debug, Clone, PartialEq)]
@@ -100,7 +110,7 @@ pub enum SceneError {
     Dissolve(#[from] DissolveError),
 }
 
-/// Build the default four-item bench scene for a lab.
+/// Build the default five-item bench scene for a lab.
 pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
     Scene {
         lab_id: lab_id.into(),
@@ -128,6 +138,28 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                     temperature_c: Some(20.0),
                     composition: vec![CompositionEntry {
                         substance_id: "nacl".into(),
+                        phase: "solid".into(),
+                        amount_ml: None,
+                        amount_scoop: Some(10),
+                        amount_g: Some(10.0 * SPOON_SCOOP_MASS_G),
+                        amount_mol: None,
+                    }],
+                    holding: Vec::new(),
+                },
+            },
+            SceneItem {
+                id: "beaker-cacl2".into(),
+                kind: "beaker".into(),
+                label: "Calcium chloride".into(),
+                location: "bench".into(),
+                properties: ItemProperties {
+                    volume_ml: Some(250.0),
+                    fill_ml: Some(100.0),
+                    transparent: Some(true),
+                    colourless: Some(true),
+                    temperature_c: Some(20.0),
+                    composition: vec![CompositionEntry {
+                        substance_id: "cacl2".into(),
                         phase: "solid".into(),
                         amount_ml: None,
                         amount_scoop: Some(10),
@@ -245,7 +277,7 @@ fn apply_use_tool(
         .properties
         .composition
         .iter()
-        .position(|c| c.phase == "solid" && (c.substance_id == "nacl" || c.substance_id == "sand"))
+        .position(|c| c.phase == "solid" && is_stock_solid(&c.substance_id))
         .ok_or(SceneError::InvalidAction)?;
 
     let solid = &mut scene.items[target_idx].properties.composition[solid_idx];
@@ -281,14 +313,14 @@ fn apply_use_tool(
     Ok(())
 }
 
-/// Return held solid to its matching stock beaker (nacl→nacl, sand→sand only).
+/// Return held solid to its matching stock beaker (nacl→nacl, cacl2→cacl2, sand→sand only).
 fn apply_return_to_stock(
     scene: &mut Scene,
     tool_idx: usize,
     target_idx: usize,
     held: CompositionEntry,
 ) -> Result<(), SceneError> {
-    if held.phase != "solid" || (held.substance_id != "nacl" && held.substance_id != "sand") {
+    if held.phase != "solid" || !is_stock_solid(&held.substance_id) {
         return Err(SceneError::InvalidAction);
     }
 
@@ -360,14 +392,29 @@ fn apply_pour(
 
     let target = &mut scene.items[target_idx];
     if outcome.dissolved {
-        // Server-authored composition for inspection. Dissolved NaCl is exposed as
+        // Server-authored composition for inspection. Dissolved salts are exposed as
         // aqueous ions (not a client-side dissociation of a substance_id blob).
         let mass_g = held.amount_g.unwrap_or(SPOON_SCOOP_MASS_G);
         if held.substance_id == "nacl" {
             let moles = mass_g / NACL_MOLAR_MASS_G_PER_MOL;
             add_or_increase_mol(target, "na+", "aqueous", moles);
             add_or_increase_mol(target, "cl-", "aqueous", moles);
-            apply_nacl_dissolution_cooling(target, mass_g, temperature_c);
+            apply_dissolution_temperature_change(
+                target,
+                moles,
+                NACL_DELTA_H_SOLUTION_J_PER_MOL,
+                temperature_c,
+            );
+        } else if held.substance_id == "cacl2" {
+            let moles = mass_g / CACL2_MOLAR_MASS_G_PER_MOL;
+            add_or_increase_mol(target, "ca2+", "aqueous", moles);
+            add_or_increase_mol(target, "cl-", "aqueous", 2.0 * moles);
+            apply_dissolution_temperature_change(
+                target,
+                moles,
+                CACL2_DELTA_H_SOLUTION_J_PER_MOL,
+                temperature_c,
+            );
         } else if let Some(existing) = target
             .properties
             .composition
@@ -404,11 +451,15 @@ fn apply_pour(
     Ok(())
 }
 
-/// Apply endothermic NaCl dissolution cooling to the solvent beaker.
+/// Apply dissolution heat to the solvent beaker: ΔT = −(n·ΔH_sol) / (m_water · c_p).
 ///
-/// Uses q = n·ΔH_sol and ΔT = −q / (m_water · c_p), with water mass ≈ liquid
-/// `amount_ml` (density ≈ 1 g/ml).
-fn apply_nacl_dissolution_cooling(target: &mut SceneItem, mass_g: f64, current_temperature_c: f64) {
+/// Water mass ≈ liquid `amount_ml` (density ≈ 1 g/ml). Endothermic ΔH cools; exothermic heats.
+fn apply_dissolution_temperature_change(
+    target: &mut SceneItem,
+    moles: f64,
+    delta_h_j_per_mol: f64,
+    current_temperature_c: f64,
+) {
     let water_ml = target
         .properties
         .composition
@@ -416,11 +467,10 @@ fn apply_nacl_dissolution_cooling(target: &mut SceneItem, mass_g: f64, current_t
         .find(|c| c.substance_id == "water" && c.phase == "liquid")
         .and_then(|c| c.amount_ml)
         .unwrap_or(0.0);
-    if water_ml <= 0.0 || mass_g <= 0.0 {
+    if water_ml <= 0.0 || moles <= 0.0 {
         return;
     }
-    let moles = mass_g / NACL_MOLAR_MASS_G_PER_MOL;
-    let heat_j = moles * NACL_DELTA_H_SOLUTION_J_PER_MOL;
+    let heat_j = moles * delta_h_j_per_mol;
     let delta_t = -heat_j / (water_ml * WATER_SPECIFIC_HEAT_J_PER_G_K);
     target.properties.temperature_c = Some(current_temperature_c + delta_t);
 }
@@ -488,16 +538,18 @@ mod tests {
     }
 
     #[test]
-    fn initial_bench_scene_has_four_items_with_water_properties() {
+    fn initial_bench_scene_has_five_items_with_water_properties() {
         let scene = initial_bench_scene("lab-test");
         assert_eq!(scene.lab_id, "lab-test");
         assert_eq!(scene.temperature_c, 20.0);
         assert_eq!(scene.version, 0);
         assert!(scene.last_events.is_empty());
+        assert_eq!(scene.items.len(), 5);
 
         let ids: Vec<_> = scene.items.iter().map(|i| i.id.as_str()).collect();
         assert!(ids.contains(&"spoon-1"));
         assert!(ids.contains(&"beaker-nacl"));
+        assert!(ids.contains(&"beaker-cacl2"));
         assert!(ids.contains(&"beaker-sand"));
         assert!(ids.contains(&"beaker-water"));
 
@@ -521,6 +573,14 @@ mod tests {
             .composition
             .iter()
             .any(|c| c.substance_id == "nacl" && c.phase == "solid"));
+
+        let cacl2 = item(&scene, "beaker-cacl2");
+        assert_eq!(cacl2.label, "Calcium chloride");
+        assert!(cacl2
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "cacl2" && c.phase == "solid" && c.amount_g == Some(2.0)));
 
         let sand = item(&scene, "beaker-sand");
         assert!(sand
@@ -781,6 +841,110 @@ mod tests {
         );
         // Ambient bench temperature is unchanged; only the solution cools.
         assert_eq!(scene.temperature_c, 20.0);
+    }
+
+    #[test]
+    fn pour_cacl2_into_water_dissolves_with_ions_and_heats_exothermically() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-cacl2".into(),
+            },
+        )
+        .unwrap();
+
+        let stock = item(&scene, "beaker-cacl2")
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "cacl2" && c.phase == "solid")
+            .unwrap();
+        assert_eq!(stock.amount_scoop, Some(9));
+        assert_eq!(stock.amount_g, Some(9.0 * SPOON_SCOOP_MASS_G));
+
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+
+        let water = item(&scene, "beaker-water");
+        let moles = SPOON_SCOOP_MASS_G / CACL2_MOLAR_MASS_G_PER_MOL;
+        let ca = water
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "ca2+" && c.phase == "aqueous")
+            .unwrap();
+        let cl = water
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "cl-" && c.phase == "aqueous")
+            .unwrap();
+        assert!((ca.amount_mol.unwrap() - moles).abs() < 1e-12);
+        assert!((cl.amount_mol.unwrap() - 2.0 * moles).abs() < 1e-12);
+        assert!(!water
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "cacl2"));
+
+        let expected_delta_t =
+            -(moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL) / (200.0 * WATER_SPECIFIC_HEAT_J_PER_G_K);
+        assert!(
+            expected_delta_t > 0.0,
+            "CaCl2 dissolution must be exothermic (positive ΔT)"
+        );
+        let actual = water
+            .properties
+            .temperature_c
+            .expect("water beaker should keep a temperature");
+        assert!((actual - (20.0 + expected_delta_t)).abs() < 1e-9);
+        assert_eq!(scene.temperature_c, 20.0);
+        assert!(scene.last_events.iter().any(|e| {
+            e.kind == "dissolved"
+                && e.message
+                    == "Calcium chloride (CaCl2) dissolves in water at bench temperature."
+        }));
+    }
+
+    #[test]
+    fn use_tool_returns_held_cacl2_to_matching_stock() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-cacl2".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-cacl2".into(),
+            },
+        )
+        .unwrap();
+
+        let spoon = item(&scene, "spoon-1");
+        assert!(spoon.properties.holding.is_empty());
+        let stock = item(&scene, "beaker-cacl2")
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "cacl2" && c.phase == "solid")
+            .unwrap();
+        assert_eq!(stock.amount_scoop, Some(10));
+        assert_eq!(stock.amount_g, Some(10.0 * SPOON_SCOOP_MASS_G));
+        assert!(scene.last_events.iter().any(|e| e.kind == "returned"));
     }
 
     #[test]

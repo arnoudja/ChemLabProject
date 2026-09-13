@@ -1246,6 +1246,13 @@ mod tests {
                 "Sodium chloride (NaCl) dissolves in water at bench temperature.",
             ),
             (
+                "cacl2",
+                "water",
+                20,
+                true,
+                "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
+            ),
+            (
                 "sand",
                 "water",
                 20,

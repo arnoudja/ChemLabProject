@@ -1,4 +1,4 @@
-//! Qualitative dissolve lookup for this slice: NaCl vs sand in water at 20 °C.
+//! Qualitative dissolve lookup for this slice: NaCl / CaCl₂ / sand in water at 20 °C.
 
 use thiserror::Error;
 
@@ -16,7 +16,7 @@ pub struct DissolveOutcome {
 /// These are not dissolve results: unknown materials must not be treated as insoluble.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum DissolveError {
-    /// `substance_id` is not `nacl` or `sand`.
+    /// `substance_id` is not `nacl`, `cacl2`, or `sand`.
     #[error("unknown substance")]
     UnknownSubstance,
     /// `solvent_id` is not `water`.
@@ -42,6 +42,10 @@ impl DissolveError {
     }
 }
 
+fn is_known_substance(substance_id: &str) -> bool {
+    matches!(substance_id, "nacl" | "cacl2" | "sand")
+}
+
 /// Predict whether a named solid dissolves under this slice's bench conditions.
 ///
 /// Ids are matched as-is: no trim, no case-fold. `dissolved: false` is a successful
@@ -60,12 +64,16 @@ pub fn dissolve(
             dissolved: true,
             explanation: "Sodium chloride (NaCl) dissolves in water at bench temperature.",
         }),
+        ("cacl2", "water", 20) => Ok(DissolveOutcome {
+            dissolved: true,
+            explanation: "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
+        }),
         ("sand", "water", 20) => Ok(DissolveOutcome {
             dissolved: false,
             explanation: "Sand (silica) does not dissolve in water at bench temperature.",
         }),
         (substance, solvent, _) => {
-            if substance != "nacl" && substance != "sand" {
+            if !is_known_substance(substance) {
                 Err(DissolveError::UnknownSubstance)
             } else if solvent != "water" {
                 Err(DissolveError::UnsupportedSolvent)
@@ -93,6 +101,13 @@ mod tests {
                 20,
                 true,
                 "Sodium chloride (NaCl) dissolves in water at bench temperature.",
+            ),
+            (
+                "cacl2",
+                "water",
+                20,
+                true,
+                "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
             ),
             (
                 "sand",
@@ -135,6 +150,13 @@ mod tests {
                 "unknown_substance",
             ),
             (
+                "CaCl2",
+                "water",
+                20,
+                DissolveError::UnknownSubstance,
+                "unknown_substance",
+            ),
+            (
                 " nacl ",
                 "water",
                 20,
@@ -149,6 +171,13 @@ mod tests {
                 "unsupported_solvent",
             ),
             (
+                "cacl2",
+                "ethanol",
+                20,
+                DissolveError::UnsupportedSolvent,
+                "unsupported_solvent",
+            ),
+            (
                 "sand",
                 "Water",
                 20,
@@ -157,6 +186,13 @@ mod tests {
             ),
             (
                 "nacl",
+                "water",
+                21,
+                DissolveError::UnsupportedTemperature,
+                "unsupported_temperature",
+            ),
+            (
+                "cacl2",
                 "water",
                 21,
                 DissolveError::UnsupportedTemperature,

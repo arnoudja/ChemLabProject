@@ -31,7 +31,8 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-ts-rs = { version = "10", features = ["chrono-impl", "serde-compat"] }
+# v11+ understands skip_serializing_if (v10 warned and ignored it).
+ts-rs = { version = "11", features = ["chrono-impl", "serde-compat"] }
 argon2 = "0.5"
 rand = "0.8"
 sha2 = "0.10"

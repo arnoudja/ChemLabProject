@@ -88,11 +88,11 @@ Pour into water is a separate action, e.g. `{ "type": "pour", "source_item_id": 
 ## Wire types (summary)
 
 - `CompositionEntry` — `substance_id`, `phase` (`solid` \| `liquid` \| `aqueous`), optional `amount_ml` / `amount_scoop` / `amount_g` / `amount_mol`
-- One spoon scoop of solid is **0.2 g** (`amount_g`). Scooping with `use_tool` **depletes** the source beaker's `amount_scoop` / `amount_g` (server-authoritative). Dissolved NaCl authors aqueous `na+` / `cl-` with `amount_mol` (aggregated on repeat pours). Undissolved solids (e.g. sand / SiO₂) aggregate `amount_g` on one composition line. Liquid water uses `amount_ml` for inspect volume display.
+- One spoon scoop of solid is **0.2 g** (`amount_g`). Scooping with `use_tool` **depletes** the source beaker's `amount_scoop` / `amount_g` (server-authoritative). Using the spoon on the **matching** stock beaker while holding that solid **returns** the scoop (empties holding, restores stock). Wrong stock (e.g. salt→sand) is rejected. Dissolved NaCl authors aqueous `na+` / `cl-` with `amount_mol` (aggregated on repeat pours). Undissolved solids (e.g. sand / SiO₂) aggregate `amount_g` on one composition line. Liquid water uses `amount_ml` for inspect volume display.
 - `ItemProperties` — optional volume/fill/flags/temperature (°C as `f64`); `composition` and `holding` lists
 - `Item` — `id`, `kind`, `label`, `location`, `properties`
 - `LabScene` — `lab_id`, `version`, ambient `temperature_c` (default `20.0`), `items`, optional `last_events`
-- `LabEvent` — `kind` (e.g. `scooped`, `poured`, `dissolved`, `did_not_dissolve`), `message`
+- `LabEvent` — `kind` (e.g. `scooped`, `returned`, `poured`, `dissolved`, `did_not_dissolve`), `message`
 - `LabAction` — tagged `type`: `use_tool` \| `pour` \| `reset`
 - `LabActionResponse` — `{ "scene": LabScene }`
 

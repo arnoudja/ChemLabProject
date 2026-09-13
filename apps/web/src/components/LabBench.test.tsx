@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LabAction, LabScene } from '../generated/contracts'
-import { LabBench } from './LabBench'
+import { LabBench, stockFillRatio } from './LabBench'
 import { clearCsrfTokenCache } from '../lib/api'
 import { optionalArray } from '../lib/scene'
 
@@ -127,6 +127,27 @@ function withScoop(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
   return next
 }
 
+function withPutBack(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
+  const next = cloneScene(scene)
+  const spoon = next.items.find((item) => item.id === 'spoon-1')!
+  const stockId = substance === 'nacl' ? 'beaker-nacl' : 'beaker-sand'
+  const stock = next.items.find((item) => item.id === stockId)!
+  const solid = optionalArray(stock.properties.composition).find(
+    (entry) => entry.substance_id === substance && entry.phase === 'solid',
+  )
+  const held = optionalArray(spoon.properties.holding)[0]
+  const scoopsAdd = held?.amount_scoop ?? 1
+  if (solid) {
+    const scoops = (solid.amount_scoop ?? 0) + scoopsAdd
+    solid.amount_scoop = scoops
+    solid.amount_g = scoops * 0.2
+  }
+  spoon.properties.holding = []
+  next.last_events = [{ kind: 'returned', message: `Returned ${substance}.` }]
+  next.version += 1
+  return next
+}
+
 function afterNaclPour(scene: LabScene): LabScene {
   const next = cloneScene(scene)
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
@@ -235,12 +256,19 @@ function stubLabFetch(options?: {
         scene = result
         return jsonResponse({ scene })
       }
-      if (action.type === 'use_tool' && action.target_item_id === 'beaker-nacl') {
-        scene = withScoop(scene, 'nacl')
-        return jsonResponse({ scene })
-      }
-      if (action.type === 'use_tool' && action.target_item_id === 'beaker-sand') {
-        scene = withScoop(scene, 'sand')
+      if (action.type === 'use_tool' && (action.target_item_id === 'beaker-nacl' || action.target_item_id === 'beaker-sand')) {
+        const targetSubstance = action.target_item_id === 'beaker-nacl' ? 'nacl' : 'sand'
+        const held = optionalArray(
+          scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
+        )[0]
+        if (held) {
+          if (held.substance_id === targetSubstance) {
+            scene = withPutBack(scene, targetSubstance)
+            return jsonResponse({ scene })
+          }
+          return jsonResponse({ error: 'invalid action', code: 'invalid_action' }, 400)
+        }
+        scene = withScoop(scene, targetSubstance)
         return jsonResponse({ scene })
       }
       if (action.type === 'pour') {
@@ -513,6 +541,72 @@ describe('LabBench', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+  })
+
+
+  it('shows full stock fill from server amount_g and lowers after scoop', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '1.00')
+    expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
+    expect(stockFillRatio(2)).toBe(1)
+    expect(stockFillRatio(1.8)).toBeCloseTo(0.9)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '0.90')
+    })
+    expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
+  })
+
+  it('puts salt back into the salt stock and restores fill from the server scene', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '0.90')
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '1.00')
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('returned')
+    // Spoon holding cleared — cursor tool stays spoon without solid fill.
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
+  })
+
+  it('rejects putting salt into the sand stock beaker', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sand' }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+    expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
+    expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '0.90')
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
   })
 
   it('spoon then nacl then water posts use_tool then pour with CSRF and shows server events', async () => {

@@ -623,6 +623,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn use_tool_put_back_restores_stock_and_clears_holding() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "putback@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        let scoop = serde_json::json!({
+            "type": "use_tool",
+            "tool_item_id": "spoon-1",
+            "target_item_id": "beaker-nacl"
+        });
+        assert_eq!(
+            post_action(&app, &cookies, Some(&csrf_token), scoop.clone())
+                .await
+                .status(),
+            StatusCode::OK
+        );
+
+        let response = post_action(&app, &cookies, Some(&csrf_token), scoop).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let scene = body_json(response).await["scene"].clone();
+        assert_eq!(scene["last_events"][0]["kind"], "returned");
+        let spoon = scene["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "spoon-1")
+            .unwrap();
+        assert!(
+            spoon["properties"].get("holding").is_none()
+                || spoon["properties"]["holding"]
+                    .as_array()
+                    .is_some_and(|holding| holding.is_empty())
+        );
+        let nacl = scene["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "beaker-nacl")
+            .unwrap();
+        assert_eq!(nacl["properties"]["composition"][0]["amount_scoop"], 10);
+        assert_eq!(nacl["properties"]["composition"][0]["amount_g"], 2.0);
+
+        let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
+        assert_eq!(persisted, scene);
+    }
+
+    #[tokio::test]
+    async fn use_tool_rejects_putting_nacl_into_sand_stock() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "wrong-stock@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        assert_eq!(
+            post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "use_tool",
+                    "tool_item_id": "spoon-1",
+                    "target_item_id": "beaker-nacl"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "use_tool",
+                "tool_item_id": "spoon-1",
+                "target_item_id": "beaker-sand"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(body_json(response).await["code"], "invalid_action");
+    }
+
+    #[tokio::test]
     async fn pour_nacl_action_persists_dissolve_scene_and_events() {
         let app = test_app().await;
         let (csrf_token, csrf_cookie, session_cookie) =

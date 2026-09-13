@@ -90,11 +90,37 @@ function WaterBeakerSvg({
   )
 }
 
-function SolidBeakerSvg({ solid }: { solid: 'nacl' | 'sand' }) {
+/** Initial salt/sand stock mass on the server bench (10 scoops × 0.2 g). */
+const STOCK_FULL_MASS_G = 2
+
+/** Fill fraction 0..1 from server amount_g relative to initial stock. */
+export function stockFillRatio(amountG: number | null | undefined): number {
+  if (amountG == null || amountG <= 0) return 0
+  return Math.min(1, amountG / STOCK_FULL_MASS_G)
+}
+
+function SolidBeakerSvg({
+  solid,
+  amountG,
+}: {
+  solid: 'nacl' | 'sand'
+  amountG?: number | null
+}) {
   const pile = solid === 'nacl' ? '#F4FBFF' : '#C9A36A'
   const speck = solid === 'nacl' ? '#DDF7FF' : '#8C6A3A'
+  const fill = stockFillRatio(amountG)
+  // Full pile top ~72; empty sits near the beaker floor (~100).
+  const topY = 100 - 28 * fill
+  const floorY = 105
+  const midY = topY + (floorY - topY) * 0.55
   return (
-    <svg viewBox="0 0 80 118" className="h-28 w-20" aria-hidden>
+    <svg
+      viewBox="0 0 80 118"
+      className="h-28 w-20"
+      aria-hidden
+      data-stock-solid={solid}
+      data-stock-fill={fill.toFixed(2)}
+    >
       <path d="M22 10h36v8H22z" fill="#86A7DF" opacity="0.8" />
       <path
         d="M24 18h32l8 80c1 6-3 10-9 10H25c-6 0-10-4-9-10l8-80z"
@@ -103,10 +129,21 @@ function SolidBeakerSvg({ solid }: { solid: 'nacl' | 'sand' }) {
         stroke="#C4D2ED"
         strokeWidth="2"
       />
-      <path d="M28 72h24l4 26c0 4-3 7-7 7H31c-4 0-7-3-7-7l4-26z" fill={pile} />
-      <circle cx="34" cy="92" r="2" fill={speck} />
-      <circle cx="46" cy="96" r="1.6" fill={speck} />
-      <circle cx="40" cy="86" r="1.4" fill={speck} opacity="0.7" />
+      {fill > 0 ? (
+        <>
+          <path
+            d={`M28 ${topY} H52 L56 ${floorY - 7} C56 ${floorY - 3} 53 ${floorY} 49 ${floorY} H31 C27 ${floorY} 24 ${floorY - 3} 24 ${floorY - 7} Z`}
+            fill={pile}
+          />
+          {fill > 0.15 ? (
+            <>
+              <circle cx="34" cy={midY + 6} r="2" fill={speck} />
+              <circle cx="46" cy={midY + 10} r="1.6" fill={speck} />
+              <circle cx="40" cy={midY} r="1.4" fill={speck} opacity="0.7" />
+            </>
+          ) : null}
+        </>
+      ) : null}
     </svg>
   )
 }
@@ -126,9 +163,19 @@ function SpoonSvg({ fill, floating }: { fill: 'nacl' | 'sand' | null; floating?:
   )
 }
 
+
+function stockAmountG(scene: LabScene, itemId: string, substanceId: 'nacl' | 'sand'): number | null {
+  const item = findItem(scene, itemId)
+  const entry = optionalArray(item?.properties.composition).find(
+    (c) => c.substance_id === substanceId && c.phase === 'solid',
+  )
+  return entry?.amount_g ?? null
+}
+
 function outcomeLabel(kind: string): string | null {
   if (kind === 'dissolved') return 'dissolved'
   if (kind === 'did_not_dissolve') return 'did not dissolve'
+  if (kind === 'returned') return 'returned'
   if (kind === 'reset') return 'reset'
   return null
 }
@@ -347,7 +394,7 @@ export function LabBench() {
             disabled={busy}
             onClick={(event) => onSolid(NACL_ID, event)}
           >
-            <SolidBeakerSvg solid="nacl" />
+            <SolidBeakerSvg solid="nacl" amountG={stockAmountG(scene, NACL_ID, 'nacl')} />
             <StockSubstanceLabel substanceId="nacl" />
           </button>
 
@@ -358,7 +405,7 @@ export function LabBench() {
             disabled={busy}
             onClick={(event) => onSolid(SAND_ID, event)}
           >
-            <SolidBeakerSvg solid="sand" />
+            <SolidBeakerSvg solid="sand" amountG={stockAmountG(scene, SAND_ID, 'sand')} />
             <StockSubstanceLabel substanceId="sand" />
           </button>
 

@@ -43,7 +43,7 @@ const initialScene = {
         colourless: true,
         temperature_c: 20,
         composition: [
-          { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null , amount_g: null, amount_mol: null},
+          { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null, amount_g: null, amount_mol: null},
         ],
         holding: [],
       },

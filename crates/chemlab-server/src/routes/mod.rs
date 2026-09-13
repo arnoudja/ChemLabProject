@@ -423,8 +423,7 @@ mod tests {
     #[tokio::test]
     async fn register_duplicate_email_returns_conflict() {
         let app = test_app().await;
-        let (csrf_token, csrf_cookie, _session) =
-            register_user(&app, "dup@chemlab.local").await;
+        let (csrf_token, csrf_cookie, _session) = register_user(&app, "dup@chemlab.local").await;
 
         let response = post_register(&app, &csrf_token, &csrf_cookie, "dup@chemlab.local").await;
         assert_eq!(response.status(), StatusCode::CONFLICT);
@@ -458,7 +457,8 @@ mod tests {
         let long_name = "n".repeat(65);
         let cases = [
             r#"{"email":"not-an-email","password":"secret123","display_name":"Ada"}"#.to_string(),
-            r#"{"email":"short@chemlab.local","password":"short","display_name":"Ada"}"#.to_string(),
+            r#"{"email":"short@chemlab.local","password":"short","display_name":"Ada"}"#
+                .to_string(),
             format!(
                 r#"{{"email":"longpw@chemlab.local","password":"{long_password}","display_name":"Ada"}}"#
             ),
@@ -470,14 +470,13 @@ mod tests {
         ];
 
         for body in cases {
-            let response =
-                post_register_body(&app, &csrf_token, &csrf_cookie, body.clone()).await;
+            let response = post_register_body(&app, &csrf_token, &csrf_cookie, body.clone()).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "body={body}");
             assert_eq!(
-                response.status(),
-                StatusCode::BAD_REQUEST,
+                body_json(response).await["code"],
+                "validation",
                 "body={body}"
             );
-            assert_eq!(body_json(response).await["code"], "validation", "body={body}");
         }
     }
 
@@ -1104,10 +1103,7 @@ mod tests {
         )
         .await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(
-            body_json(response).await["code"],
-            "unsupported_temperature"
-        );
+        assert_eq!(body_json(response).await["code"], "unsupported_temperature");
     }
 
     #[tokio::test]

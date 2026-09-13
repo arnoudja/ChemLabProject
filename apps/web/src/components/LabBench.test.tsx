@@ -1065,9 +1065,9 @@ describe('LabBench', () => {
   })
 
   it.each([
-    ['nacl', 'Sodium chloride (NaCl)', 'beaker-nacl'] as const,
-    ['sand', 'Sand', 'beaker-sand'] as const,
-    ['cacl2', 'Calcium chloride (CaCl2)', 'beaker-cacl2'] as const,
+    ['nacl', 'Sodium chloride (NaCl)'] as const,
+    ['sand', 'Sand'] as const,
+    ['cacl2', 'Calcium chloride (CaCl2)'] as const,
   ])(
     'scoop %s then put spoon away restores stock and empties the spoon',
     async (substance, label) => {

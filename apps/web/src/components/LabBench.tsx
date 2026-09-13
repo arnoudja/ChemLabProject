@@ -15,9 +15,17 @@ import {
   STOCK_FULL_SCOOPS,
   WATER_FULL_ML,
   DISH_CAPACITY_ML,
+  PIPETTE_VOLUME_ML,
 } from '../lib/benchAmounts'
 
-export { SPOON_SCOOP_MASS_G, STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS, WATER_FULL_ML, DISH_CAPACITY_ML }
+export {
+  SPOON_SCOOP_MASS_G,
+  STOCK_FULL_MASS_G,
+  STOCK_FULL_SCOOPS,
+  WATER_FULL_ML,
+  DISH_CAPACITY_ML,
+  PIPETTE_VOLUME_ML,
+}
 
 const SPOON_ID = 'spoon-1'
 const PIPETTE_ID = 'pipette-1'
@@ -693,9 +701,9 @@ export function LabBench() {
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-sm text-[var(--ink-soft)]">
-          Pick up the spoon to scoop solids, or the pipette to move 1.00 ml of solution between the
-          water beaker and the dish. With no tool selected, click a vessel to inspect it, or the
-          burner to heat the dish.
+          Pick up the spoon to scoop solids, or the pipette to move {PIPETTE_VOLUME_ML.toFixed(2)} ml
+          of solution between the water beaker and the dish. With no tool selected, click a vessel to
+          inspect it, or the burner to heat the dish.
         </p>
         <button
           type="button"

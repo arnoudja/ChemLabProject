@@ -10,6 +10,7 @@ import {
   STOCK_FULL_SCOOPS,
   WATER_FULL_ML,
   DISH_CAPACITY_ML,
+  PIPETTE_VOLUME_ML,
   dishFillRatio,
   stockFillRatio,
   waterFillRatio,
@@ -127,7 +128,7 @@ function initialScene(): LabScene {
         label: 'Pipette',
         location: 'bench',
         properties: {
-          volume_ml: 1,
+          volume_ml: PIPETTE_VOLUME_ML,
           fill_ml: 0,
           transparent: true,
           colourless: true,
@@ -356,15 +357,15 @@ function applyPipetteFill(scene: LabScene, sourceId: string): LabScene {
   const source = next.items.find((item) => item.id === sourceId)!
   const pipette = next.items.find((item) => item.id === 'pipette-1')!
   const water = liquidWaterEntry(source)
-  if (!water || (water.amount_ml ?? 0) < 1) return scene
-  water.amount_ml = (water.amount_ml ?? 0) - 1
+  if (!water || (water.amount_ml ?? 0) < PIPETTE_VOLUME_ML) return scene
+  water.amount_ml = (water.amount_ml ?? 0) - PIPETTE_VOLUME_ML
   source.properties.fill_ml = water.amount_ml
   pipette.location = 'hand'
   pipette.properties.holding = [
     {
       substance_id: 'water',
       phase: 'liquid',
-      amount_ml: 1,
+      amount_ml: PIPETTE_VOLUME_ML,
       amount_scoop: null,
       amount_g: null,
       amount_mol: null,
@@ -372,8 +373,13 @@ function applyPipetteFill(scene: LabScene, sourceId: string): LabScene {
   ]
   pipette.properties.source_item_id = sourceId
   pipette.properties.temperature_c = source.properties.temperature_c
-  pipette.properties.fill_ml = 1
-  next.last_events = [{ kind: 'pipetted', message: 'Filled the pipette with 1.00 ml of solution.' }]
+  pipette.properties.fill_ml = PIPETTE_VOLUME_ML
+  next.last_events = [
+    {
+      kind: 'pipetted',
+      message: `Filled the pipette with ${PIPETTE_VOLUME_ML.toFixed(2)} ml of solution.`,
+    },
+  ]
   next.version += 1
   return next
 }
@@ -385,7 +391,7 @@ function applyPipetteEmpty(scene: LabScene, targetId: string): LabScene {
   if (!pipetteIsFull(next)) return scene
   const existing = liquidWaterEntry(target)
   if (existing) {
-    existing.amount_ml = (existing.amount_ml ?? 0) + 1
+    existing.amount_ml = (existing.amount_ml ?? 0) + PIPETTE_VOLUME_ML
     target.properties.fill_ml = existing.amount_ml
   } else {
     target.properties.composition = [
@@ -393,13 +399,13 @@ function applyPipetteEmpty(scene: LabScene, targetId: string): LabScene {
       {
         substance_id: 'water',
         phase: 'liquid',
-        amount_ml: 1,
+        amount_ml: PIPETTE_VOLUME_ML,
         amount_scoop: null,
         amount_g: null,
         amount_mol: null,
       },
     ]
-    target.properties.fill_ml = 1
+    target.properties.fill_ml = PIPETTE_VOLUME_ML
   }
   pipette.properties.holding = []
   pipette.properties.source_item_id = null
@@ -570,6 +576,20 @@ function stubLabFetch(options?: {
 function lastActionInit(fetchMock: ReturnType<typeof vi.fn>) {
   const calls = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/action')
   return calls.at(-1)?.[1] as RequestInit | undefined
+}
+
+function expectCsrfLabAction(fetchMock: ReturnType<typeof vi.fn>, body: unknown) {
+  expect(lastActionInit(fetchMock)).toEqual(
+    expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      headers: expect.objectContaining({
+        'content-type': 'application/json',
+        'X-CSRF-Token': 'tok-123',
+      }),
+      body: JSON.stringify(body),
+    }),
+  )
 }
 
 describe('LabBench', () => {
@@ -1394,7 +1414,7 @@ describe('LabBench', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
     await waitFor(() => {
-      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+      expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
         tool_item_id: 'pipette-1',
         target_item_id: 'beaker-water',
@@ -1454,7 +1474,7 @@ describe('LabBench', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Burner' }))
     await waitFor(() => {
-      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+      expectCsrfLabAction(fetchMock, {
         type: 'toggle_burner',
         burner_item_id: 'burner-1',
       })
@@ -1529,7 +1549,7 @@ describe('LabBench', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
     await waitFor(() => {
-      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+      expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
         tool_item_id: 'pipette-1',
         target_item_id: 'beaker-water',
@@ -1539,7 +1559,7 @@ describe('LabBench', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
     await waitFor(() => {
-      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+      expectCsrfLabAction(fetchMock, {
         type: 'put_away',
         tool_item_id: 'pipette-1',
       })

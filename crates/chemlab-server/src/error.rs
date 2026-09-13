@@ -2,7 +2,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chemlab_contracts::ErrorResponse;
-use chemlab_core::DissolveError;
+use chemlab_core::{DissolveError, SceneError};
 use chemlab_db::DbError;
 
 #[derive(Debug)]
@@ -75,6 +75,18 @@ impl IntoResponse for ApiError {
 impl From<DissolveError> for ApiError {
     fn from(value: DissolveError) -> Self {
         Self::bad_request(value.code(), value.to_string())
+    }
+}
+
+impl From<SceneError> for ApiError {
+    fn from(value: SceneError) -> Self {
+        let code = match &value {
+            SceneError::UnknownItem => "unknown_item",
+            SceneError::InvalidAction => "invalid_action",
+            SceneError::EmptyHolding => "empty_holding",
+            SceneError::Dissolve(error) => error.code(),
+        };
+        Self::bad_request(code, value.to_string())
     }
 }
 

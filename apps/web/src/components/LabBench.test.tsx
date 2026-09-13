@@ -2,18 +2,152 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { LabAction, LabScene } from '../generated/contracts'
 import { LabBench } from './LabBench'
 import { clearCsrfTokenCache } from '../lib/api'
+import { optionalArray } from '../lib/scene'
 
-const NACL_SERVER = {
-  dissolved: true,
-  explanation: 'Sodium chloride (NaCl) dissolves in water at bench temperature.',
-} as const
+const NACL_EXPLANATION =
+  'Sodium chloride (NaCl) dissolves in water at bench temperature.'
+const SAND_EXPLANATION =
+  'Sand (silica) does not dissolve in water at bench temperature.'
 
-const SAND_SERVER = {
-  dissolved: false,
-  explanation: 'Sand (silica) does not dissolve in water at bench temperature.',
-} as const
+function emptyProps() {
+  return {
+    volume_ml: null,
+    fill_ml: null,
+    transparent: null,
+    colourless: null,
+    temperature_c: null,
+    composition: [] as LabScene['items'][number]['properties']['composition'],
+    holding: [] as LabScene['items'][number]['properties']['holding'],
+  }
+}
+
+function initialScene(): LabScene {
+  return {
+    lab_id: 'lab-1',
+    version: 0,
+    temperature_c: 20,
+    last_events: [],
+    items: [
+      {
+        id: 'spoon-1',
+        kind: 'spoon',
+        label: 'Spoon',
+        location: 'bench',
+        properties: emptyProps(),
+      },
+      {
+        id: 'beaker-nacl',
+        kind: 'beaker',
+        label: 'Sodium chloride',
+        location: 'bench',
+        properties: {
+          volume_ml: 250,
+          fill_ml: 100,
+          transparent: true,
+          colourless: true,
+          temperature_c: 20,
+          composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+          holding: [],
+        },
+      },
+      {
+        id: 'beaker-sand',
+        kind: 'beaker',
+        label: 'Sand',
+        location: 'bench',
+        properties: {
+          volume_ml: 250,
+          fill_ml: 100,
+          transparent: true,
+          colourless: true,
+          temperature_c: 20,
+          composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+          holding: [],
+        },
+      },
+      {
+        id: 'beaker-water',
+        kind: 'beaker',
+        label: 'Water',
+        location: 'bench',
+        properties: {
+          volume_ml: 250,
+          fill_ml: 200,
+          transparent: true,
+          colourless: true,
+          temperature_c: 20,
+          composition: [
+            { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null },
+          ],
+          holding: [],
+        },
+      },
+    ],
+  }
+}
+
+function cloneScene(scene: LabScene): LabScene {
+  return structuredClone(scene)
+}
+
+function withScoop(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
+  const next = cloneScene(scene)
+  const spoon = next.items.find((item) => item.id === 'spoon-1')!
+  spoon.location = 'hand'
+  spoon.properties.holding = [
+    { substance_id: substance, phase: 'solid', amount_ml: null, amount_scoop: 1 },
+  ]
+  next.last_events = [{ kind: 'scooped', message: `Scooped ${substance}.` }]
+  next.version += 1
+  return next
+}
+
+function afterNaclPour(scene: LabScene): LabScene {
+  const next = cloneScene(scene)
+  const spoon = next.items.find((item) => item.id === 'spoon-1')!
+  const water = next.items.find((item) => item.id === 'beaker-water')!
+  spoon.properties.holding = []
+  water.properties.composition = [
+    ...optionalArray(water.properties.composition),
+    {
+      substance_id: 'nacl',
+      phase: 'aqueous',
+      amount_ml: null,
+      amount_scoop: 1,
+    },
+  ]
+  next.last_events = [
+    { kind: 'poured', message: 'Poured onto water.' },
+    { kind: 'dissolved', message: NACL_EXPLANATION },
+  ]
+  next.version += 1
+  return next
+}
+
+function afterSandPour(scene: LabScene): LabScene {
+  const next = cloneScene(scene)
+  const spoon = next.items.find((item) => item.id === 'spoon-1')!
+  const water = next.items.find((item) => item.id === 'beaker-water')!
+  spoon.properties.holding = []
+  water.properties.composition = [
+    ...optionalArray(water.properties.composition),
+    {
+      substance_id: 'sand',
+      phase: 'solid',
+      amount_ml: null,
+      amount_scoop: 1,
+    },
+  ]
+  next.last_events = [
+    { kind: 'poured', message: 'Poured onto water.' },
+    { kind: 'did_not_dissolve', message: SAND_EXPLANATION },
+  ]
+  next.version += 1
+  return next
+}
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -23,29 +157,70 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 function stubLabFetch(options?: {
-  dissolveBySubstance?: Record<string, { body: unknown; status?: number }>
-  dissolveBody?: unknown
-  dissolveStatus?: number
+  scene?: LabScene
+  actionHandler?: (action: LabAction, scene: LabScene) => LabScene | { error: string; code: string; status: number }
+  sceneError?: { error: string; code: string; status: number }
 }) {
+  let scene = cloneScene(options?.scene ?? initialScene())
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     if (url === '/api/auth/csrf') {
       return jsonResponse({ csrf_token: 'tok-123' })
     }
-    if (url === '/api/lab/dissolve') {
-      const sent = init?.body ? JSON.parse(String(init.body)) : {}
-      const bySubstance = options?.dissolveBySubstance?.[sent.substance_id]
-      if (bySubstance) {
-        return jsonResponse(bySubstance.body, bySubstance.status ?? 200)
+    if (url === '/api/lab/scene') {
+      if (options?.sceneError) {
+        return jsonResponse(
+          { error: options.sceneError.error, code: options.sceneError.code },
+          options.sceneError.status,
+        )
       }
-      return jsonResponse(options?.dissolveBody ?? NACL_SERVER, options?.dissolveStatus ?? 200)
+      return jsonResponse(scene)
+    }
+    if (url === '/api/lab/action') {
+      const action = init?.body ? (JSON.parse(String(init.body)) as LabAction) : null
+      if (!action) {
+        return jsonResponse({ error: 'bad request', code: 'invalid_input' }, 400)
+      }
+      if (options?.actionHandler) {
+        const result = options.actionHandler(action, scene)
+        if ('error' in result) {
+          return jsonResponse({ error: result.error, code: result.code }, result.status)
+        }
+        scene = result
+        return jsonResponse({ scene })
+      }
+      if (action.type === 'use_tool' && action.target_item_id === 'beaker-nacl') {
+        scene = withScoop(scene, 'nacl')
+        return jsonResponse({ scene })
+      }
+      if (action.type === 'use_tool' && action.target_item_id === 'beaker-sand') {
+        scene = withScoop(scene, 'sand')
+        return jsonResponse({ scene })
+      }
+      if (action.type === 'pour') {
+        const held = optionalArray(
+          scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
+        )[0]
+        if (held?.substance_id === 'nacl') {
+          scene = afterNaclPour(scene)
+          return jsonResponse({ scene })
+        }
+        if (held?.substance_id === 'sand') {
+          scene = afterSandPour(scene)
+          return jsonResponse({ scene })
+        }
+      }
+      return jsonResponse({ error: 'invalid action', code: 'invalid_action' }, 400)
+    }
+    if (url === '/api/lab/dissolve') {
+      throw new Error('LabBench must not call /api/lab/dissolve')
     }
     return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
   })
 }
 
-function lastDissolveInit(fetchMock: ReturnType<typeof vi.fn>) {
-  const calls = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/dissolve')
+function lastActionInit(fetchMock: ReturnType<typeof vi.fn>) {
+  const calls = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/action')
   return calls.at(-1)?.[1] as RequestInit | undefined
 }
 
@@ -59,26 +234,103 @@ describe('LabBench', () => {
     vi.unstubAllGlobals()
   })
 
-  it('starts with the spoon on the table and no dissolve request', () => {
+  it('loads the server scene and does not call dissolve', async () => {
     const fetchMock = stubLabFetch()
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
 
-    const bench = screen.getByRole('region', { name: 'Lab bench' })
-    expect(bench).toHaveAttribute('data-tool', 'none')
-    expect(screen.getByRole('button', { name: 'Spoon' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Spoon' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sand' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Water beaker' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    expect(fetchMock).toHaveBeenCalledWith('/api/lab/scene', { credentials: 'include' })
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('clicking the spoon holds it as the cursor tool', () => {
+  it('renders when server omits empty holding/composition/last_events (serde skip)', async () => {
+    // Wire JSON from skip_serializing_if = Vec::is_empty — no holding/composition/last_events keys.
+    const wireScene = {
+      lab_id: 'lab-1',
+      version: 0,
+      temperature_c: 20,
+      items: [
+        {
+          id: 'spoon-1',
+          kind: 'spoon',
+          label: 'Spoon',
+          location: 'bench',
+          properties: {},
+        },
+        {
+          id: 'beaker-nacl',
+          kind: 'beaker',
+          label: 'Sodium chloride',
+          location: 'bench',
+          properties: {
+            volume_ml: 250,
+            fill_ml: 100,
+            transparent: true,
+            colourless: true,
+            temperature_c: 20,
+            composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+          },
+        },
+        {
+          id: 'beaker-sand',
+          kind: 'beaker',
+          label: 'Sand',
+          location: 'bench',
+          properties: {
+            volume_ml: 250,
+            fill_ml: 100,
+            transparent: true,
+            colourless: true,
+            temperature_c: 20,
+            composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+          },
+        },
+        {
+          id: 'beaker-water',
+          kind: 'beaker',
+          label: 'Water',
+          location: 'bench',
+          properties: {
+            volume_ml: 250,
+            fill_ml: 200,
+            transparent: true,
+            colourless: true,
+            temperature_c: 20,
+            composition: [
+              { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null },
+            ],
+          },
+        },
+      ],
+    }
+    expect(JSON.stringify(wireScene)).not.toContain('"holding"')
+    expect(JSON.stringify(wireScene)).not.toContain('"last_events"')
+
+    vi.stubGlobal(
+      'fetch',
+      stubLabFetch({ scene: wireScene as LabScene }),
+    )
+
+    expect(() => render(<LabBench />)).not.toThrow()
+    expect(await screen.findByRole('button', { name: 'Spoon' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Water beaker' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('clicking the spoon holds it as the cursor tool', async () => {
     vi.stubGlobal('fetch', stubLabFetch())
 
     render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
 
@@ -86,39 +338,34 @@ describe('LabBench', () => {
     expect(screen.getByRole('button', { name: 'Spoon' })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('does not scoop or call the API without a held spoon', () => {
+  it('does not scoop or post an action without a held spoon', async () => {
     const fetchMock = stubLabFetch()
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
 
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 
-  it('spoon then nacl then water posts nacl/water/20 with CSRF and shows the server sentence', async () => {
-    const fetchMock = stubLabFetch({
-      dissolveBySubstance: { nacl: { body: NACL_SERVER } },
-    })
+  it('spoon then nacl then water posts use_tool then pour with CSRF and shows server events', async () => {
+    const fetchMock = stubLabFetch()
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
-    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
-
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent(NACL_SERVER.explanation)
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
     })
-    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: dissolved')
-    expect(lastDissolveInit(fetchMock)).toEqual(
+    expect(lastActionInit(fetchMock)).toEqual(
       expect.objectContaining({
         method: 'POST',
         credentials: 'include',
@@ -127,105 +374,148 @@ describe('LabBench', () => {
           'X-CSRF-Token': 'tok-123',
         }),
         body: JSON.stringify({
-          substance_id: 'nacl',
-          solvent_id: 'water',
-          temperature_c: 20,
+          type: 'use_tool',
+          tool_item_id: 'spoon-1',
+          target_item_id: 'beaker-nacl',
+        }),
+      }),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(NACL_EXPLANATION)
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: dissolved')
+    expect(lastActionInit(fetchMock)).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({
+          'content-type': 'application/json',
+          'X-CSRF-Token': 'tok-123',
+        }),
+        body: JSON.stringify({
+          type: 'pour',
+          source_item_id: 'spoon-1',
+          target_item_id: 'beaker-water',
         }),
       }),
     )
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
   })
 
-  it('spoon then sand then water posts sand/water/20 and renders a surprising server payload', async () => {
+  it('renders a surprising server sand event without client solubility branching', async () => {
     const fetchMock = stubLabFetch({
-      dissolveBody: {
-        dissolved: true,
-        explanation: 'Unexpected server sentence for sand.',
+      actionHandler: (action, scene) => {
+        if (action.type === 'use_tool') return withScoop(scene, 'sand')
+        const next = cloneScene(scene)
+        const spoon = next.items.find((item) => item.id === 'spoon-1')!
+        spoon.properties.holding = []
+        next.last_events = [
+          { kind: 'dissolved', message: 'Unexpected server sentence for sand.' },
+        ]
+        next.version += 1
+        return next
       },
     })
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sand' }))
-    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'sand')
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'sand')
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
 
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent('Unexpected server sentence for sand.')
     })
     expect(screen.getByRole('status')).toHaveTextContent('Server outcome: dissolved')
-    expect(screen.queryByText(SAND_SERVER.explanation)).not.toBeInTheDocument()
-    expect(lastDissolveInit(fetchMock)).toEqual(
-      expect.objectContaining({
-        credentials: 'include',
-        headers: expect.objectContaining({ 'X-CSRF-Token': 'tok-123' }),
-        body: JSON.stringify({
-          substance_id: 'sand',
-          solvent_id: 'water',
-          temperature_c: 20,
-        }),
-      }),
-    )
+    expect(screen.queryByText(SAND_EXPLANATION)).not.toBeInTheDocument()
+    // No undissolved solid in the surprising payload → no leftover grains invented.
+    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelectorAll('circle')).toHaveLength(0)
   })
 
-  it('sand pour shows the server did-not-dissolve sentence', async () => {
-    const fetchMock = stubLabFetch({
-      dissolveBySubstance: { sand: { body: SAND_SERVER } },
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(<LabBench />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Sand' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
-
-    await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent(SAND_SERVER.explanation)
-    })
-    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: did not dissolve')
-    expect(lastDissolveInit(fetchMock)).toEqual(
-      expect.objectContaining({
-        body: JSON.stringify({
-          substance_id: 'sand',
-          solvent_id: 'water',
-          temperature_c: 20,
-        }),
-      }),
-    )
-  })
-
-  it('empty spoon on water does not call dissolve', () => {
+  it('sand pour shows the server did-not-dissolve sentence and leftover grains from the scene', async () => {
     const fetchMock = stubLabFetch()
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sand' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'sand')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(SAND_EXPLANATION)
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: did not dissolve')
+    // Leftover grains are SVG circles rendered only because the server put solid sand in water.
+    expect(
+      screen.getByRole('button', { name: 'Water beaker' }).querySelectorAll('circle').length,
+    ).toBeGreaterThan(0)
+  })
+
+  it('empty spoon on water does not post a pour action', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
 
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('shows the server dissolve error and no outcome after a pour', async () => {
+  it('shows the server action error and no outcome after a pour', async () => {
     vi.stubGlobal(
       'fetch',
       stubLabFetch({
-        dissolveBody: { error: 'Login required', code: 'unauthenticated' },
-        dissolveStatus: 401,
+        actionHandler: (action, scene) => {
+          if (action.type === 'use_tool') return withScoop(scene, 'nacl')
+          return { error: 'Login required', code: 'unauthenticated', status: 401 }
+        },
+      }),
+    )
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Login required')
+    expect(screen.queryByText(/Server outcome:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(NACL_EXPLANATION)).not.toBeInTheDocument()
+  })
+
+  it('shows a scene load error from the server', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubLabFetch({
+        sceneError: { error: 'Login required', code: 'unauthenticated', status: 401 },
       }),
     )
 
     render(<LabBench />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
-
     expect(await screen.findByRole('alert')).toHaveTextContent('Login required')
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
   })
 })

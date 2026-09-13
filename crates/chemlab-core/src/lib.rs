@@ -4,8 +4,13 @@
 //! lookup (NaCl vs sand in water at bench temperature), not a general simulator.
 
 mod dissolve;
+mod scene;
 
 pub use dissolve::{dissolve, DissolveError, DissolveOutcome};
+pub use scene::{
+    apply_action, initial_bench_scene, Action, CompositionEntry, ItemProperties, Scene, SceneError,
+    SceneEvent, SceneItem,
+};
 
 /// Semantic version of the ChemLab core crate.
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -492,6 +492,221 @@ mod tests {
             .unwrap()
     }
 
+    async fn get_scene(app: &Router, cookie: Option<&str>) -> axum::response::Response {
+        let mut builder = Request::builder().uri("/api/lab/scene");
+        if let Some(cookie) = cookie {
+            builder = builder.header("cookie", cookie);
+        }
+        app.clone()
+            .oneshot(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    async fn post_action(
+        app: &Router,
+        cookie: &str,
+        csrf_token: Option<&str>,
+        action: serde_json::Value,
+    ) -> axum::response::Response {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri("/api/lab/action")
+            .header("content-type", "application/json")
+            .header("cookie", cookie);
+        if let Some(token) = csrf_token {
+            builder = builder.header("x-csrf-token", token);
+        }
+        app.clone()
+            .oneshot(builder.body(Body::from(action.to_string())).unwrap())
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn scene_without_session_is_unauthorized() {
+        let app = test_app().await;
+        let response = get_scene(&app, None).await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(body_json(response).await["code"], "unauthenticated");
+    }
+
+    #[tokio::test]
+    async fn authenticated_scene_get_creates_initial_water_beaker() {
+        let app = test_app().await;
+        let (_csrf_token, _csrf_cookie, session_cookie) =
+            register_user(&app, "scene@chemlab.local").await;
+        let response = get_scene(&app, Some(&session_cookie)).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let scene = body_json(response).await;
+        assert!(!scene["lab_id"].as_str().unwrap_or("").is_empty());
+        assert_eq!(scene["version"], 0);
+        let water = scene["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "beaker-water")
+            .unwrap();
+        assert_eq!(water["properties"]["volume_ml"], 250.0);
+        assert_eq!(water["properties"]["fill_ml"], 200.0);
+        assert_eq!(water["properties"]["transparent"], true);
+        assert_eq!(water["properties"]["colourless"], true);
+        assert_eq!(water["properties"]["temperature_c"], 20);
+        assert_eq!(
+            water["properties"]["composition"][0]["substance_id"],
+            "water"
+        );
+    }
+
+    #[tokio::test]
+    async fn action_without_csrf_is_forbidden() {
+        let app = test_app().await;
+        let (_csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "no-csrf-action@chemlab.local").await;
+        let response = post_action(
+            &app,
+            &format!("{session_cookie}; {csrf_cookie}"),
+            None,
+            serde_json::json!({
+                "type": "use_tool",
+                "tool_item_id": "spoon-1",
+                "target_item_id": "beaker-nacl"
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(body_json(response).await["code"], "csrf");
+    }
+
+    #[tokio::test]
+    async fn use_tool_action_persists_spoon_holding_across_get() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "scoop@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "use_tool",
+                "tool_item_id": "spoon-1",
+                "target_item_id": "beaker-nacl"
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body_json(response).await["scene"]["version"], 1);
+
+        let scene = body_json(get_scene(&app, Some(&cookies)).await).await;
+        let spoon = scene["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "spoon-1")
+            .unwrap();
+        assert_eq!(scene["version"], 1);
+        assert_eq!(spoon["properties"]["holding"][0]["substance_id"], "nacl");
+    }
+
+    #[tokio::test]
+    async fn pour_nacl_action_persists_dissolve_scene_and_events() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "pour@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        let scoop = serde_json::json!({
+            "type": "use_tool",
+            "tool_item_id": "spoon-1",
+            "target_item_id": "beaker-nacl"
+        });
+        assert_eq!(
+            post_action(&app, &cookies, Some(&csrf_token), scoop)
+                .await
+                .status(),
+            StatusCode::OK
+        );
+
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "pour",
+                "source_item_id": "spoon-1",
+                "target_item_id": "beaker-water"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let action = body_json(response).await;
+        assert_eq!(action["scene"]["version"], 2);
+        assert_eq!(action["scene"]["last_events"][0]["kind"], "poured");
+        assert_eq!(action["scene"]["last_events"][1]["kind"], "dissolved");
+        assert_eq!(
+            action["scene"]["last_events"][1]["message"],
+            "Sodium chloride (NaCl) dissolves in water at bench temperature."
+        );
+
+        let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
+        assert_eq!(persisted, action["scene"]);
+        let water = persisted["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "beaker-water")
+            .unwrap();
+        assert!(water["properties"]["composition"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["substance_id"] == "nacl" && entry["phase"] == "aqueous"));
+    }
+
+    #[tokio::test]
+    async fn scene_errors_return_stable_bad_request_codes() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "scene-errors@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        let cases = [
+            (
+                serde_json::json!({
+                    "type": "use_tool",
+                    "tool_item_id": "missing",
+                    "target_item_id": "beaker-nacl"
+                }),
+                "unknown_item",
+            ),
+            (
+                serde_json::json!({
+                    "type": "pour",
+                    "source_item_id": "spoon-1",
+                    "target_item_id": "beaker-water"
+                }),
+                "empty_holding",
+            ),
+            (
+                serde_json::json!({
+                    "type": "use_tool",
+                    "tool_item_id": "beaker-water",
+                    "target_item_id": "beaker-nacl"
+                }),
+                "invalid_action",
+            ),
+        ];
+
+        for (action, code) in cases {
+            let response = post_action(&app, &cookies, Some(&csrf_token), action).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(body_json(response).await["code"], code);
+        }
+    }
+
     #[tokio::test]
     async fn login_burst_is_rate_limited() {
         let app = test_app().await;

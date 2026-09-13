@@ -17,6 +17,13 @@ export type { MeResponse } from './MeResponse'
 export type { CsrfResponse } from './CsrfResponse'
 export type { DissolveRequest } from './DissolveRequest'
 export type { DissolveResponse } from './DissolveResponse'
+export type { CompositionEntry } from './CompositionEntry'
+export type { ItemProperties } from './ItemProperties'
+export type { Item } from './Item'
+export type { LabEvent } from './LabEvent'
+export type { LabScene } from './LabScene'
+export type { LabAction } from './LabAction'
+export type { LabActionResponse } from './LabActionResponse'
 EOF
 echo "OK: apps/web/src/generated/"
 ls -1 apps/web/src/generated/

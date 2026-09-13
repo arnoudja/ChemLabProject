@@ -1,0 +1,532 @@
+//! Lab scene engine: scoop with tools, pour into vessels, dissolve as a pour consequence.
+
+use thiserror::Error;
+
+use crate::dissolve::{dissolve, DissolveError};
+
+/// One substance entry in an item's composition or holding list.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompositionEntry {
+    pub substance_id: String,
+    /// `"solid"` | `"liquid"` | `"aqueous"` for this slice.
+    pub phase: String,
+    pub amount_ml: Option<f64>,
+    pub amount_scoop: Option<u32>,
+}
+
+/// Physical / chemical properties of a lab item (server-authored).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ItemProperties {
+    pub volume_ml: Option<f64>,
+    pub fill_ml: Option<f64>,
+    pub transparent: Option<bool>,
+    pub colourless: Option<bool>,
+    pub temperature_c: Option<i32>,
+    pub composition: Vec<CompositionEntry>,
+    pub holding: Vec<CompositionEntry>,
+}
+
+/// A single item in the lab scene (beaker, spoon, …).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SceneItem {
+    pub id: String,
+    /// `"beaker"` | `"spoon"` | …
+    pub kind: String,
+    pub label: String,
+    /// `"bench"` | `"hand"` | …
+    pub location: String,
+    pub properties: ItemProperties,
+}
+
+/// UI-facing event from the last applied action(s).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SceneEvent {
+    /// e.g. `"scooped"`, `"poured"`, `"dissolved"`, `"did_not_dissolve"`.
+    pub kind: String,
+    pub message: String,
+}
+
+/// In-memory lab scene (domain model; wire conversion is the server's job).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Scene {
+    pub lab_id: String,
+    pub version: u32,
+    pub temperature_c: i32,
+    pub items: Vec<SceneItem>,
+    pub last_events: Vec<SceneEvent>,
+}
+
+/// Action applied to a scene (mirrors wire `LabAction` vocabulary).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    UseTool {
+        tool_item_id: String,
+        target_item_id: String,
+    },
+    Pour {
+        source_item_id: String,
+        target_item_id: String,
+    },
+}
+
+/// Errors when an action cannot be applied.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum SceneError {
+    #[error("unknown item")]
+    UnknownItem,
+    #[error("invalid action")]
+    InvalidAction,
+    #[error("empty holding")]
+    EmptyHolding,
+    #[error(transparent)]
+    Dissolve(#[from] DissolveError),
+}
+
+/// Build the default four-item bench scene for a lab.
+pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
+    Scene {
+        lab_id: lab_id.into(),
+        version: 0,
+        temperature_c: 20,
+        last_events: Vec::new(),
+        items: vec![
+            SceneItem {
+                id: "spoon-1".into(),
+                kind: "spoon".into(),
+                label: "Spoon".into(),
+                location: "bench".into(),
+                properties: ItemProperties::default(),
+            },
+            SceneItem {
+                id: "beaker-nacl".into(),
+                kind: "beaker".into(),
+                label: "Sodium chloride".into(),
+                location: "bench".into(),
+                properties: ItemProperties {
+                    volume_ml: Some(250.0),
+                    fill_ml: Some(100.0),
+                    transparent: Some(true),
+                    colourless: Some(true),
+                    temperature_c: Some(20),
+                    composition: vec![CompositionEntry {
+                        substance_id: "nacl".into(),
+                        phase: "solid".into(),
+                        amount_ml: None,
+                        amount_scoop: Some(10),
+                    }],
+                    holding: Vec::new(),
+                },
+            },
+            SceneItem {
+                id: "beaker-sand".into(),
+                kind: "beaker".into(),
+                label: "Sand".into(),
+                location: "bench".into(),
+                properties: ItemProperties {
+                    volume_ml: Some(250.0),
+                    fill_ml: Some(100.0),
+                    transparent: Some(true),
+                    colourless: Some(true),
+                    temperature_c: Some(20),
+                    composition: vec![CompositionEntry {
+                        substance_id: "sand".into(),
+                        phase: "solid".into(),
+                        amount_ml: None,
+                        amount_scoop: Some(10),
+                    }],
+                    holding: Vec::new(),
+                },
+            },
+            SceneItem {
+                id: "beaker-water".into(),
+                kind: "beaker".into(),
+                label: "Water".into(),
+                location: "bench".into(),
+                properties: ItemProperties {
+                    volume_ml: Some(250.0),
+                    fill_ml: Some(200.0),
+                    transparent: Some(true),
+                    colourless: Some(true),
+                    temperature_c: Some(20),
+                    composition: vec![CompositionEntry {
+                        substance_id: "water".into(),
+                        phase: "liquid".into(),
+                        amount_ml: Some(200.0),
+                        amount_scoop: None,
+                    }],
+                    holding: Vec::new(),
+                },
+            },
+        ],
+    }
+}
+
+/// Apply a single action, mutating the scene in place.
+pub fn apply_action(scene: &mut Scene, action: Action) -> Result<(), SceneError> {
+    scene.last_events.clear();
+    match action {
+        Action::UseTool {
+            tool_item_id,
+            target_item_id,
+        } => apply_use_tool(scene, &tool_item_id, &target_item_id),
+        Action::Pour {
+            source_item_id,
+            target_item_id,
+        } => apply_pour(scene, &source_item_id, &target_item_id),
+    }
+}
+
+fn find_item_index(scene: &Scene, id: &str) -> Result<usize, SceneError> {
+    scene
+        .items
+        .iter()
+        .position(|i| i.id == id)
+        .ok_or(SceneError::UnknownItem)
+}
+
+fn apply_use_tool(
+    scene: &mut Scene,
+    tool_item_id: &str,
+    target_item_id: &str,
+) -> Result<(), SceneError> {
+    let tool_idx = find_item_index(scene, tool_item_id)?;
+    let target_idx = find_item_index(scene, target_item_id)?;
+
+    let tool_kind = scene.items[tool_idx].kind.as_str();
+    if tool_kind != "spoon" {
+        return Err(SceneError::InvalidAction);
+    }
+
+    let solid = scene.items[target_idx]
+        .properties
+        .composition
+        .iter()
+        .find(|c| c.phase == "solid" && (c.substance_id == "nacl" || c.substance_id == "sand"))
+        .cloned()
+        .ok_or(SceneError::InvalidAction)?;
+
+    let scoop = CompositionEntry {
+        substance_id: solid.substance_id.clone(),
+        phase: "solid".into(),
+        amount_ml: None,
+        amount_scoop: Some(1),
+    };
+
+    let tool = &mut scene.items[tool_idx];
+    tool.location = "hand".into();
+    tool.properties.holding = vec![scoop];
+
+    scene.last_events.push(SceneEvent {
+        kind: "scooped".into(),
+        message: format!("Scooped {} onto the spoon.", solid.substance_id),
+    });
+    Ok(())
+}
+
+fn apply_pour(
+    scene: &mut Scene,
+    source_item_id: &str,
+    target_item_id: &str,
+) -> Result<(), SceneError> {
+    let source_idx = find_item_index(scene, source_item_id)?;
+    let target_idx = find_item_index(scene, target_item_id)?;
+
+    if scene.items[source_idx].properties.holding.is_empty() {
+        return Err(SceneError::EmptyHolding);
+    }
+
+    let held = scene.items[source_idx].properties.holding[0].clone();
+    if held.phase != "solid" {
+        return Err(SceneError::InvalidAction);
+    }
+
+    let target = &scene.items[target_idx];
+    let has_water = target
+        .properties
+        .composition
+        .iter()
+        .any(|c| c.substance_id == "water" && c.phase == "liquid");
+    if !has_water {
+        return Err(SceneError::InvalidAction);
+    }
+
+    let temperature_c = target
+        .properties
+        .temperature_c
+        .unwrap_or(scene.temperature_c);
+
+    let outcome = dissolve(&held.substance_id, "water", temperature_c)?;
+
+    // Clear source holding before mutating target (indices stay valid).
+    scene.items[source_idx].properties.holding.clear();
+
+    scene.last_events.push(SceneEvent {
+        kind: "poured".into(),
+        message: format!("Poured {} into the target.", held.substance_id),
+    });
+
+    let target = &mut scene.items[target_idx];
+    if outcome.dissolved {
+        target.properties.composition.push(CompositionEntry {
+            substance_id: held.substance_id,
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: held.amount_scoop,
+        });
+        scene.last_events.push(SceneEvent {
+            kind: "dissolved".into(),
+            message: outcome.explanation.into(),
+        });
+    } else {
+        target.properties.composition.push(CompositionEntry {
+            substance_id: held.substance_id,
+            phase: "solid".into(),
+            amount_ml: None,
+            amount_scoop: held.amount_scoop.or(Some(1)),
+        });
+        scene.last_events.push(SceneEvent {
+            kind: "did_not_dissolve".into(),
+            message: outcome.explanation.into(),
+        });
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item<'a>(scene: &'a Scene, id: &str) -> &'a SceneItem {
+        scene
+            .items
+            .iter()
+            .find(|i| i.id == id)
+            .unwrap_or_else(|| panic!("missing item {id}"))
+    }
+
+    #[test]
+    fn initial_bench_scene_has_four_items_with_water_properties() {
+        let scene = initial_bench_scene("lab-test");
+        assert_eq!(scene.lab_id, "lab-test");
+        assert_eq!(scene.temperature_c, 20);
+        assert_eq!(scene.version, 0);
+        assert!(scene.last_events.is_empty());
+
+        let ids: Vec<_> = scene.items.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&"spoon-1"));
+        assert!(ids.contains(&"beaker-nacl"));
+        assert!(ids.contains(&"beaker-sand"));
+        assert!(ids.contains(&"beaker-water"));
+
+        let water = item(&scene, "beaker-water");
+        assert_eq!(water.kind, "beaker");
+        assert_eq!(water.label, "Water");
+        assert_eq!(water.location, "bench");
+        assert_eq!(water.properties.volume_ml, Some(250.0));
+        assert_eq!(water.properties.fill_ml, Some(200.0));
+        assert_eq!(water.properties.transparent, Some(true));
+        assert_eq!(water.properties.colourless, Some(true));
+        assert_eq!(water.properties.temperature_c, Some(20));
+        assert_eq!(water.properties.composition.len(), 1);
+        assert_eq!(water.properties.composition[0].substance_id, "water");
+        assert_eq!(water.properties.composition[0].phase, "liquid");
+        assert_eq!(water.properties.composition[0].amount_ml, Some(200.0));
+
+        let nacl = item(&scene, "beaker-nacl");
+        assert!(nacl
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "nacl" && c.phase == "solid"));
+
+        let sand = item(&scene, "beaker-sand");
+        assert!(sand
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "sand" && c.phase == "solid"));
+
+        let spoon = item(&scene, "spoon-1");
+        assert_eq!(spoon.kind, "spoon");
+        assert!(spoon.properties.holding.is_empty());
+    }
+
+    #[test]
+    fn use_tool_spoon_scoops_nacl_without_dissolving() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+
+        let spoon = item(&scene, "spoon-1");
+        assert_eq!(spoon.location, "hand");
+        assert_eq!(spoon.properties.holding.len(), 1);
+        assert_eq!(spoon.properties.holding[0].substance_id, "nacl");
+        assert_eq!(spoon.properties.holding[0].phase, "solid");
+        assert_eq!(spoon.properties.holding[0].amount_scoop, Some(1));
+
+        assert!(scene.last_events.iter().any(|e| e.kind == "scooped"));
+        // Dissolve must not run yet — water still only water.
+        let water = item(&scene, "beaker-water");
+        assert!(water
+            .properties
+            .composition
+            .iter()
+            .all(|c| c.substance_id == "water"));
+    }
+
+    #[test]
+    fn pour_nacl_into_water_dissolves_without_leftover_grains() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+
+        let spoon = item(&scene, "spoon-1");
+        assert!(spoon.properties.holding.is_empty());
+
+        let water = item(&scene, "beaker-water");
+        assert!(water
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "nacl" && c.phase == "aqueous"));
+        assert!(!water
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "nacl" && c.phase == "solid"));
+        assert!(scene.last_events.iter().any(|e| {
+            e.kind == "dissolved"
+                && e.message == "Sodium chloride (NaCl) dissolves in water at bench temperature."
+        }));
+    }
+
+    #[test]
+    fn pour_sand_into_water_leaves_undissolved_solid() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-sand".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+
+        let spoon = item(&scene, "spoon-1");
+        assert!(spoon.properties.holding.is_empty());
+
+        let water = item(&scene, "beaker-water");
+        assert!(water.properties.composition.iter().any(|c| {
+            c.substance_id == "sand" && c.phase == "solid" && c.amount_scoop == Some(1)
+        }));
+        assert!(!water
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "sand" && c.phase == "aqueous"));
+        assert!(scene.last_events.iter().any(|e| {
+            e.kind == "did_not_dissolve"
+                && e.message == "Sand (silica) does not dissolve in water at bench temperature."
+        }));
+    }
+
+    #[test]
+    fn unknown_item_ids_return_scene_error() {
+        let mut scene = initial_bench_scene("lab-test");
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "no-such-tool".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::UnknownItem);
+
+        let err = apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "no-such-beaker".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::UnknownItem);
+    }
+
+    #[test]
+    fn pour_with_empty_holding_returns_error() {
+        let mut scene = initial_bench_scene("lab-test");
+        let err = apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::EmptyHolding);
+    }
+
+    #[test]
+    fn pour_into_wrong_temperature_solvent_surfaces_dissolve_error() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+
+        let water = scene
+            .items
+            .iter_mut()
+            .find(|i| i.id == "beaker-water")
+            .unwrap();
+        water.properties.temperature_c = Some(21);
+
+        let err = apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            SceneError::Dissolve(DissolveError::UnsupportedTemperature)
+        );
+    }
+}

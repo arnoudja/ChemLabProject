@@ -13,12 +13,13 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::cookie::CookieJar;
 use chemlab_contracts::{
-    AuthUserResponse, CsrfResponse, DissolveRequest, DissolveResponse, HealthResponse,
-    LoginRequest, MeResponse, RegisterRequest,
+    AuthUserResponse, CsrfResponse, DissolveRequest, DissolveResponse, HealthResponse, LabAction,
+    LabActionResponse, LabEvent, LabScene, LoginRequest, MeResponse, RegisterRequest,
 };
 use chemlab_db::{
     create_session, delete_session_by_token_hash, delete_sessions_for_user, find_user_by_email,
-    find_valid_session_by_token_hash, insert_user, UserRecord,
+    find_valid_session_by_token_hash, get_or_create_lab_for_user, insert_user, save_lab_state,
+    LabRecord, UserRecord,
 };
 use chrono::Duration;
 
@@ -27,6 +28,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/health", get(health))
         .route("/api/auth/csrf", get(csrf))
         .route("/api/auth/me", get(me))
+        .route("/api/lab/scene", get(lab_scene))
         .merge(csrf_protected())
 }
 
@@ -37,6 +39,7 @@ fn csrf_protected() -> Router<AppState> {
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
         .route("/api/lab/dissolve", post(lab_dissolve))
+        .route("/api/lab/action", post(lab_action))
         .layer(middleware::from_fn(require_csrf))
 }
 
@@ -132,6 +135,44 @@ async fn lab_dissolve(
     }))
 }
 
+async fn lab_scene(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Json<LabScene>, ApiError> {
+    let user = require_current_user(&state, &jar).await?;
+    let scene = load_or_initialize_scene(&state, &user.id).await?;
+    Ok(Json(scene_to_contract(scene)))
+}
+
+async fn lab_action(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(action): Json<LabAction>,
+) -> Result<Json<LabActionResponse>, ApiError> {
+    let user = require_current_user(&state, &jar).await?;
+    let mut scene = load_or_initialize_scene(&state, &user.id).await?;
+    chemlab_core::apply_action(&mut scene, action_to_core(action))?;
+    scene.version = scene
+        .version
+        .checked_add(1)
+        .ok_or_else(|| ApiError::internal("Lab version overflow"))?;
+
+    let contract_scene = scene_to_contract(scene);
+    let state_blob = serde_json::to_vec(&contract_scene)
+        .map_err(|error| ApiError::internal(format!("serialize lab scene: {error}")))?;
+    save_lab_state(
+        state.pool(),
+        &contract_scene.lab_id,
+        &state_blob,
+        i64::from(contract_scene.version),
+    )
+    .await?;
+
+    Ok(Json(LabActionResponse {
+        scene: contract_scene,
+    }))
+}
+
 async fn me(State(state): State<AppState>, jar: CookieJar) -> Result<Json<MeResponse>, ApiError> {
     match current_user(&state, &jar).await? {
         Some(user) => Ok(Json(MeResponse {
@@ -167,6 +208,176 @@ async fn current_user(state: &AppState, jar: &CookieJar) -> Result<Option<UserRe
         Ok((_session, user)) => Ok(Some(user)),
         Err(chemlab_db::DbError::SessionInvalid) => Ok(None),
         Err(err) => Err(err.into()),
+    }
+}
+
+async fn require_current_user(state: &AppState, jar: &CookieJar) -> Result<UserRecord, ApiError> {
+    current_user(state, jar)
+        .await?
+        .ok_or_else(|| ApiError::unauthorized("unauthenticated", "Login required"))
+}
+
+async fn load_or_initialize_scene(
+    state: &AppState,
+    user_id: &str,
+) -> Result<chemlab_core::Scene, ApiError> {
+    let lab = get_or_create_lab_for_user(state.pool(), user_id).await?;
+    if let Some(blob) = lab.state_blob.as_deref().filter(|blob| !blob.is_empty()) {
+        let mut scene = contract_to_scene(
+            serde_json::from_slice(blob)
+                .map_err(|error| ApiError::internal(format!("deserialize lab scene: {error}")))?,
+        );
+        scene.version = lab_version(&lab)?;
+        scene.lab_id = lab.id;
+        return Ok(scene);
+    }
+
+    let scene = chemlab_core::initial_bench_scene(&lab.id);
+    let contract_scene = scene_to_contract(scene.clone());
+    let state_blob = serde_json::to_vec(&contract_scene)
+        .map_err(|error| ApiError::internal(format!("serialize lab scene: {error}")))?;
+    save_lab_state(
+        state.pool(),
+        &lab.id,
+        &state_blob,
+        i64::from(contract_scene.version),
+    )
+    .await?;
+    Ok(scene)
+}
+
+fn lab_version(lab: &LabRecord) -> Result<u32, ApiError> {
+    u32::try_from(lab.version).map_err(|_| ApiError::internal("Invalid lab version"))
+}
+
+fn action_to_core(action: LabAction) -> chemlab_core::Action {
+    match action {
+        LabAction::UseTool {
+            tool_item_id,
+            target_item_id,
+        } => chemlab_core::Action::UseTool {
+            tool_item_id,
+            target_item_id,
+        },
+        LabAction::Pour {
+            source_item_id,
+            target_item_id,
+        } => chemlab_core::Action::Pour {
+            source_item_id,
+            target_item_id,
+        },
+    }
+}
+
+fn scene_to_contract(scene: chemlab_core::Scene) -> LabScene {
+    LabScene {
+        lab_id: scene.lab_id,
+        version: scene.version,
+        temperature_c: scene.temperature_c,
+        items: scene
+            .items
+            .into_iter()
+            .map(|item| chemlab_contracts::Item {
+                id: item.id,
+                kind: item.kind,
+                label: item.label,
+                location: item.location,
+                properties: chemlab_contracts::ItemProperties {
+                    volume_ml: item.properties.volume_ml,
+                    fill_ml: item.properties.fill_ml,
+                    transparent: item.properties.transparent,
+                    colourless: item.properties.colourless,
+                    temperature_c: item.properties.temperature_c,
+                    composition: item
+                        .properties
+                        .composition
+                        .into_iter()
+                        .map(composition_to_contract)
+                        .collect(),
+                    holding: item
+                        .properties
+                        .holding
+                        .into_iter()
+                        .map(composition_to_contract)
+                        .collect(),
+                },
+            })
+            .collect(),
+        last_events: scene
+            .last_events
+            .into_iter()
+            .map(|event| LabEvent {
+                kind: event.kind,
+                message: event.message,
+            })
+            .collect(),
+    }
+}
+
+fn composition_to_contract(
+    entry: chemlab_core::CompositionEntry,
+) -> chemlab_contracts::CompositionEntry {
+    chemlab_contracts::CompositionEntry {
+        substance_id: entry.substance_id,
+        phase: entry.phase,
+        amount_ml: entry.amount_ml,
+        amount_scoop: entry.amount_scoop,
+    }
+}
+
+fn contract_to_scene(scene: LabScene) -> chemlab_core::Scene {
+    chemlab_core::Scene {
+        lab_id: scene.lab_id,
+        version: scene.version,
+        temperature_c: scene.temperature_c,
+        items: scene
+            .items
+            .into_iter()
+            .map(|item| chemlab_core::SceneItem {
+                id: item.id,
+                kind: item.kind,
+                label: item.label,
+                location: item.location,
+                properties: chemlab_core::ItemProperties {
+                    volume_ml: item.properties.volume_ml,
+                    fill_ml: item.properties.fill_ml,
+                    transparent: item.properties.transparent,
+                    colourless: item.properties.colourless,
+                    temperature_c: item.properties.temperature_c,
+                    composition: item
+                        .properties
+                        .composition
+                        .into_iter()
+                        .map(composition_to_core)
+                        .collect(),
+                    holding: item
+                        .properties
+                        .holding
+                        .into_iter()
+                        .map(composition_to_core)
+                        .collect(),
+                },
+            })
+            .collect(),
+        last_events: scene
+            .last_events
+            .into_iter()
+            .map(|event| chemlab_core::SceneEvent {
+                kind: event.kind,
+                message: event.message,
+            })
+            .collect(),
+    }
+}
+
+fn composition_to_core(
+    entry: chemlab_contracts::CompositionEntry,
+) -> chemlab_core::CompositionEntry {
+    chemlab_core::CompositionEntry {
+        substance_id: entry.substance_id,
+        phase: entry.phase,
+        amount_ml: entry.amount_ml,
+        amount_scoop: entry.amount_scoop,
     }
 }
 

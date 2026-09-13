@@ -58,8 +58,8 @@ Useful env vars (also in `.env.example`):
 - `CHEMLAB_BIND` — default `127.0.0.1:3847` (use `0.0.0.0:3847` for LAN access)
 - `CHEMLAB_DATABASE_URL` — default `sqlite://chemlab.db`
 - `CHEMLAB_VITE_PROXY` — e.g. `http://127.0.0.1:5179` so Axum serves `/` by proxying Vite
-- `CHEMLAB_STATIC_DIR` — e.g. `apps/web/dist` after `npm run build`
-- `CHEMLAB_COOKIE_SECURE` — `true` behind HTTPS
+- `CHEMLAB_COOKIE_SECURE` — `true` behind HTTPS (sets `Secure` on session, CSRF, and clear-session cookies)
+- `CHEMLAB_STATIC_DIR` — directory with built SPA `index.html` (e.g. `apps/web/dist`); missing/incomplete dir returns a 404 HTML page
 
 Health check: [http://127.0.0.1:3847/api/health](http://127.0.0.1:3847/api/health)
 

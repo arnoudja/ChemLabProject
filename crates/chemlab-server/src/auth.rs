@@ -170,4 +170,22 @@ mod tests {
         assert!(!csrf_tokens_match("same-token", ""));
         assert!(!csrf_tokens_match("", ""));
     }
+
+    #[test]
+    fn cookie_secure_flag_applies_to_session_csrf_and_clear() {
+        let ttl = Duration::hours(1);
+        let session = session_cookie("session-tok", true, ttl);
+        assert_eq!(session.secure(), Some(true));
+        let csrf = csrf_cookie("csrf-tok", true, ttl);
+        assert_eq!(csrf.secure(), Some(true));
+        let clear = clear_session_cookie(true);
+        assert_eq!(clear.secure(), Some(true));
+
+        assert_ne!(
+            session_cookie("session-tok", false, ttl).secure(),
+            Some(true)
+        );
+        assert_ne!(csrf_cookie("csrf-tok", false, ttl).secure(), Some(true));
+        assert_ne!(clear_session_cookie(false).secure(), Some(true));
+    }
 }

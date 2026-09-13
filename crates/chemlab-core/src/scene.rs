@@ -267,12 +267,29 @@ fn apply_pour(
 
     let target = &mut scene.items[target_idx];
     if outcome.dissolved {
-        target.properties.composition.push(CompositionEntry {
-            substance_id: held.substance_id,
-            phase: "aqueous".into(),
-            amount_ml: None,
-            amount_scoop: held.amount_scoop,
-        });
+        // Server-authored composition for inspection. Dissolved NaCl is exposed as
+        // aqueous ions (not a client-side dissociation of a substance_id blob).
+        if held.substance_id == "nacl" {
+            target.properties.composition.push(CompositionEntry {
+                substance_id: "na+".into(),
+                phase: "aqueous".into(),
+                amount_ml: None,
+                amount_scoop: None,
+            });
+            target.properties.composition.push(CompositionEntry {
+                substance_id: "cl-".into(),
+                phase: "aqueous".into(),
+                amount_ml: None,
+                amount_scoop: None,
+            });
+        } else {
+            target.properties.composition.push(CompositionEntry {
+                substance_id: held.substance_id,
+                phase: "aqueous".into(),
+                amount_ml: None,
+                amount_scoop: held.amount_scoop,
+            });
+        }
         scene.last_events.push(SceneEvent {
             kind: "dissolved".into(),
             message: outcome.explanation.into(),
@@ -409,12 +426,17 @@ mod tests {
             .properties
             .composition
             .iter()
-            .any(|c| c.substance_id == "nacl" && c.phase == "aqueous"));
+            .any(|c| c.substance_id == "na+" && c.phase == "aqueous"));
+        assert!(water
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "cl-" && c.phase == "aqueous"));
         assert!(!water
             .properties
             .composition
             .iter()
-            .any(|c| c.substance_id == "nacl" && c.phase == "solid"));
+            .any(|c| c.substance_id == "nacl"));
         assert!(scene.last_events.iter().any(|e| {
             e.kind == "dissolved"
                 && e.message == "Sodium chloride (NaCl) dissolves in water at bench temperature."

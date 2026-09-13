@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react'
 import type { Item, LabScene } from '../generated/contracts'
 import { fetchLabScene, postLabAction } from '../lib/api'
+import { formatCompositionLabel } from '../lib/compositionDisplay'
 import { optionalArray } from '../lib/scene'
 
 const SPOON_ID = 'spoon-1'
@@ -33,6 +34,10 @@ function undissolvedSolidInWater(scene: LabScene): 'nacl' | 'sand' | null {
     return solid.substance_id
   }
   return null
+}
+
+function itemTemperatureC(scene: LabScene, item: Item): number {
+  return item.properties.temperature_c ?? scene.temperature_c
 }
 
 function WaterBeakerSvg({
@@ -121,9 +126,57 @@ function outcomeLabel(kind: string): string | null {
   return null
 }
 
+function BeakerInspectPanel({
+  scene,
+  item,
+  onClose,
+}: {
+  scene: LabScene
+  item: Item
+  onClose: () => void
+}) {
+  const composition = optionalArray(item.properties.composition)
+  const temperatureC = itemTemperatureC(scene, item)
+
+  return (
+    <aside
+      className="lab-beaker-inspect mt-3 rounded-xl border border-[var(--border)] bg-[var(--input-bg)] p-3 text-sm"
+      role="dialog"
+      aria-label={`Contents of ${item.label}`}
+      data-beaker-inspect
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-medium text-[var(--ink)]">{item.label}</p>
+          <p className="mt-1 text-[var(--ink-soft)]">Temperature: {temperatureC}°C</p>
+        </div>
+        <button
+          type="button"
+          className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--ink-soft)] hover:bg-[var(--surface-hover)]"
+          onClick={onClose}
+        >
+          Close
+        </button>
+      </div>
+      {composition.length > 0 ? (
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--ink)]">
+          {composition.map((entry, index) => (
+            <li key={`${entry.substance_id}-${entry.phase}-${index}`}>
+              {formatCompositionLabel(entry.substance_id, entry.phase)}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-[var(--ink-soft)]">No composition reported by the server.</p>
+      )}
+    </aside>
+  )
+}
+
 export function LabBench() {
   const [scene, setScene] = useState<LabScene | null>(null)
   const [selectedToolItemId, setSelectedToolItemId] = useState<string | null>(null)
+  const [inspectItemId, setInspectItemId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
@@ -155,45 +208,58 @@ export function LabBench() {
 
   function onSpoon(event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
+    setInspectItemId(null)
     setSelectedToolItemId((current) => (current === SPOON_ID ? null : SPOON_ID))
   }
 
   async function onSolid(targetItemId: string, event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
-    if (selectedToolItemId !== SPOON_ID || busy) return
-    setError(null)
-    setBusy(true)
-    try {
-      const response = await postLabAction({
-        type: 'use_tool',
-        tool_item_id: SPOON_ID,
-        target_item_id: targetItemId,
-      })
-      setScene(response.scene)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed')
-    } finally {
-      setBusy(false)
+    if (selectedToolItemId === SPOON_ID) {
+      if (busy) return
+      setError(null)
+      setBusy(true)
+      try {
+        const response = await postLabAction({
+          type: 'use_tool',
+          tool_item_id: SPOON_ID,
+          target_item_id: targetItemId,
+        })
+        setScene(response.scene)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Action failed')
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+    if (selectedToolItemId === null) {
+      setInspectItemId(targetItemId)
     }
   }
 
   async function onWater(event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
-    if (!scene || selectedToolItemId !== SPOON_ID || busy) return
-    if (!spoonHoldingSubstance(scene)) return
-    setError(null)
-    setBusy(true)
-    try {
-      const response = await postLabAction({
-        type: 'pour',
-        source_item_id: SPOON_ID,
-        target_item_id: WATER_ID,
-      })
-      setScene(response.scene)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed')
-    } finally {
-      setBusy(false)
+    if (!scene) return
+    if (selectedToolItemId === SPOON_ID) {
+      if (busy || !spoonHoldingSubstance(scene)) return
+      setError(null)
+      setBusy(true)
+      try {
+        const response = await postLabAction({
+          type: 'pour',
+          source_item_id: SPOON_ID,
+          target_item_id: WATER_ID,
+        })
+        setScene(response.scene)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Action failed')
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+    if (selectedToolItemId === null) {
+      setInspectItemId(WATER_ID)
     }
   }
 
@@ -206,6 +272,7 @@ export function LabBench() {
   const water = scene ? findItem(scene, WATER_ID) : undefined
   const spoon = scene ? findItem(scene, SPOON_ID) : undefined
   const lastEvents = scene ? optionalArray(scene.last_events) : []
+  const inspectItem = scene && inspectItemId ? findItem(scene, inspectItemId) : undefined
 
   return (
     <section
@@ -218,8 +285,8 @@ export function LabBench() {
       onMouseMove={holdingSelected ? trackPointer : undefined}
     >
       <p className="mb-3 text-sm text-[var(--ink-soft)]">
-        Pick up the spoon, scoop a solid, then click the water. The server owns the scene and
-        decides what happens.
+        Pick up the spoon, scoop a solid, then click the water. With the spoon put away, click a
+        beaker to inspect its contents.
       </p>
 
       {!scene && !error ? (
@@ -283,6 +350,14 @@ export function LabBench() {
         >
           <SpoonSvg fill={spoonFill} floating />
         </div>
+      ) : null}
+
+      {scene && inspectItem ? (
+        <BeakerInspectPanel
+          scene={scene}
+          item={inspectItem}
+          onClose={() => setInspectItemId(null)}
+        />
       ) : null}
 
       {error ? (

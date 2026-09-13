@@ -660,11 +660,16 @@ mod tests {
             .iter()
             .find(|item| item["id"] == "beaker-water")
             .unwrap();
-        assert!(water["properties"]["composition"]
-            .as_array()
-            .unwrap()
+        let composition = water["properties"]["composition"].as_array().unwrap();
+        assert!(composition
             .iter()
-            .any(|entry| entry["substance_id"] == "nacl" && entry["phase"] == "aqueous"));
+            .any(|entry| entry["substance_id"] == "na+" && entry["phase"] == "aqueous"));
+        assert!(composition
+            .iter()
+            .any(|entry| entry["substance_id"] == "cl-" && entry["phase"] == "aqueous"));
+        assert!(!composition
+            .iter()
+            .any(|entry| entry["substance_id"] == "nacl"));
     }
 
     #[tokio::test]

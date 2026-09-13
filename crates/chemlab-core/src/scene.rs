@@ -379,7 +379,7 @@ fn apply_pour(
         .temperature_c
         .unwrap_or(scene.temperature_c);
 
-    // Qualitative dissolve table is still keyed on integer bench °C.
+    // Soluble salts accept the beaker's current T; sand still requires bench °C.
     let outcome = dissolve(&held.substance_id, "water", temperature_c.round() as i32)?;
 
     // Clear source holding before mutating target (indices stay valid).
@@ -1194,13 +1194,13 @@ mod tests {
     }
 
     #[test]
-    fn pour_into_wrong_temperature_solvent_surfaces_dissolve_error() {
+    fn pour_sand_at_non_bench_temperature_surfaces_dissolve_error() {
         let mut scene = initial_bench_scene("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {
                 tool_item_id: "spoon-1".into(),
-                target_item_id: "beaker-nacl".into(),
+                target_item_id: "beaker-sand".into(),
             },
         )
         .unwrap();
@@ -1224,5 +1224,119 @@ mod tests {
             err,
             SceneError::Dissolve(DissolveError::UnsupportedTemperature)
         );
+    }
+
+    #[test]
+    fn pour_second_cacl2_scoop_succeeds_after_exothermic_heating() {
+        let mut scene = initial_bench_scene("lab-test");
+
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-cacl2".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+
+        let after_first = item(&scene, "beaker-water")
+            .properties
+            .temperature_c
+            .expect("water beaker should keep a temperature");
+        assert!(
+            after_first > 20.0,
+            "first CaCl2 scoop must raise beaker T above 20 °C, got {after_first}"
+        );
+
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-cacl2".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+
+        let water = item(&scene, "beaker-water");
+        let moles = 2.0 * (SPOON_SCOOP_MASS_G / CACL2_MOLAR_MASS_G_PER_MOL);
+        let ca = water
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "ca2+" && c.phase == "aqueous")
+            .unwrap();
+        assert!((ca.amount_mol.unwrap() - moles).abs() < 1e-12);
+
+        let after_second = water
+            .properties
+            .temperature_c
+            .expect("water beaker should keep a temperature");
+        assert!(
+            after_second > after_first,
+            "second CaCl2 scoop should heat further: {after_first} -> {after_second}"
+        );
+        assert!(scene.last_events.iter().any(|e| {
+            e.kind == "dissolved"
+                && e.message == "Calcium chloride (CaCl2) dissolves in water at bench temperature."
+        }));
+        assert!(item(&scene, "spoon-1").properties.holding.is_empty());
+    }
+
+    #[test]
+    fn pour_nacl_succeeds_after_mild_heating_above_bench() {
+        let mut scene = initial_bench_scene("lab-test");
+        let water = scene
+            .items
+            .iter_mut()
+            .find(|i| i.id == "beaker-water")
+            .unwrap();
+        water.properties.temperature_c = Some(21.5);
+
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+
+        let water = item(&scene, "beaker-water");
+        let moles = SPOON_SCOOP_MASS_G / NACL_MOLAR_MASS_G_PER_MOL;
+        let expected_t = 21.5
+            - (moles * NACL_DELTA_H_SOLUTION_J_PER_MOL) / (200.0 * WATER_SPECIFIC_HEAT_J_PER_G_K);
+        let actual = water
+            .properties
+            .temperature_c
+            .expect("water beaker should keep a temperature");
+        assert!((actual - expected_t).abs() < 1e-9);
+        assert!(scene.last_events.iter().any(|e| {
+            e.kind == "dissolved"
+                && e.message == "Sodium chloride (NaCl) dissolves in water at bench temperature."
+        }));
     }
 }

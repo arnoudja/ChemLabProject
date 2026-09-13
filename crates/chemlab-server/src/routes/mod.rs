@@ -1278,7 +1278,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pour_at_unsupported_temperature_maps_dissolve_error() {
+    async fn pour_sand_at_unsupported_temperature_maps_dissolve_error() {
         let (app, state) = test_app_state().await;
         let (csrf_token, csrf_cookie, session_cookie) =
             register_user(&app, "bad-temp@chemlab.local").await;
@@ -1291,7 +1291,7 @@ mod tests {
                 serde_json::json!({
                     "type": "use_tool",
                     "tool_item_id": "spoon-1",
-                    "target_item_id": "beaker-nacl"
+                    "target_item_id": "beaker-sand"
                 }),
             )
             .await
@@ -1328,6 +1328,78 @@ mod tests {
         .await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(body_json(response).await["code"], "unsupported_temperature");
+    }
+
+    #[tokio::test]
+    async fn pour_second_cacl2_scoop_after_heating_succeeds() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "cacl2-hot@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+
+        for scoop_n in 1..=2 {
+            assert_eq!(
+                post_action(
+                    &app,
+                    &cookies,
+                    Some(&csrf_token),
+                    serde_json::json!({
+                        "type": "use_tool",
+                        "tool_item_id": "spoon-1",
+                        "target_item_id": "beaker-cacl2"
+                    }),
+                )
+                .await
+                .status(),
+                StatusCode::OK
+            );
+            let response = post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "pour",
+                    "source_item_id": "spoon-1",
+                    "target_item_id": "beaker-water"
+                }),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK, "pour scoop {scoop_n}");
+            let action = body_json(response).await;
+            assert_eq!(
+                action["scene"]["last_events"][1]["kind"], "dissolved",
+                "scoop {scoop_n}: {action}"
+            );
+            assert_eq!(
+                action["scene"]["last_events"][1]["message"],
+                "Calcium chloride (CaCl2) dissolves in water at bench temperature."
+            );
+        }
+
+        let scene_response = get_scene(&app, Some(&cookies)).await;
+        assert_eq!(scene_response.status(), StatusCode::OK);
+        let scene = body_json(scene_response).await;
+        let water = scene["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .find(|item| item["id"] == "beaker-water")
+            .expect("beaker-water");
+        let temperature = water["properties"]["temperature_c"]
+            .as_f64()
+            .expect("temperature_c");
+        assert!(
+            temperature > 20.0,
+            "two CaCl2 scoops should leave water above 20 °C, got {temperature}"
+        );
+        let ca_mol = water["properties"]["composition"]
+            .as_array()
+            .expect("composition")
+            .iter()
+            .find(|c| c["substance_id"] == "ca2+" && c["phase"] == "aqueous")
+            .and_then(|c| c["amount_mol"].as_f64())
+            .expect("ca2+ moles");
+        assert!(ca_mol > 0.0);
     }
 
     #[tokio::test]
@@ -1477,6 +1549,20 @@ mod tests {
                 "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
             ),
             (
+                "cacl2",
+                "water",
+                25,
+                true,
+                "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
+            ),
+            (
+                "nacl",
+                "water",
+                19,
+                true,
+                "Sodium chloride (NaCl) dissolves in water at bench temperature.",
+            ),
+            (
                 "sand",
                 "water",
                 20,
@@ -1523,7 +1609,7 @@ mod tests {
             ("NaCl", "water", 20, "unknown_substance"),
             (" nacl ", "water", 20, "unknown_substance"),
             ("nacl", "ethanol", 20, "unsupported_solvent"),
-            ("nacl", "water", 21, "unsupported_temperature"),
+            ("sand", "water", 21, "unsupported_temperature"),
             ("", "water", 20, "invalid_input"),
             ("nacl", " ", 20, "invalid_input"),
         ];

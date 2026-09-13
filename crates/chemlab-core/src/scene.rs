@@ -909,8 +909,7 @@ mod tests {
         assert_eq!(scene.temperature_c, 20.0);
         assert!(scene.last_events.iter().any(|e| {
             e.kind == "dissolved"
-                && e.message
-                    == "Calcium chloride (CaCl2) dissolves in water at bench temperature."
+                && e.message == "Calcium chloride (CaCl2) dissolves in water at bench temperature."
         }));
     }
 

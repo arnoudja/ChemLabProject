@@ -89,10 +89,10 @@ export function formatCompositionAmount(
     return `${formatMolarity(molarity)} M`
   }
   if (entry.phase === 'solid' && entry.amount_g != null) {
-    return `${formatMassGrams(entry.amount_g)} g`
+    return `${formatFixedAmount(entry.amount_g)} g`
   }
   if (entry.phase === 'liquid' && entry.amount_ml != null) {
-    return `${formatVolumeMl(entry.amount_ml)} ml`
+    return `${formatFixedAmount(entry.amount_ml)} ml`
   }
   return null
 }
@@ -104,7 +104,8 @@ function formatMolarity(value: number): string {
   return value.toExponential(2)
 }
 
-function formatMassGrams(value: number): string {
+/** Shared number formatting for mass (g) and volume (ml) suffixes. */
+function formatFixedAmount(value: number): string {
   if (Number.isInteger(value)) return String(value)
   return value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
 }
@@ -112,10 +113,6 @@ function formatMassGrams(value: number): string {
 /** Format beaker/scene temperature for inspect labels (always two decimals). */
 export function formatTemperatureC(temperatureC: number): string {
   return temperatureC.toFixed(2)
-}
-
-function formatVolumeMl(value: number): string {
-  return formatMassGrams(value)
 }
 
 /** Label + optional amount for the beaker inspect list. */

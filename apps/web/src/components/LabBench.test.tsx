@@ -54,7 +54,7 @@ function initialScene(): LabScene {
           transparent: true,
           colourless: true,
           temperature_c: 20,
-          composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10 , amount_g: 2, amount_mol: null}],
+          composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10, amount_g: 2, amount_mol: null}],
           holding: [],
         },
       },
@@ -69,7 +69,7 @@ function initialScene(): LabScene {
           transparent: true,
           colourless: true,
           temperature_c: 20,
-          composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10 , amount_g: 2, amount_mol: null}],
+          composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10, amount_g: 2, amount_mol: null}],
           holding: [],
         },
       },
@@ -85,7 +85,7 @@ function initialScene(): LabScene {
           colourless: true,
           temperature_c: 20,
           composition: [
-            { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null , amount_g: null, amount_mol: null},
+            { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null, amount_g: null, amount_mol: null},
           ],
           holding: [],
         },
@@ -337,7 +337,7 @@ describe('LabBench', () => {
             transparent: true,
             colourless: true,
             temperature_c: 20,
-            composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10 , amount_g: null, amount_mol: null}],
+            composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10, amount_g: 2, amount_mol: null}],
           },
         },
         {
@@ -351,7 +351,7 @@ describe('LabBench', () => {
             transparent: true,
             colourless: true,
             temperature_c: 20,
-            composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10 , amount_g: null, amount_mol: null}],
+            composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10, amount_g: 2, amount_mol: null}],
           },
         },
         {
@@ -366,7 +366,7 @@ describe('LabBench', () => {
             colourless: true,
             temperature_c: 20,
             composition: [
-              { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null , amount_g: null, amount_mol: null},
+              { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null, amount_g: null, amount_mol: null},
             ],
           },
         },

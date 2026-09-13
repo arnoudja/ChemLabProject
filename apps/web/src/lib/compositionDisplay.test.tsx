@@ -71,20 +71,22 @@ describe('formatFormulaNodes', () => {
 })
 
 describe('formatCompositionAmount', () => {
-  it('formats aqueous molarity from server moles and solvent volume', () => {
+  it('formats aqueous molarity with two decimal places', () => {
     const ion = entry({ substance_id: 'na+', phase: 'aqueous', amount_mol: 0.003424 })
-    // 0.003424 mol / 0.2 L ≈ 0.0171 M
-    expect(formatCompositionAmount(ion, 0.2)).toBe('0.017 M')
+    // 0.003424 mol / 0.2 L ≈ 0.01712 M → 0.02 M at two decimals
+    expect(formatCompositionAmount(ion, 0.2)).toBe('0.02 M')
   })
 
-  it('formats solid mass from server grams', () => {
+  it('formats solid mass with two decimal places including trailing zeros', () => {
     const sand = entry({ substance_id: 'sand', phase: 'solid', amount_g: 0.4 })
-    expect(formatCompositionAmount(sand, 0.2)).toBe('0.4 g')
+    expect(formatCompositionAmount(sand, 0.2)).toBe('0.40 g')
+    const scoop = entry({ substance_id: 'sand', phase: 'solid', amount_g: 0.2 })
+    expect(formatCompositionAmount(scoop, 0.2)).toBe('0.20 g')
   })
 
-  it('formats liquid volume from server millilitres', () => {
+  it('formats liquid volume with two decimal places including trailing zeros', () => {
     const water = entry({ substance_id: 'water', phase: 'liquid', amount_ml: 200 })
-    expect(formatCompositionAmount(water, 0.2)).toBe('200 ml')
+    expect(formatCompositionAmount(water, 0.2)).toBe('200.00 ml')
   })
 
   it('omits amount when data is missing', () => {
@@ -126,10 +128,10 @@ describe('CompositionInspectLine', () => {
     )
     expect(container.querySelector('sup')?.textContent).toBe('+')
     expect(container.textContent).toContain('Na+ (aq)')
-    expect(container.textContent).toContain('0.017 M')
+    expect(container.textContent).toContain('0.02 M')
   })
 
-  it('shows solid SiO2 mass aggregate', () => {
+  it('shows solid SiO2 mass aggregate with two decimal places', () => {
     const { container } = render(
       <CompositionInspectLine
         entry={entry({ substance_id: 'sand', phase: 'solid', amount_g: 0.4 })}
@@ -138,10 +140,10 @@ describe('CompositionInspectLine', () => {
     )
     expect(container.querySelector('sub')?.textContent).toBe('2')
     expect(container.textContent).toContain('SiO2 (s)')
-    expect(container.textContent).toContain('0.4 g')
+    expect(container.textContent).toContain('0.40 g')
   })
 
-  it('shows liquid water volume from amount_ml', () => {
+  it('shows liquid water volume from amount_ml with two decimal places', () => {
     const { container } = render(
       <CompositionInspectLine
         entry={entry({ substance_id: 'water', phase: 'liquid', amount_ml: 200 })}
@@ -150,7 +152,7 @@ describe('CompositionInspectLine', () => {
     )
     expect(container.querySelector('sub')?.textContent).toBe('2')
     expect(container.textContent).toContain('H2O (l)')
-    expect(container.textContent).toContain('200 ml')
+    expect(container.textContent).toContain('200.00 ml')
   })
 })
 

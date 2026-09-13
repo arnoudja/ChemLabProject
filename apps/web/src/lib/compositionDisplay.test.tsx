@@ -71,10 +71,19 @@ describe('formatFormulaNodes', () => {
 })
 
 describe('formatCompositionAmount', () => {
-  it('formats aqueous molarity with two decimal places', () => {
+  it('formats aqueous molarity with three significant digits', () => {
     const ion = entry({ substance_id: 'na+', phase: 'aqueous', amount_mol: 0.003424 })
-    // 0.003424 mol / 0.2 L ≈ 0.01712 M → 0.02 M at two decimals
-    expect(formatCompositionAmount(ion, 0.2)).toBe('0.02 M')
+    // 0.003424 mol / 0.2 L ≈ 0.01712 M → 0.0171 M at three significant digits
+    expect(formatCompositionAmount(ion, 0.2)).toBe('0.0171 M')
+  })
+
+  it('keeps three significant digits for dilute and concentrated molarities', () => {
+    const dilute = entry({ substance_id: 'ca2+', phase: 'aqueous', amount_mol: 0.0001802 })
+    // 0.0001802 / 0.2 = 0.000901 → 0.000901 M
+    expect(formatCompositionAmount(dilute, 0.2)).toBe('0.000901 M')
+    const concentrated = entry({ substance_id: 'na+', phase: 'aqueous', amount_mol: 0.246 })
+    // 0.246 / 0.2 = 1.23 M
+    expect(formatCompositionAmount(concentrated, 0.2)).toBe('1.23 M')
   })
 
   it('formats solid mass with two decimal places including trailing zeros', () => {
@@ -128,7 +137,7 @@ describe('CompositionInspectLine', () => {
     )
     expect(container.querySelector('sup')?.textContent).toBe('+')
     expect(container.textContent).toContain('Na+ (aq)')
-    expect(container.textContent).toContain('0.02 M')
+    expect(container.textContent).toContain('0.0171 M')
   })
 
   it('shows solid SiO2 mass aggregate with two decimal places', () => {

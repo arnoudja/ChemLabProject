@@ -106,7 +106,7 @@ export function formatCompositionAmount(
 }
 
 function formatMolarity(value: number): string {
-  return value.toFixed(2)
+  return value.toPrecision(3)
 }
 
 /** Shared number formatting for mass (g) and volume (ml) suffixes — always two decimals. */

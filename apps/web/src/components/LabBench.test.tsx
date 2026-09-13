@@ -620,7 +620,7 @@ describe('LabBench', () => {
     expect(panel).toHaveTextContent('H2O (l)')
     expect(panel).toHaveTextContent('Na+ (aq)')
     expect(panel).toHaveTextContent('Cl− (aq)')
-    expect(panel).toHaveTextContent('0.02 M')
+    expect(panel).toHaveTextContent('0.0171 M')
     expect(panel.querySelectorAll('sup')).toHaveLength(2)
     expect(panel).toHaveTextContent('Temperature: 19.98°C')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
@@ -709,7 +709,7 @@ describe('LabBench', () => {
       const open = screen.getByRole('dialog', { name: 'Contents of Water' })
       expect(open).toHaveTextContent('Na+ (aq)')
       expect(open).toHaveTextContent('Cl− (aq)')
-      expect(open).toHaveTextContent('0.02 M')
+      expect(open).toHaveTextContent('0.0171 M')
       expect(open).toHaveTextContent('Temperature: 19.98°C')
     })
   })
@@ -971,9 +971,9 @@ describe('LabBench', () => {
     const moles = SPOON_SCOOP_MASS_G / CACL2_MOLAR_MASS_G_PER_MOL
     const expectedCaM = moles / 0.2
     const expectedClM = (2 * moles) / 0.2
-    expect(panel).toHaveTextContent(`${expectedCaM.toFixed(2)} M`)
+    expect(panel).toHaveTextContent(`${expectedCaM.toPrecision(3)} M`)
     expect(panel).toHaveTextContent('Cl')
-    expect(panel).toHaveTextContent(`${expectedClM.toFixed(2)} M`)
+    expect(panel).toHaveTextContent(`${expectedClM.toPrecision(3)} M`)
     const expectedT =
       20 -
       (moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL) / (200 * WATER_SPECIFIC_HEAT_J_PER_G_K)

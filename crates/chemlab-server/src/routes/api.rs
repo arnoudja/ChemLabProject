@@ -22,6 +22,7 @@ use chemlab_db::{
     LabRecord, UserRecord,
 };
 use chrono::Duration;
+use chrono::Utc;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -140,8 +141,9 @@ async fn lab_scene(
     jar: CookieJar,
 ) -> Result<Json<LabScene>, ApiError> {
     let user = require_current_user(&state, &jar).await?;
-    let scene = load_or_initialize_scene(&state, &user.id).await?;
-    Ok(Json(scene_to_contract(scene)))
+    let mut scene = load_or_initialize_scene(&state, &user.id).await?;
+    apply_elapsed_clock(&mut scene, unix_now_ms());
+    Ok(Json(persist_scene(&state, scene).await?))
 }
 
 async fn lab_action(
@@ -151,25 +153,15 @@ async fn lab_action(
 ) -> Result<Json<LabActionResponse>, ApiError> {
     let user = require_current_user(&state, &jar).await?;
     let mut scene = load_or_initialize_scene(&state, &user.id).await?;
+    apply_elapsed_clock(&mut scene, unix_now_ms());
     chemlab_core::apply_action(&mut scene, action_to_core(action))?;
     scene.version = scene
         .version
         .checked_add(1)
         .ok_or_else(|| ApiError::internal("Lab version overflow"))?;
 
-    let contract_scene = scene_to_contract(scene);
-    let state_blob = serde_json::to_vec(&contract_scene)
-        .map_err(|error| ApiError::internal(format!("serialize lab scene: {error}")))?;
-    save_lab_state(
-        state.pool(),
-        &contract_scene.lab_id,
-        &state_blob,
-        i64::from(contract_scene.version),
-    )
-    .await?;
-
     Ok(Json(LabActionResponse {
-        scene: contract_scene,
+        scene: persist_scene(&state, scene).await?,
     }))
 }
 
@@ -233,17 +225,36 @@ async fn load_or_initialize_scene(
     }
 
     let scene = chemlab_core::initial_bench_scene(&lab.id);
-    let contract_scene = scene_to_contract(scene.clone());
+    persist_scene(state, scene.clone()).await?;
+    Ok(scene)
+}
+
+/// Clamp for server-authoritative ticks on each GET/POST (spec: e.g. 0–2 s).
+const MAX_ELAPSED_MS: i64 = 2000;
+
+fn unix_now_ms() -> i64 {
+    Utc::now().timestamp_millis()
+}
+
+fn apply_elapsed_clock(scene: &mut chemlab_core::Scene, now_ms: i64) {
+    let last = scene.last_applied_unix_ms.unwrap_or(now_ms);
+    let dt_ms = now_ms.saturating_sub(last).clamp(0, MAX_ELAPSED_MS);
+    chemlab_core::apply_elapsed(scene, dt_ms as f64 / 1000.0);
+    scene.last_applied_unix_ms = Some(now_ms);
+}
+
+async fn persist_scene(state: &AppState, scene: chemlab_core::Scene) -> Result<LabScene, ApiError> {
+    let contract_scene = scene_to_contract(scene);
     let state_blob = serde_json::to_vec(&contract_scene)
         .map_err(|error| ApiError::internal(format!("serialize lab scene: {error}")))?;
     save_lab_state(
         state.pool(),
-        &lab.id,
+        &contract_scene.lab_id,
         &state_blob,
         i64::from(contract_scene.version),
     )
     .await?;
-    Ok(scene)
+    Ok(contract_scene)
 }
 
 fn lab_version(lab: &LabRecord) -> Result<u32, ApiError> {

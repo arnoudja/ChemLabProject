@@ -101,11 +101,11 @@ Pour into water is a separate action, e.g. `{ "type": "pour", "source_item_id": 
 
 When NaCl dissolves into water, the scene engine applies **endothermic** cooling to the water beaker's `properties.temperature_c` (ΔH_sol ≈ 3.88 kJ/mol; water c_p = 4.184 J/(g·K); water mass ≈ liquid `amount_ml`). When CaCl₂ dissolves, it applies **exothermic** heating (ΔH_sol ≈ −81.3 kJ/mol) with the same mass/c_p model. Ambient `LabScene.temperature_c` is unchanged. Sand that does not dissolve leaves temperature unchanged. The frontend formats inspect mass (g) and volume (ml) to **two decimal places**, aqueous molarity (M) to **three significant digits**, and beaker/scene temperature to two decimal places.
 
-A **pipette** transfers **1.00 ml** of mixed solution (water + aqueous ions in proportion). Solid SiO₂ / other solids stay in the vessel. Mixing into the receiver uses volume-weighted temperature. The evaporation dish holds at most **25.00 ml**. While the **burner** is on, dish temperature rises toward 100 °C at `HEAT_K_PER_S = 10` with no evaporation; at 100 °C water leaves at `EVAP_ML_PER_S = 0.50`. Ions stay behind; excess salt vs the T-dependent solubility table precipitates as solid `nacl` / `cacl2` and can redissolve if water is added. The burner turns off when the dish has no liquid. Elapsed heat/evap is `chemlab-core::apply_elapsed`; the HTTP layer owns the clock.
+A **pipette** transfers **1.00 ml** of mixed solution (water + aqueous ions in proportion). Solid SiO₂ / other solids stay in the vessel. Mixing into the receiver uses volume-weighted temperature. The evaporation dish holds at most **25.00 ml**. While the **burner** is on, dish temperature rises toward 100 °C at `HEAT_K_PER_S = 10` with no evaporation; at 100 °C water leaves at `EVAP_ML_PER_S = 0.50`. Ions stay behind; mixed NaCl/CaCl₂ equilibrium (common-ion Cl⁻, Davies activities) then precipitates or redissolves `nacl` / `cacl2` on **every aqueous vessel**. The burner turns off when the dish has no liquid. Elapsed heat/evap is `chemlab-core::apply_elapsed`; the HTTP layer owns the clock.
 
 ## Out of scope
 
-- Evaporating the water beaker itself; mixed-salt activity / common-ion; cooling the dish after the burner is off (T stays until reset or mixing)
+- Evaporating the water beaker itself; cooling the dish after the burner is off (T stays until reset or mixing)
 - Multiplayer command log / lab sharing
 - 3D glassware
 - A general reaction engine

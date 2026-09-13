@@ -2279,6 +2279,82 @@ mod tests {
     }
 
     #[test]
+    fn evaporating_mixed_dish_precipitates_nacl_before_independent_caps() {
+        let mut scene = initial_bench_scene("lab-test");
+        let s_nacl = crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, 100.0);
+        let s_cacl2 =
+            crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Cacl2, 100.0);
+        let n_nacl = s_nacl * 0.003;
+        let n_cacl2 = s_cacl2 * 0.003;
+        let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+        dish.properties.temperature_c = Some(100.0);
+        dish.properties.composition = vec![
+            CompositionEntry {
+                substance_id: "water".into(),
+                phase: "liquid".into(),
+                amount_ml: Some(15.0),
+                amount_scoop: None,
+                amount_g: None,
+                amount_mol: None,
+            },
+            CompositionEntry {
+                substance_id: "na+".into(),
+                phase: "aqueous".into(),
+                amount_ml: None,
+                amount_scoop: None,
+                amount_g: None,
+                amount_mol: Some(n_nacl),
+            },
+            CompositionEntry {
+                substance_id: "ca2+".into(),
+                phase: "aqueous".into(),
+                amount_ml: None,
+                amount_scoop: None,
+                amount_g: None,
+                amount_mol: Some(n_cacl2),
+            },
+            CompositionEntry {
+                substance_id: "cl-".into(),
+                phase: "aqueous".into(),
+                amount_ml: None,
+                amount_scoop: None,
+                amount_g: None,
+                amount_mol: Some(n_nacl + 2.0 * n_cacl2),
+            },
+        ];
+        crate::solubility::enforce_saturation(dish);
+        assert!(!item(&scene, "dish-1")
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "nacl" && c.phase == "solid"));
+
+        apply_action(
+            &mut scene,
+            Action::ToggleBurner {
+                burner_item_id: "burner-1".into(),
+            },
+        )
+        .unwrap();
+        apply_elapsed(&mut scene, 26.0);
+        let dish = item(&scene, "dish-1");
+        assert!((water_ml(dish) - 2.0).abs() < 1e-9);
+        assert!(
+            dish.properties
+                .composition
+                .iter()
+                .any(|c| c.substance_id == "nacl" && c.phase == "solid"),
+            "mixed evaporation must crash out NaCl"
+        );
+        let na = aqueous_mol(dish, "na+");
+        let ca = aqueous_mol(dish, "ca2+");
+        let ind_nacl = s_nacl * 0.002;
+        let ind_cacl2 = s_cacl2 * 0.002;
+        assert!(na < ind_nacl - 1e-6);
+        assert!((na - ind_nacl).abs() > 1e-6 || (ca - ind_cacl2).abs() > 1e-6);
+    }
+
+    #[test]
     fn pipette_in_redissolves_solid_salt_up_to_solubility() {
         let mut scene = initial_bench_scene("lab-test");
         let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();

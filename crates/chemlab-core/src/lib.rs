@@ -2,7 +2,7 @@
 //!
 //! Chemistry rules live here. This crate currently exposes a small dissolve
 //! lookup (NaCl / CaCl₂ / sand in water) plus the lab scene engine — scoop,
-//! pipette transfers, burner heat, evaporation, and v1 solubility.
+//! pipette transfers, burner heat, evaporation, and mixed-salt saturation.
 
 mod dissolve;
 mod scene;

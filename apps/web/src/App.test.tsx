@@ -182,7 +182,11 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('Display name')).toBeTruthy()
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Email').closest('form')?.querySelector('button[type="submit"]')).toHaveTextContent(
+      'Sign in',
+    )
     expect(screen.getByText(/API 0.1.0/)).toBeTruthy()
     expect(screen.queryByLabelText('Lab bench')).not.toBeInTheDocument()
   })
@@ -214,7 +218,11 @@ describe('App', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
-    expect(await screen.findByText('Display name')).toBeTruthy()
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create account' })[0])
+    expect(screen.getByLabelText('Display name')).toBeTruthy()
 
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Ada' } })
     fireEvent.change(screen.getByLabelText('Email'), {
@@ -241,14 +249,12 @@ describe('App', () => {
     )
   })
 
-  it('signs in from the login tab', async () => {
+  it('signs in from the default Sign in form', async () => {
     const fetchMock = stubAppFetch({ authenticated: false })
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
-    expect(await screen.findByText('Display name')).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
     expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Email'), {
@@ -273,7 +279,7 @@ describe('App', () => {
     )
   })
 
-  it('signs in from the login tab and surfaces auth errors', async () => {
+  it('surfaces auth errors from the default Sign in form', async () => {
     const fetchMock = stubAppFetch({
       authenticated: false,
       loginBody: { error: 'Invalid email or password', code: 'invalid_credentials' },
@@ -282,9 +288,7 @@ describe('App', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
-    expect(await screen.findByText('Display name')).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
     expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Email'), {
@@ -312,7 +316,8 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
 
-    expect(await screen.findByText('Display name')).toBeTruthy()
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Lab bench')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Dissolve' })).not.toBeInTheDocument()
   })
@@ -326,6 +331,7 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('API offline')).toBeTruthy()
-    expect(await screen.findByText('Display name')).toBeTruthy()
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
   })
 })

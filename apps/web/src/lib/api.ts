@@ -12,6 +12,7 @@ import type {
   MeResponse,
   RegisterRequest,
 } from '../generated/contracts'
+import { normalizeLabScene } from './scene'
 
 export const CSRF_HEADER = 'X-CSRF-Token'
 
@@ -105,7 +106,8 @@ export async function dissolve(body: DissolveRequest): Promise<DissolveResponse>
 
 export async function fetchLabScene(): Promise<LabScene> {
   const response = await fetch('/api/lab/scene', { credentials: 'include' })
-  return parseJson<LabScene>(response)
+  const scene = await parseJson<LabScene>(response)
+  return normalizeLabScene(scene)
 }
 
 export async function postLabAction(action: LabAction): Promise<LabActionResponse> {
@@ -115,5 +117,6 @@ export async function postLabAction(action: LabAction): Promise<LabActionRespons
     headers: await mutateHeaders(true),
     body: JSON.stringify(action),
   })
-  return parseJson<LabActionResponse>(response)
+  const data = await parseJson<LabActionResponse>(response)
+  return { scene: normalizeLabScene(data.scene) }
 }

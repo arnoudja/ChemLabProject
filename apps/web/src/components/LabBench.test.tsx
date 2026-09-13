@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LabAction, LabScene } from '../generated/contracts'
 import { LabBench } from './LabBench'
 import { clearCsrfTokenCache } from '../lib/api'
+import { optionalArray } from '../lib/scene'
 
 const NACL_EXPLANATION =
   'Sodium chloride (NaCl) dissolves in water at bench temperature.'
@@ -109,12 +110,15 @@ function afterNaclPour(scene: LabScene): LabScene {
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
   const water = next.items.find((item) => item.id === 'beaker-water')!
   spoon.properties.holding = []
-  water.properties.composition.push({
-    substance_id: 'nacl',
-    phase: 'aqueous',
-    amount_ml: null,
-    amount_scoop: 1,
-  })
+  water.properties.composition = [
+    ...optionalArray(water.properties.composition),
+    {
+      substance_id: 'nacl',
+      phase: 'aqueous',
+      amount_ml: null,
+      amount_scoop: 1,
+    },
+  ]
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
     { kind: 'dissolved', message: NACL_EXPLANATION },
@@ -128,12 +132,15 @@ function afterSandPour(scene: LabScene): LabScene {
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
   const water = next.items.find((item) => item.id === 'beaker-water')!
   spoon.properties.holding = []
-  water.properties.composition.push({
-    substance_id: 'sand',
-    phase: 'solid',
-    amount_ml: null,
-    amount_scoop: 1,
-  })
+  water.properties.composition = [
+    ...optionalArray(water.properties.composition),
+    {
+      substance_id: 'sand',
+      phase: 'solid',
+      amount_ml: null,
+      amount_scoop: 1,
+    },
+  ]
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
     { kind: 'did_not_dissolve', message: SAND_EXPLANATION },
@@ -191,7 +198,9 @@ function stubLabFetch(options?: {
         return jsonResponse({ scene })
       }
       if (action.type === 'pour') {
-        const held = scene.items.find((item) => item.id === 'spoon-1')?.properties.holding[0]
+        const held = optionalArray(
+          scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
+        )[0]
         if (held?.substance_id === 'nacl') {
           scene = afterNaclPour(scene)
           return jsonResponse({ scene })
@@ -239,6 +248,82 @@ describe('LabBench', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/lab/scene', { credentials: 'include' })
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('renders when server omits empty holding/composition/last_events (serde skip)', async () => {
+    // Wire JSON from skip_serializing_if = Vec::is_empty — no holding/composition/last_events keys.
+    const wireScene = {
+      lab_id: 'lab-1',
+      version: 0,
+      temperature_c: 20,
+      items: [
+        {
+          id: 'spoon-1',
+          kind: 'spoon',
+          label: 'Spoon',
+          location: 'bench',
+          properties: {},
+        },
+        {
+          id: 'beaker-nacl',
+          kind: 'beaker',
+          label: 'Sodium chloride',
+          location: 'bench',
+          properties: {
+            volume_ml: 250,
+            fill_ml: 100,
+            transparent: true,
+            colourless: true,
+            temperature_c: 20,
+            composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+          },
+        },
+        {
+          id: 'beaker-sand',
+          kind: 'beaker',
+          label: 'Sand',
+          location: 'bench',
+          properties: {
+            volume_ml: 250,
+            fill_ml: 100,
+            transparent: true,
+            colourless: true,
+            temperature_c: 20,
+            composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10 }],
+          },
+        },
+        {
+          id: 'beaker-water',
+          kind: 'beaker',
+          label: 'Water',
+          location: 'bench',
+          properties: {
+            volume_ml: 250,
+            fill_ml: 200,
+            transparent: true,
+            colourless: true,
+            temperature_c: 20,
+            composition: [
+              { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null },
+            ],
+          },
+        },
+      ],
+    }
+    expect(JSON.stringify(wireScene)).not.toContain('"holding"')
+    expect(JSON.stringify(wireScene)).not.toContain('"last_events"')
+
+    vi.stubGlobal(
+      'fetch',
+      stubLabFetch({ scene: wireScene as LabScene }),
+    )
+
+    expect(() => render(<LabBench />)).not.toThrow()
+    expect(await screen.findByRole('button', { name: 'Spoon' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Water beaker' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('clicking the spoon holds it as the cursor tool', async () => {

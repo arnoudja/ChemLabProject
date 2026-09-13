@@ -232,6 +232,14 @@ function stubLabFetch(options?: {
           return jsonResponse({ scene })
         }
       }
+      if (action.type === 'reset') {
+        const next = initialScene()
+        next.lab_id = scene.lab_id
+        next.version = scene.version + 1
+        next.last_events = [{ kind: 'reset', message: 'Lab reset to the starting bench.' }]
+        scene = next
+        return jsonResponse({ scene })
+      }
       return jsonResponse({ error: 'invalid action', code: 'invalid_action' }, 400)
     }
     if (url === '/api/lab/dissolve') {
@@ -619,5 +627,55 @@ describe('LabBench', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Login required')
     expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
+  })
+
+  it('reset posts CSRF reset action and restores pure water from the server scene', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(NACL_EXPLANATION)
+    })
+
+    // Put the spoon away so idle inspect works, then confirm ions are present.
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Na+ (aq)')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset lab' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('Lab reset to the starting bench.')
+    })
+    expect(lastActionInit(fetchMock)).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({
+          'content-type': 'application/json',
+          'X-CSRF-Token': 'tok-123',
+        }),
+        body: JSON.stringify({ type: 'reset' }),
+      }),
+    )
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    expect(panel).toHaveTextContent('H2O (l)')
+    expect(panel).not.toHaveTextContent('Na+')
+    expect(panel).not.toHaveTextContent('(aq)')
+    expect(panel.querySelectorAll('sup')).toHaveLength(0)
   })
 })

@@ -673,6 +673,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reset_action_restores_default_scene_and_persists() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "reset@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        assert_eq!(
+            post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "use_tool",
+                    "tool_item_id": "spoon-1",
+                    "target_item_id": "beaker-nacl"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "pour",
+                    "source_item_id": "spoon-1",
+                    "target_item_id": "beaker-water"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({ "type": "reset" }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let action = body_json(response).await;
+        assert_eq!(action["scene"]["version"], 3);
+        assert_eq!(action["scene"]["last_events"][0]["kind"], "reset");
+
+        let water = action["scene"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "beaker-water")
+            .unwrap();
+        let composition = water["properties"]["composition"].as_array().unwrap();
+        assert_eq!(composition.len(), 1);
+        assert_eq!(composition[0]["substance_id"], "water");
+        assert_eq!(composition[0]["phase"], "liquid");
+
+        let spoon = action["scene"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "spoon-1")
+            .unwrap();
+        assert!(
+            spoon["properties"].get("holding").is_none()
+                || spoon["properties"]["holding"]
+                    .as_array()
+                    .is_some_and(|holding| holding.is_empty())
+        );
+
+        let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
+        assert_eq!(persisted, action["scene"]);
+    }
+
+    #[tokio::test]
     async fn scene_errors_return_stable_bad_request_codes() {
         let app = test_app().await;
         let (csrf_token, csrf_cookie, session_cookie) =

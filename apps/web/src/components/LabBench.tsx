@@ -128,6 +128,7 @@ function SpoonSvg({ fill, floating }: { fill: 'nacl' | 'sand' | null; floating?:
 function outcomeLabel(kind: string): string | null {
   if (kind === 'dissolved') return 'dissolved'
   if (kind === 'did_not_dissolve') return 'did not dissolve'
+  if (kind === 'reset') return 'reset'
   return null
 }
 
@@ -269,6 +270,23 @@ export function LabBench() {
     }
   }
 
+  async function onReset() {
+    if (busy) return
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await postLabAction({ type: 'reset' })
+      setScene(response.scene)
+      setSelectedToolItemId(null)
+      setInspectItemId(null)
+      setPointer(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reset failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const holdingSelected = selectedToolItemId === SPOON_ID
   const spoonFill = scene ? spoonHoldingSubstance(scene) : null
   const leftoverSolid = scene ? undissolvedSolidInWater(scene) : null
@@ -288,10 +306,21 @@ export function LabBench() {
       }`}
       onMouseMove={holdingSelected ? trackPointer : undefined}
     >
-      <p className="mb-3 text-sm text-[var(--ink-soft)]">
-        Pick up the spoon, scoop a solid, then click the water. With the spoon put away, click a
-        beaker to inspect its contents.
-      </p>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <p className="text-sm text-[var(--ink-soft)]">
+          Pick up the spoon, scoop a solid, then click the water. With the spoon put away, click a
+          beaker to inspect its contents.
+        </p>
+        <button
+          type="button"
+          className="lab-bench-reset shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--ink-soft)] hover:bg-[var(--surface-hover)] disabled:opacity-50"
+          aria-label="Reset lab"
+          disabled={busy || !scene}
+          onClick={onReset}
+        >
+          Reset
+        </button>
+      </div>
 
       {!scene && !error ? (
         <p className="text-sm text-[var(--ink-soft)]">Loading lab scene…</p>

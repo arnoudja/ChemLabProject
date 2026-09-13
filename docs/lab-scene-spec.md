@@ -93,7 +93,7 @@ Pour into water is a separate action, e.g. `{ "type": "pour", "source_item_id": 
 - `Item` — `id`, `kind`, `label`, `location`, `properties`
 - `LabScene` — `lab_id`, `version`, ambient `temperature_c` (default 20), `items`, optional `last_events`
 - `LabEvent` — `kind` (e.g. `scooped`, `poured`, `dissolved`, `did_not_dissolve`), `message`
-- `LabAction` — tagged `type`: `use_tool` \| `pour`
+- `LabAction` — tagged `type`: `use_tool` \| `pour` \| `reset`
 - `LabActionResponse` — `{ "scene": LabScene }`
 
 ## Out of scope

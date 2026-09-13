@@ -171,7 +171,7 @@ pub struct LabScene {
     pub last_events: Vec<LabEvent>,
 }
 
-/// Client → server lab action. Tagged JSON `type`: `use_tool` | `pour`.
+/// Client → server lab action. Tagged JSON `type`: `use_tool` | `pour` | `reset`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export, export_to = "../../../apps/web/src/generated/")]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -184,6 +184,8 @@ pub enum LabAction {
         source_item_id: String,
         target_item_id: String,
     },
+    /// Rebuild the default bench scene (pure water, empty spoon, stock jars).
+    Reset,
 }
 
 /// Response body for `POST /api/lab/action`.
@@ -301,6 +303,17 @@ mod tests {
             }
         );
         let json = serde_json::to_string(&action).unwrap();
+        let back: LabAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(action, back);
+    }
+
+    #[test]
+    fn reset_action_deserializes_from_json() {
+        let raw = r#"{ "type": "reset" }"#;
+        let action: LabAction = serde_json::from_str(raw).unwrap();
+        assert_eq!(action, LabAction::Reset);
+        let json = serde_json::to_string(&action).unwrap();
+        assert!(json.contains(r#""type":"reset""#));
         let back: LabAction = serde_json::from_str(&json).unwrap();
         assert_eq!(action, back);
     }

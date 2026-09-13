@@ -77,6 +77,8 @@ pub enum Action {
         source_item_id: String,
         target_item_id: String,
     },
+    /// Replace the scene with a fresh default bench (same `lab_id` / `version`).
+    Reset,
 }
 
 /// Errors when an action cannot be applied.
@@ -189,7 +191,22 @@ pub fn apply_action(scene: &mut Scene, action: Action) -> Result<(), SceneError>
             source_item_id,
             target_item_id,
         } => apply_pour(scene, &source_item_id, &target_item_id),
+        Action::Reset => {
+            apply_reset(scene);
+            Ok(())
+        }
     }
+}
+
+fn apply_reset(scene: &mut Scene) {
+    let lab_id = scene.lab_id.clone();
+    let version = scene.version;
+    *scene = initial_bench_scene(lab_id);
+    scene.version = version;
+    scene.last_events.push(SceneEvent {
+        kind: "reset".into(),
+        message: "Lab reset to the starting bench.".into(),
+    });
 }
 
 fn find_item_index(scene: &Scene, id: &str) -> Result<usize, SceneError> {
@@ -649,6 +666,44 @@ mod tests {
             e.kind == "did_not_dissolve"
                 && e.message == "Sand (silica) does not dissolve in water at bench temperature."
         }));
+    }
+
+    #[test]
+    fn reset_restores_pure_water_and_clears_holding_after_pour() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+        scene.version = 2;
+
+        apply_action(&mut scene, Action::Reset).unwrap();
+
+        assert_eq!(scene.lab_id, "lab-test");
+        assert_eq!(scene.version, 2);
+        assert!(scene.last_events.iter().any(|e| e.kind == "reset"));
+
+        let spoon = item(&scene, "spoon-1");
+        assert_eq!(spoon.location, "bench");
+        assert!(spoon.properties.holding.is_empty());
+
+        let water = item(&scene, "beaker-water");
+        assert_eq!(water.properties.composition.len(), 1);
+        assert_eq!(water.properties.composition[0].substance_id, "water");
+        assert_eq!(water.properties.composition[0].phase, "liquid");
+        assert_eq!(water.properties.composition[0].amount_ml, Some(200.0));
     }
 
     #[test]

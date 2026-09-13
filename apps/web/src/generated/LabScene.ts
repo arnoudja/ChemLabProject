@@ -9,4 +9,8 @@ export type LabScene = { lab_id: string, version: number,
 /**
  * Bench ambient temperature; default 20.
  */
-temperature_c: number, items: Array<Item>, last_events: Array<LabEvent>, };
+temperature_c: number, items: Array<Item>, 
+/**
+ * Omitted from JSON when empty; treat as `[]` on the client.
+ */
+last_events?: Array<LabEvent>, };

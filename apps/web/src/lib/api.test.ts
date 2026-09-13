@@ -379,9 +379,37 @@ describe('api client', () => {
       }),
     })
     expect(response.scene.version).toBe(1)
-    expect(response.scene.last_events[0]?.message).toBe('Scooped nacl.')
+    expect(response.scene.last_events?.[0]?.message).toBe('Scooped nacl.')
     const spoon = response.scene.items.find((item) => item.id === 'spoon-1')
-    expect(spoon?.properties.holding[0]?.substance_id).toBe('nacl')
+    expect(spoon?.properties.holding?.[0]?.substance_id).toBe('nacl')
+  })
+
+  it('fetchLabScene fills omitted empty holding/composition/last_events', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/lab/scene') {
+        return jsonResponse({
+          lab_id: 'lab-omit',
+          version: 0,
+          temperature_c: 20,
+          items: [
+            {
+              id: 'spoon-1',
+              kind: 'spoon',
+              label: 'Spoon',
+              location: 'bench',
+              properties: {},
+            },
+          ],
+        })
+      }
+      return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
+    })
+
+    const scene = await fetchLabScene()
+    expect(scene.last_events).toEqual([])
+    expect(scene.items[0]?.properties.holding).toEqual([])
+    expect(scene.items[0]?.properties.composition).toEqual([])
   })
 
   it('postLabAction surfaces unauthenticated errors from the server body', async () => {

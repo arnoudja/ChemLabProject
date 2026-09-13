@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react'
 import type { Item, LabScene } from '../generated/contracts'
 import { fetchLabScene, postLabAction } from '../lib/api'
+import { optionalArray } from '../lib/scene'
 
 const SPOON_ID = 'spoon-1'
 const NACL_ID = 'beaker-nacl'
@@ -15,7 +16,7 @@ function findItem(scene: LabScene, id: string): Item | undefined {
 
 function spoonHoldingSubstance(scene: LabScene): 'nacl' | 'sand' | null {
   const spoon = findItem(scene, SPOON_ID)
-  const held = spoon?.properties.holding[0]
+  const held = optionalArray(spoon?.properties.holding)[0]
   if (!held || held.phase !== 'solid') return null
   if (held.substance_id === 'nacl' || held.substance_id === 'sand') {
     return held.substance_id
@@ -26,7 +27,7 @@ function spoonHoldingSubstance(scene: LabScene): 'nacl' | 'sand' | null {
 /** Undissolved solid grains come only from server composition on the water item. */
 function undissolvedSolidInWater(scene: LabScene): 'nacl' | 'sand' | null {
   const water = findItem(scene, WATER_ID)
-  const solid = water?.properties.composition.find((entry) => entry.phase === 'solid')
+  const solid = optionalArray(water?.properties.composition).find((entry) => entry.phase === 'solid')
   if (!solid) return null
   if (solid.substance_id === 'nacl' || solid.substance_id === 'sand') {
     return solid.substance_id
@@ -204,6 +205,7 @@ export function LabBench() {
   const sand = scene ? findItem(scene, SAND_ID) : undefined
   const water = scene ? findItem(scene, WATER_ID) : undefined
   const spoon = scene ? findItem(scene, SPOON_ID) : undefined
+  const lastEvents = scene ? optionalArray(scene.last_events) : []
 
   return (
     <section
@@ -289,9 +291,9 @@ export function LabBench() {
         </p>
       ) : null}
 
-      {scene && scene.last_events.length > 0 ? (
+      {lastEvents.length > 0 ? (
         <div className="mt-3 space-y-2 text-sm" role="status" aria-live="polite">
-          {scene.last_events.map((event, index) => {
+          {lastEvents.map((event, index) => {
             const outcome = outcomeLabel(event.kind)
             return (
               <div key={`${event.kind}-${index}`} className="space-y-1">

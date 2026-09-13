@@ -4,4 +4,12 @@ import type { CompositionEntry } from "./CompositionEntry";
 /**
  * Physical / chemical properties of a lab item (server-authored).
  */
-export type ItemProperties = { volume_ml: number | null, fill_ml: number | null, transparent: boolean | null, colourless: boolean | null, temperature_c: number | null, composition: Array<CompositionEntry>, holding: Array<CompositionEntry>, };
+export type ItemProperties = { volume_ml: number | null, fill_ml: number | null, transparent: boolean | null, colourless: boolean | null, temperature_c: number | null, 
+/**
+ * Omitted from JSON when empty; treat as `[]` on the client.
+ */
+composition?: Array<CompositionEntry>, 
+/**
+ * Omitted from JSON when empty; treat as `[]` on the client.
+ */
+holding?: Array<CompositionEntry>, };

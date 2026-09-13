@@ -92,8 +92,8 @@ pub struct DissolveResponse {
 }
 
 // skip_serializing_if omits null/empty fields in JSON. ts-rs 11+ parses those serde
-// attrs; with #[serde(default)] it would also mark fields optional in TS, so list
-// fields below use #[ts(optional = false)] to keep the prior required-array shape.
+// attrs; with #[serde(default)] + skip_serializing_if on Vec, generated TS marks the
+// field optional (`T[]?`), matching wire omission. Frontend must treat missing as [].
 /// One substance entry in an item's composition or holding list.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[ts(export, export_to = "../../../apps/web/src/generated/")]
@@ -121,12 +121,11 @@ pub struct ItemProperties {
     pub colourless: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature_c: Option<i32>,
-    // Keep required TS arrays (`T[]`, not `T[]?`); JSON still omits empties via serde.
+    /// Omitted from JSON when empty; treat as `[]` on the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[ts(optional = false)]
     pub composition: Vec<CompositionEntry>,
+    /// Omitted from JSON when empty; treat as `[]` on the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[ts(optional = false)]
     pub holding: Vec<CompositionEntry>,
 }
 
@@ -161,8 +160,8 @@ pub struct LabScene {
     /// Bench ambient temperature; default 20.
     pub temperature_c: i32,
     pub items: Vec<Item>,
+    /// Omitted from JSON when empty; treat as `[]` on the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[ts(optional = false)]
     pub last_events: Vec<LabEvent>,
 }
 

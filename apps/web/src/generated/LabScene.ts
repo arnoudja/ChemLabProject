@@ -13,4 +13,8 @@ temperature_c: number, items: Array<Item>,
 /**
  * Omitted from JSON when empty; treat as `[]` on the client.
  */
-last_events?: Array<LabEvent>, };
+last_events?: Array<LabEvent>, 
+/**
+ * Server clock watermark (unix ms) for elapsed heat/evaporation. Omitted when unset.
+ */
+last_applied_unix_ms?: bigint | null, };

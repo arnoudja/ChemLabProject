@@ -268,6 +268,9 @@ fn action_to_core(action: LabAction) -> chemlab_core::Action {
         },
         LabAction::PutAway { tool_item_id } => chemlab_core::Action::PutAway { tool_item_id },
         LabAction::Reset => chemlab_core::Action::Reset,
+        LabAction::ToggleBurner { burner_item_id } => {
+            chemlab_core::Action::ToggleBurner { burner_item_id }
+        }
     }
 }
 
@@ -302,6 +305,8 @@ fn scene_to_contract(scene: chemlab_core::Scene) -> LabScene {
                         .into_iter()
                         .map(composition_to_contract)
                         .collect(),
+                    on: item.properties.on,
+                    source_item_id: item.properties.source_item_id,
                 },
             })
             .collect(),
@@ -313,6 +318,7 @@ fn scene_to_contract(scene: chemlab_core::Scene) -> LabScene {
                 message: event.message,
             })
             .collect(),
+        last_applied_unix_ms: scene.last_applied_unix_ms,
     }
 }
 
@@ -360,6 +366,8 @@ fn contract_to_scene(scene: LabScene) -> chemlab_core::Scene {
                         .into_iter()
                         .map(composition_to_core)
                         .collect(),
+                    on: item.properties.on,
+                    source_item_id: item.properties.source_item_id,
                 },
             })
             .collect(),
@@ -371,6 +379,7 @@ fn contract_to_scene(scene: LabScene) -> chemlab_core::Scene {
                 message: event.message,
             })
             .collect(),
+        last_applied_unix_ms: scene.last_applied_unix_ms,
     }
 }
 

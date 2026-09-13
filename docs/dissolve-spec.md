@@ -26,11 +26,11 @@ Exact string ids, lowercase ASCII, matched as-is. Do not trim or case-fold (`NaC
 | --- | --- | --- |
 | `substance_id` | `nacl`, `cacl2`, `sand` | Table salt, calcium chloride, silica sand (SiO₂) |
 | `solvent_id` | `water` | Liquid water; no other solvents |
-| `temperature_c` | any integer °C for soluble salts; `20` for sand | Beaker / solvent temperature passed into the lookup |
+| `temperature_c` | any integer °C | Beaker / solvent temperature passed into the lookup |
 
 Amounts, stirring, time, and saturation are not modeled for the qualitative dissolve flag. Scoop mass (0.2 g) drives ion moles and ΔT when a salt dissolves in the scene engine.
 
-**Temperature / solubility simplification:** Soluble salts (`nacl`, `cacl2`) keep dissolving into aqueous water at the beaker’s **current** temperature (exothermic CaCl₂ heating or endothermic NaCl cooling must not block further scoops). The dissolve flag still uses the qualitative bench solubility table — there is no T-dependent solubility curve yet. Sand (insoluble) still requires exact `20` °C for the lookup.
+**Temperature / solubility simplification:** Known solids (`nacl`, `cacl2`, `sand`) succeed in aqueous water at the beaker’s **current** temperature (exothermic CaCl₂ heating or endothermic NaCl cooling must not block further scoops, and pouring sand into warm water must not fail). The dissolve flag still uses the qualitative bench solubility table — there is no T-dependent solubility curve yet. Sand stays undissolved (`dissolved: false`); do not invent sand solubility.
 
 ## Outcomes
 
@@ -46,7 +46,7 @@ A successful call returns `dissolved` (boolean) plus a stable English `explanati
 - **dissolved:** `true`
 - **explanation:** `Calcium chloride (CaCl2) dissolves in water at bench temperature.`
 
-### `sand` + `water` + `20`
+### `sand` + `water` (any `temperature_c`)
 
 - **dissolved:** `false`
 - **explanation:** `Sand (silica) does not dissolve in water at bench temperature.`
@@ -72,10 +72,11 @@ Anything outside the table is an error. Unknown materials must **not** be treate
 | --- | --- | --- |
 | `substance_id` not `nacl`, `cacl2`, or `sand` | `unknown_substance` | Not in this slice |
 | `solvent_id` not `water` | `unsupported_solvent` | Only water |
-| `sand` + `water` with `temperature_c` ≠ `20` | `unsupported_temperature` | Insoluble sand lookup still gated to bench °C |
 | empty or whitespace-only ids | `invalid_input` | Reject, do not guess |
 
-Do not invent ethanol or “mystery powder” chemistry. Wrong solvent fails; it does not return a different `dissolved` flag. Soluble-salt pours must not fail solely because prior dissolve ΔT moved the beaker off 20 °C.
+`unsupported_temperature` remains a reserved wire code but is not raised for known solids in water in this slice.
+
+Do not invent ethanol or “mystery powder” chemistry. Wrong solvent fails; it does not return a different `dissolved` flag. Pours of known solids (including undissolved sand) must not fail solely because prior dissolve ΔT moved the beaker off 20 °C.
 
 ## Display names (UI stock labels)
 

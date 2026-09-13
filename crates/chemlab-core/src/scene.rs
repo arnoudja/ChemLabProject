@@ -379,7 +379,7 @@ fn apply_pour(
         .temperature_c
         .unwrap_or(scene.temperature_c);
 
-    // Soluble salts accept the beaker's current T; sand still requires bench °C.
+    // Known solids accept the beaker's current T (sand stays undissolved).
     let outcome = dissolve(&held.substance_id, "water", temperature_c.round() as i32)?;
 
     // Clear source holding before mutating target (indices stay valid).
@@ -1194,7 +1194,7 @@ mod tests {
     }
 
     #[test]
-    fn pour_sand_at_non_bench_temperature_surfaces_dissolve_error() {
+    fn pour_sand_at_non_bench_temperature_leaves_undissolved_solid() {
         let mut scene = initial_bench_scene("lab-test");
         apply_action(
             &mut scene,
@@ -1212,18 +1212,103 @@ mod tests {
             .unwrap();
         water.properties.temperature_c = Some(21.0);
 
-        let err = apply_action(
+        apply_action(
             &mut scene,
             Action::Pour {
                 source_item_id: "spoon-1".into(),
                 target_item_id: "beaker-water".into(),
             },
         )
-        .unwrap_err();
-        assert_eq!(
-            err,
-            SceneError::Dissolve(DissolveError::UnsupportedTemperature)
+        .unwrap();
+
+        let water = item(&scene, "beaker-water");
+        assert_eq!(water.properties.temperature_c, Some(21.0));
+        assert!(water.properties.composition.iter().any(|c| {
+            c.substance_id == "sand"
+                && c.phase == "solid"
+                && c.amount_scoop == Some(1)
+                && (c.amount_g.unwrap() - SPOON_SCOOP_MASS_G).abs() < 1e-12
+        }));
+        assert!(!water
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "sand" && c.phase == "aqueous"));
+        assert!(scene.last_events.iter().any(|e| {
+            e.kind == "did_not_dissolve"
+                && e.message == "Sand (silica) does not dissolve in water at bench temperature."
+        }));
+        assert!(item(&scene, "spoon-1").properties.holding.is_empty());
+    }
+
+    #[test]
+    fn pour_sand_succeeds_after_cacl2_exothermic_heating() {
+        let mut scene = initial_bench_scene("lab-test");
+
+        // One scoop only raises T by ~0.175 °C (still rounds to 20). Pour until the
+        // dissolve lookup sees a non-bench integer °C — the real warm-water bug path.
+        let mut after_heat = 20.0;
+        for _ in 0..4 {
+            apply_action(
+                &mut scene,
+                Action::UseTool {
+                    tool_item_id: "spoon-1".into(),
+                    target_item_id: "beaker-cacl2".into(),
+                },
+            )
+            .unwrap();
+            apply_action(
+                &mut scene,
+                Action::Pour {
+                    source_item_id: "spoon-1".into(),
+                    target_item_id: "beaker-water".into(),
+                },
+            )
+            .unwrap();
+            after_heat = item(&scene, "beaker-water")
+                .properties
+                .temperature_c
+                .expect("water beaker should keep a temperature");
+        }
+        assert!(
+            after_heat.round() as i32 != 20,
+            "CaCl2 heating must leave a non-bench lookup T, got {after_heat}"
         );
+
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-sand".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+
+        let water = item(&scene, "beaker-water");
+        assert_eq!(water.properties.temperature_c, Some(after_heat));
+        assert!(water.properties.composition.iter().any(|c| {
+            c.substance_id == "sand"
+                && c.phase == "solid"
+                && c.amount_scoop == Some(1)
+                && (c.amount_g.unwrap() - SPOON_SCOOP_MASS_G).abs() < 1e-12
+        }));
+        assert!(!water
+            .properties
+            .composition
+            .iter()
+            .any(|c| c.substance_id == "sand" && c.phase == "aqueous"));
+        assert!(scene.last_events.iter().any(|e| {
+            e.kind == "did_not_dissolve"
+                && e.message == "Sand (silica) does not dissolve in water at bench temperature."
+        }));
     }
 
     #[test]

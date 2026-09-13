@@ -133,6 +133,12 @@ pub struct ItemProperties {
     /// Omitted from JSON when empty; treat as `[]` on the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub holding: Vec<CompositionEntry>,
+    /// Burner flame; omitted when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on: Option<bool>,
+    /// Last vessel a pipette drew from (`beaker-water` or `dish-1`); used on put-away.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_item_id: Option<String>,
 }
 
 /// A single item in the lab scene (beaker, spoon, …).
@@ -140,7 +146,7 @@ pub struct ItemProperties {
 #[ts(export, export_to = "../../../apps/web/src/generated/")]
 pub struct Item {
     pub id: String,
-    /// `"beaker"` | `"spoon"` | …
+    /// `"beaker"` | `"spoon"` | `"pipette"` | `"evaporation_dish"` | `"burner"` | …
     pub kind: String,
     pub label: String,
     /// `"bench"` | `"hand"` | …
@@ -169,9 +175,12 @@ pub struct LabScene {
     /// Omitted from JSON when empty; treat as `[]` on the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub last_events: Vec<LabEvent>,
+    /// Server clock watermark (unix ms) for elapsed heat/evaporation. Omitted when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_applied_unix_ms: Option<i64>,
 }
 
-/// Client → server lab action. Tagged JSON `type`: `use_tool` | `pour` | `put_away` | `reset`.
+/// Client → server lab action. Tagged JSON `type`: `use_tool` | `pour` | `put_away` | `reset` | `toggle_burner`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export, export_to = "../../../apps/web/src/generated/")]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -188,6 +197,8 @@ pub enum LabAction {
     PutAway { tool_item_id: String },
     /// Rebuild the default bench scene (pure water, empty spoon, stock jars).
     Reset,
+    /// Idle click on the burner. Stays off when the dish has no liquid.
+    ToggleBurner { burner_item_id: String },
 }
 
 /// Response body for `POST /api/lab/action`.
@@ -282,6 +293,7 @@ mod tests {
             temperature_c: 20.0,
             items: vec![item.clone()],
             last_events: vec![],
+            last_applied_unix_ms: None,
         };
         let json = serde_json::to_string(&scene).unwrap();
         let back: LabScene = serde_json::from_str(&json).unwrap();
@@ -367,6 +379,8 @@ mod tests {
                     amount_g: Some(0.2),
                     amount_mol: None,
                 }],
+                on: None,
+                source_item_id: None,
             },
         };
         let scene = LabScene {
@@ -378,6 +392,7 @@ mod tests {
                 kind: "scooped".into(),
                 message: "Scooped nacl onto spoon.".into(),
             }],
+            last_applied_unix_ms: None,
         };
         let response = LabActionResponse {
             scene: scene.clone(),
@@ -401,12 +416,117 @@ mod tests {
             temperature_c: None,
             composition: vec![],
             holding: vec![],
+            on: None,
+            source_item_id: None,
         };
         let json = serde_json::to_string(&props).unwrap();
         assert!(!json.contains("composition"));
         assert!(!json.contains("holding"));
         assert!(!json.contains("fill_ml"));
+        assert!(!json.contains("on"));
+        assert!(!json.contains("source_item_id"));
         let back: ItemProperties = serde_json::from_str(&json).unwrap();
         assert_eq!(props, back);
+    }
+
+    #[test]
+    fn toggle_burner_action_deserializes_from_json() {
+        let raw = r#"{ "type": "toggle_burner", "burner_item_id": "burner-1" }"#;
+        let action: LabAction = serde_json::from_str(raw).unwrap();
+        assert_eq!(
+            action,
+            LabAction::ToggleBurner {
+                burner_item_id: "burner-1".into(),
+            }
+        );
+        let json = serde_json::to_string(&action).unwrap();
+        assert!(json.contains(r#""type":"toggle_burner""#));
+        let back: LabAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(action, back);
+    }
+
+    #[test]
+    fn pipette_dish_and_burner_items_round_trip() {
+        let pipette = Item {
+            id: "pipette-1".into(),
+            kind: "pipette".into(),
+            label: "Pipette".into(),
+            location: "hand".into(),
+            properties: ItemProperties {
+                volume_ml: Some(1.0),
+                fill_ml: Some(1.0),
+                transparent: None,
+                colourless: None,
+                temperature_c: Some(20.0),
+                composition: vec![],
+                holding: vec![CompositionEntry {
+                    substance_id: "water".into(),
+                    phase: "liquid".into(),
+                    amount_ml: Some(1.0),
+                    amount_scoop: None,
+                    amount_g: None,
+                    amount_mol: None,
+                }],
+                on: None,
+                source_item_id: Some("beaker-water".into()),
+            },
+        };
+        let dish = Item {
+            id: "dish-1".into(),
+            kind: "evaporation_dish".into(),
+            label: "Evaporation dish".into(),
+            location: "bench".into(),
+            properties: ItemProperties {
+                volume_ml: Some(25.0),
+                fill_ml: Some(0.0),
+                transparent: Some(true),
+                colourless: Some(true),
+                temperature_c: Some(20.0),
+                composition: vec![],
+                holding: vec![],
+                on: None,
+                source_item_id: None,
+            },
+        };
+        let burner = Item {
+            id: "burner-1".into(),
+            kind: "burner".into(),
+            label: "Burner".into(),
+            location: "bench".into(),
+            properties: ItemProperties {
+                volume_ml: None,
+                fill_ml: None,
+                transparent: None,
+                colourless: None,
+                temperature_c: None,
+                composition: vec![],
+                holding: vec![],
+                on: Some(false),
+                source_item_id: None,
+            },
+        };
+        let scene = LabScene {
+            lab_id: "lab-1".into(),
+            version: 0,
+            temperature_c: 20.0,
+            items: vec![pipette, dish, burner],
+            last_events: vec![],
+            last_applied_unix_ms: Some(1_700_000_000_000),
+        };
+        let json = serde_json::to_string(&scene).unwrap();
+        assert!(json.contains(r#""kind":"pipette""#));
+        assert!(json.contains(r#""kind":"evaporation_dish""#));
+        assert!(json.contains(r#""kind":"burner""#));
+        assert!(json.contains(r#""source_item_id":"beaker-water""#));
+        assert!(json.contains(r#""on":false"#));
+        assert!(json.contains(r#""last_applied_unix_ms":1700000000000"#));
+        let back: LabScene = serde_json::from_str(&json).unwrap();
+        assert_eq!(scene, back);
+        assert_eq!(
+            back.items[0].properties.source_item_id.as_deref(),
+            Some("beaker-water")
+        );
+        assert_eq!(back.items[2].properties.on, Some(false));
+        assert_eq!(back.last_applied_unix_ms, Some(1_700_000_000_000));
     }
 }

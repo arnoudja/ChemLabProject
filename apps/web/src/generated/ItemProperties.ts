@@ -12,4 +12,12 @@ composition?: Array<CompositionEntry>,
 /**
  * Omitted from JSON when empty; treat as `[]` on the client.
  */
-holding?: Array<CompositionEntry>, };
+holding?: Array<CompositionEntry>, 
+/**
+ * Burner flame; omitted when unset.
+ */
+on?: boolean | null, 
+/**
+ * Last vessel a pipette drew from (`beaker-water` or `dish-1`); used on put-away.
+ */
+source_item_id?: string | null, };

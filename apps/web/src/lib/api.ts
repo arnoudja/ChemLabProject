@@ -1,8 +1,6 @@
 import type {
   AuthUserResponse,
   CsrfResponse,
-  DissolveRequest,
-  DissolveResponse,
   ErrorResponse,
   HealthResponse,
   LabAction,
@@ -91,17 +89,6 @@ export async function logout(): Promise<void> {
   if (!response.ok && response.status !== 204) {
     throw new Error('Could not log out')
   }
-}
-
-/** Predict-only dissolve endpoint (welcome picker). LabBench uses scene actions instead. */
-export async function dissolve(body: DissolveRequest): Promise<DissolveResponse> {
-  const response = await fetch('/api/lab/dissolve', {
-    method: 'POST',
-    credentials: 'include',
-    headers: await mutateHeaders(true),
-    body: JSON.stringify(body),
-  })
-  return parseJson<DissolveResponse>(response)
 }
 
 export async function fetchLabScene(): Promise<LabScene> {

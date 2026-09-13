@@ -3,7 +3,13 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LabAction, LabScene } from '../generated/contracts'
-import { LabBench, stockFillRatio } from './LabBench'
+import {
+  LabBench,
+  SPOON_SCOOP_MASS_G,
+  STOCK_FULL_MASS_G,
+  STOCK_FULL_SCOOPS,
+  stockFillRatio,
+} from './LabBench'
 import { clearCsrfTokenCache } from '../lib/api'
 import { optionalArray } from '../lib/scene'
 
@@ -54,7 +60,7 @@ function initialScene(): LabScene {
           transparent: true,
           colourless: true,
           temperature_c: 20,
-          composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10, amount_g: 2, amount_mol: null}],
+          composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
           holding: [],
         },
       },
@@ -69,7 +75,7 @@ function initialScene(): LabScene {
           transparent: true,
           colourless: true,
           temperature_c: 20,
-          composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10, amount_g: 2, amount_mol: null}],
+          composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
           holding: [],
         },
       },
@@ -109,7 +115,7 @@ function withScoop(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
   if (solid) {
     const scoops = (solid.amount_scoop ?? 0) - 1
     solid.amount_scoop = scoops
-    solid.amount_g = scoops * 0.2
+    solid.amount_g = scoops * SPOON_SCOOP_MASS_G
   }
   spoon.location = 'hand'
   spoon.properties.holding = [
@@ -118,7 +124,7 @@ function withScoop(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
       phase: 'solid',
       amount_ml: null,
       amount_scoop: 1,
-      amount_g: 0.2,
+      amount_g: SPOON_SCOOP_MASS_G,
       amount_mol: null,
     },
   ]
@@ -140,7 +146,7 @@ function withPutBack(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
   if (solid) {
     const scoops = (solid.amount_scoop ?? 0) + scoopsAdd
     solid.amount_scoop = scoops
-    solid.amount_g = scoops * 0.2
+    solid.amount_g = scoops * SPOON_SCOOP_MASS_G
   }
   spoon.properties.holding = []
   next.last_events = [{ kind: 'returned', message: `Returned ${substance}.` }]
@@ -154,8 +160,8 @@ function afterNaclPour(scene: LabScene): LabScene {
   const water = next.items.find((item) => item.id === 'beaker-water')!
   spoon.properties.holding = []
   // Mirror server-authored aqueous ions after NaCl dissolve (not client dissociation).
-  // 0.2 g NaCl / 58.44 g·mol⁻¹ ≈ 0.003422 mol
-  const moles = 0.2 / 58.44
+  // SPOON_SCOOP_MASS_G NaCl / 58.44 g·mol⁻¹
+  const moles = SPOON_SCOOP_MASS_G / 58.44
   water.properties.composition = [
     ...optionalArray(water.properties.composition),
     {
@@ -204,7 +210,7 @@ function afterSandPour(scene: LabScene): LabScene {
       phase: 'solid',
       amount_ml: null,
       amount_scoop: 1,
-      amount_g: 0.2,
+      amount_g: SPOON_SCOOP_MASS_G,
       amount_mol: null,
     },
   ]
@@ -365,7 +371,7 @@ describe('LabBench', () => {
             transparent: true,
             colourless: true,
             temperature_c: 20,
-            composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10, amount_g: 2, amount_mol: null}],
+            composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
           },
         },
         {
@@ -379,7 +385,7 @@ describe('LabBench', () => {
             transparent: true,
             colourless: true,
             temperature_c: 20,
-            composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10, amount_g: 2, amount_mol: null}],
+            composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
           },
         },
         {
@@ -469,7 +475,7 @@ describe('LabBench', () => {
 
     const panel = await screen.findByRole('dialog', { name: 'Contents of Sodium chloride' })
     expect(panel).toHaveTextContent('NaCl (s)')
-    expect(panel).toHaveTextContent('2 g')
+    expect(panel).toHaveTextContent(`${STOCK_FULL_MASS_G} g`)
   })
 
   it('after scoop, salt inspect shows depleted server stock mass', async () => {
@@ -521,7 +527,7 @@ describe('LabBench', () => {
 
     const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
     expect(panel).toHaveTextContent('SiO2 (s)')
-    expect(panel).toHaveTextContent('0.2 g')
+    expect(panel).toHaveTextContent(`${SPOON_SCOOP_MASS_G} g`)
     expect(panel.querySelector('sub')?.textContent).toBe('2')
     expect(panel).not.toHaveTextContent(' M')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
@@ -553,8 +559,8 @@ describe('LabBench', () => {
 
     expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '1.00')
     expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
-    expect(stockFillRatio(2)).toBe(1)
-    expect(stockFillRatio(1.8)).toBeCloseTo(0.9)
+    expect(stockFillRatio(STOCK_FULL_MASS_G)).toBe(1)
+    expect(stockFillRatio(STOCK_FULL_MASS_G - SPOON_SCOOP_MASS_G)).toBeCloseTo(0.9)
 
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))

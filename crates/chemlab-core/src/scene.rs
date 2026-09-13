@@ -57,7 +57,7 @@ pub struct SceneItem {
 /// UI-facing event from the last applied action(s).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SceneEvent {
-    /// e.g. `"scooped"`, `"poured"`, `"dissolved"`, `"did_not_dissolve"`.
+    /// e.g. `"scooped"`, `"returned"`, `"poured"`, `"dissolved"`, `"did_not_dissolve"`.
     pub kind: String,
     pub message: String,
 }

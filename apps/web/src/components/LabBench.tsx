@@ -90,8 +90,14 @@ function WaterBeakerSvg({
   )
 }
 
-/** Initial salt/sand stock mass on the server bench (10 scoops × 0.2 g). */
-const STOCK_FULL_MASS_G = 2
+/** Mass of one spoon scoop of solid (grams) — mirrors `chemlab_core::SPOON_SCOOP_MASS_G`. */
+export const SPOON_SCOOP_MASS_G = 0.2
+
+/** Initial scoop count in salt/sand stock beakers. */
+export const STOCK_FULL_SCOOPS = 10
+
+/** Initial salt/sand stock mass on the server bench. */
+export const STOCK_FULL_MASS_G = STOCK_FULL_SCOOPS * SPOON_SCOOP_MASS_G
 
 /** Fill fraction 0..1 from server amount_g relative to initial stock. */
 export function stockFillRatio(amountG: number | null | undefined): number {

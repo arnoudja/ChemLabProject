@@ -1,4 +1,8 @@
-//! Qualitative dissolve lookup for this slice: NaCl / CaCl₂ / sand in water at 20 °C.
+//! Qualitative dissolve lookup for this slice: NaCl / CaCl₂ / sand in water.
+//!
+//! Soluble salts (`nacl`, `cacl2`) dissolve in liquid water at the beaker's current
+//! temperature. Solubility is still the qualitative bench (20 °C) table — there is
+//! no T-dependent solubility curve yet. Sand remains keyed to exact bench °C.
 
 use thiserror::Error;
 
@@ -22,7 +26,7 @@ pub enum DissolveError {
     /// `solvent_id` is not `water`.
     #[error("unsupported solvent")]
     UnsupportedSolvent,
-    /// `temperature_c` is not bench temperature (`20`).
+    /// Sand (insoluble) lookups still require bench temperature (`20`).
     #[error("unsupported temperature")]
     UnsupportedTemperature,
     /// An id is empty or whitespace-only.
@@ -46,10 +50,17 @@ fn is_known_substance(substance_id: &str) -> bool {
     matches!(substance_id, "nacl" | "cacl2" | "sand")
 }
 
+fn is_soluble_salt(substance_id: &str) -> bool {
+    matches!(substance_id, "nacl" | "cacl2")
+}
+
 /// Predict whether a named solid dissolves under this slice's bench conditions.
 ///
 /// Ids are matched as-is: no trim, no case-fold. `dissolved: false` is a successful
 /// prediction (sand in water), not an error.
+///
+/// Soluble salts in water succeed at any temperature (ΔH heating/cooling is applied
+/// by the scene at the beaker's current T). Sand still requires exact `20` °C.
 pub fn dissolve(
     substance_id: &str,
     solvent_id: &str,
@@ -59,29 +70,34 @@ pub fn dissolve(
         return Err(DissolveError::InvalidInput);
     }
 
-    match (substance_id, solvent_id, temperature_c) {
-        ("nacl", "water", 20) => Ok(DissolveOutcome {
-            dissolved: true,
-            explanation: "Sodium chloride (NaCl) dissolves in water at bench temperature.",
-        }),
-        ("cacl2", "water", 20) => Ok(DissolveOutcome {
-            dissolved: true,
-            explanation: "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
-        }),
-        ("sand", "water", 20) => Ok(DissolveOutcome {
-            dissolved: false,
-            explanation: "Sand (silica) does not dissolve in water at bench temperature.",
-        }),
-        (substance, solvent, _) => {
-            if !is_known_substance(substance) {
-                Err(DissolveError::UnknownSubstance)
-            } else if solvent != "water" {
-                Err(DissolveError::UnsupportedSolvent)
-            } else {
-                Err(DissolveError::UnsupportedTemperature)
-            }
-        }
+    if !is_known_substance(substance_id) {
+        return Err(DissolveError::UnknownSubstance);
     }
+    if solvent_id != "water" {
+        return Err(DissolveError::UnsupportedSolvent);
+    }
+
+    // Soluble salts: ignore beaker T for the qualitative dissolve flag.
+    // Sand: keep the legacy exact-20 °C gate.
+    if is_soluble_salt(substance_id) || temperature_c == 20 {
+        return match substance_id {
+            "nacl" => Ok(DissolveOutcome {
+                dissolved: true,
+                explanation: "Sodium chloride (NaCl) dissolves in water at bench temperature.",
+            }),
+            "cacl2" => Ok(DissolveOutcome {
+                dissolved: true,
+                explanation: "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
+            }),
+            "sand" => Ok(DissolveOutcome {
+                dissolved: false,
+                explanation: "Sand (silica) does not dissolve in water at bench temperature.",
+            }),
+            _ => unreachable!("is_known_substance gates this match"),
+        };
+    }
+
+    Err(DissolveError::UnsupportedTemperature)
 }
 
 fn is_blank(id: &str) -> bool {
@@ -115,6 +131,28 @@ mod tests {
                 20,
                 false,
                 "Sand (silica) does not dissolve in water at bench temperature.",
+            ),
+            // Soluble salts keep dissolving away from exact bench °C.
+            (
+                "nacl",
+                "water",
+                19,
+                true,
+                "Sodium chloride (NaCl) dissolves in water at bench temperature.",
+            ),
+            (
+                "cacl2",
+                "water",
+                25,
+                true,
+                "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
+            ),
+            (
+                "nacl",
+                "water",
+                0,
+                true,
+                "Sodium chloride (NaCl) dissolves in water at bench temperature.",
             ),
         ];
 
@@ -184,20 +222,7 @@ mod tests {
                 DissolveError::UnsupportedSolvent,
                 "unsupported_solvent",
             ),
-            (
-                "nacl",
-                "water",
-                21,
-                DissolveError::UnsupportedTemperature,
-                "unsupported_temperature",
-            ),
-            (
-                "cacl2",
-                "water",
-                21,
-                DissolveError::UnsupportedTemperature,
-                "unsupported_temperature",
-            ),
+            // Sand (insoluble) still requires exact bench temperature.
             (
                 "sand",
                 "water",
@@ -206,9 +231,9 @@ mod tests {
                 "unsupported_temperature",
             ),
             (
-                "nacl",
+                "sand",
                 "water",
-                0,
+                21,
                 DissolveError::UnsupportedTemperature,
                 "unsupported_temperature",
             ),

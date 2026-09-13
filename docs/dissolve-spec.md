@@ -26,20 +26,22 @@ Exact string ids, lowercase ASCII, matched as-is. Do not trim or case-fold (`NaC
 | --- | --- | --- |
 | `substance_id` | `nacl`, `cacl2`, `sand` | Table salt, calcium chloride, silica sand (SiO₂) |
 | `solvent_id` | `water` | Liquid water; no other solvents |
-| `temperature_c` | `20` | Bench / room temperature in integer Celsius |
+| `temperature_c` | any integer °C for soluble salts; `20` for sand | Beaker / solvent temperature passed into the lookup |
 
 Amounts, stirring, time, and saturation are not modeled for the qualitative dissolve flag. Scoop mass (0.2 g) drives ion moles and ΔT when a salt dissolves in the scene engine.
+
+**Temperature / solubility simplification:** Soluble salts (`nacl`, `cacl2`) keep dissolving into aqueous water at the beaker’s **current** temperature (exothermic CaCl₂ heating or endothermic NaCl cooling must not block further scoops). The dissolve flag still uses the qualitative bench solubility table — there is no T-dependent solubility curve yet. Sand (insoluble) still requires exact `20` °C for the lookup.
 
 ## Outcomes
 
 A successful call returns `dissolved` (boolean) plus a stable English `explanation` for the UI. Use these strings verbatim so tests and copy stay aligned.
 
-### `nacl` + `water` + `20`
+### `nacl` + `water` (any `temperature_c`)
 
 - **dissolved:** `true`
 - **explanation:** `Sodium chloride (NaCl) dissolves in water at bench temperature.`
 
-### `cacl2` + `water` + `20`
+### `cacl2` + `water` (any `temperature_c`)
 
 - **dissolved:** `true`
 - **explanation:** `Calcium chloride (CaCl2) dissolves in water at bench temperature.`
@@ -49,7 +51,7 @@ A successful call returns `dissolved` (boolean) plus a stable English `explanati
 - **dissolved:** `false`
 - **explanation:** `Sand (silica) does not dissolve in water at bench temperature.`
 
-`dissolved: false` is a successful prediction (sand in water). It is not an error.
+`dissolved: false` is a successful prediction (sand in water). It is not an error. Explanation copy still says “bench temperature” because solubility is the qualitative 20 °C table, even when the beaker has already heated or cooled from prior dissolves.
 
 ## Scene ions and heat (server-authored)
 
@@ -70,10 +72,10 @@ Anything outside the table is an error. Unknown materials must **not** be treate
 | --- | --- | --- |
 | `substance_id` not `nacl`, `cacl2`, or `sand` | `unknown_substance` | Not in this slice |
 | `solvent_id` not `water` | `unsupported_solvent` | Only water |
-| `temperature_c` not `20` | `unsupported_temperature` | No heat / temperature model beyond dissolve ΔT |
+| `sand` + `water` with `temperature_c` ≠ `20` | `unsupported_temperature` | Insoluble sand lookup still gated to bench °C |
 | empty or whitespace-only ids | `invalid_input` | Reject, do not guess |
 
-Do not invent boiling-water, ethanol, or “mystery powder” chemistry. Wrong temperature or solvent fails; it does not return a different `dissolved` flag.
+Do not invent ethanol or “mystery powder” chemistry. Wrong solvent fails; it does not return a different `dissolved` flag. Soluble-salt pours must not fail solely because prior dissolve ΔT moved the beaker off 20 °C.
 
 ## Display names (UI stock labels)
 

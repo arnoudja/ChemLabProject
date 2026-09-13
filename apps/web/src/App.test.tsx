@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { clearCsrfTokenCache } from './lib/api'
+import { STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS } from './lib/scoopMass'
 
 const userPayload = {
   id: 'u1',
@@ -51,7 +52,7 @@ const EMPTY_LAB_SCENE = {
         transparent: true,
         colourless: true,
         temperature_c: 20,
-        composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: 10, amount_g: 2, amount_mol: null}],
+        composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
         holding: [],
       },
     },
@@ -66,7 +67,7 @@ const EMPTY_LAB_SCENE = {
         transparent: true,
         colourless: true,
         temperature_c: 20,
-        composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: 10, amount_g: 2, amount_mol: null}],
+        composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
         holding: [],
       },
     },

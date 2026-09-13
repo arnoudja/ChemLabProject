@@ -9,6 +9,7 @@ import {
   postLabAction,
   register,
 } from './api'
+import { SPOON_SCOOP_MASS_G } from './scoopMass'
 
 const initialScene = {
   lab_id: 'lab-1',
@@ -116,7 +117,7 @@ describe('api client', () => {
                             phase: 'solid',
                             amount_ml: null,
                             amount_scoop: 1,
-                            amount_g: 0.2,
+                            amount_g: SPOON_SCOOP_MASS_G,
                             amount_mol: null,
                           },
                         ],

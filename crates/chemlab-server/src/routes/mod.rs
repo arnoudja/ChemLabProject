@@ -331,6 +331,14 @@ mod tests {
             .to_string()
     }
 
+    fn without_clock(scene: &serde_json::Value) -> serde_json::Value {
+        let mut scene = scene.clone();
+        if let Some(obj) = scene.as_object_mut() {
+            obj.remove("last_applied_unix_ms");
+        }
+        scene
+    }
+
     fn cookie_pair(set_cookie: &str) -> String {
         set_cookie.split(';').next().unwrap().to_string()
     }
@@ -1015,7 +1023,7 @@ mod tests {
         assert_eq!(nacl["properties"]["composition"][0]["amount_g"], 2.0);
 
         let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
-        assert_eq!(persisted, scene);
+        assert_eq!(without_clock(&persisted), without_clock(&scene));
     }
 
     #[tokio::test]
@@ -1086,7 +1094,7 @@ mod tests {
             assert_eq!(solid["amount_g"], 2.0);
 
             let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
-            assert_eq!(persisted, scene);
+            assert_eq!(without_clock(&persisted), without_clock(&scene));
         }
     }
 
@@ -1224,7 +1232,7 @@ mod tests {
         );
 
         let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
-        assert_eq!(persisted, action["scene"]);
+        assert_eq!(without_clock(&persisted), without_clock(&action["scene"]));
         let water = persisted["items"]
             .as_array()
             .unwrap()
@@ -1327,7 +1335,7 @@ mod tests {
         );
 
         let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
-        assert_eq!(persisted, action["scene"]);
+        assert_eq!(without_clock(&persisted), without_clock(&action["scene"]));
     }
 
     #[tokio::test]
@@ -1910,5 +1918,277 @@ mod tests {
                 "{substance_id:?}/{solvent_id:?}/{temperature_c}"
             );
         }
+    }
+
+    fn scene_item<'a>(scene: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
+        scene["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == id)
+            .unwrap_or_else(|| panic!("missing item {id}"))
+    }
+
+    async fn pipette_one_ml_into_dish(app: &Router, cookies: &str, csrf_token: &str) {
+        assert_eq!(
+            post_action(
+                app,
+                cookies,
+                Some(csrf_token),
+                serde_json::json!({
+                    "type": "use_tool",
+                    "tool_item_id": "pipette-1",
+                    "target_item_id": "beaker-water"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            post_action(
+                app,
+                cookies,
+                Some(csrf_token),
+                serde_json::json!({
+                    "type": "pour",
+                    "source_item_id": "pipette-1",
+                    "target_item_id": "dish-1"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn toggle_burner_without_csrf_is_forbidden() {
+        let app = test_app().await;
+        let (_csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "burner-csrf@chemlab.local").await;
+        let response = post_action(
+            &app,
+            &format!("{session_cookie}; {csrf_cookie}"),
+            None,
+            serde_json::json!({
+                "type": "toggle_burner",
+                "burner_item_id": "burner-1"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(body_json(response).await["code"], "csrf");
+    }
+
+    #[tokio::test]
+    async fn toggle_burner_without_session_is_unauthorized() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie) = issue_csrf(&app).await;
+        let response = post_action(
+            &app,
+            &csrf_cookie,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "toggle_burner",
+                "burner_item_id": "burner-1"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(body_json(response).await["code"], "unauthenticated");
+    }
+
+    #[tokio::test]
+    async fn toggle_burner_with_csrf_and_session_turns_on_when_dish_has_liquid() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "burner-on@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        pipette_one_ml_into_dish(&app, &cookies, &csrf_token).await;
+
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "toggle_burner",
+                "burner_item_id": "burner-1"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let scene = body_json(response).await["scene"].clone();
+        assert_eq!(scene_item(&scene, "burner-1")["properties"]["on"], true);
+        assert_eq!(scene["last_events"][0]["kind"], "toggled");
+    }
+
+    #[tokio::test]
+    async fn get_scene_applies_elapsed_heat_while_burner_on() {
+        let (app, state) = test_app_state().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "elapsed-get@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        pipette_one_ml_into_dish(&app, &cookies, &csrf_token).await;
+        assert_eq!(
+            post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "toggle_burner",
+                    "burner_item_id": "burner-1"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+
+        let scene_response = get_scene(&app, Some(&cookies)).await;
+        assert_eq!(scene_response.status(), StatusCode::OK);
+        let mut scene = body_json(scene_response).await;
+        let past_ms = chrono::Utc::now().timestamp_millis() - 1500;
+        scene["last_applied_unix_ms"] = serde_json::json!(past_ms);
+        let lab_id = scene["lab_id"].as_str().expect("lab_id").to_string();
+        let version = scene["version"].as_u64().expect("version") as i64;
+        let blob = serde_json::to_vec(&scene).expect("serialize scene");
+        chemlab_db::save_lab_state(state.pool(), &lab_id, &blob, version)
+            .await
+            .expect("seed last_applied");
+
+        let response = get_scene(&app, Some(&cookies)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let after = body_json(response).await;
+        let temperature = scene_item(&after, "dish-1")["properties"]["temperature_c"]
+            .as_f64()
+            .expect("temperature_c");
+        let expected = 20.0 + chemlab_core::HEAT_K_PER_S * 1.5;
+        assert!(
+            (temperature - expected).abs() < 1.0,
+            "GET should apply ~1.5 s of heat: expected ~{expected}, got {temperature}"
+        );
+        assert!(
+            after["last_applied_unix_ms"].as_i64().unwrap_or(0) >= past_ms + 1500,
+            "GET must persist an updated last_applied_unix_ms"
+        );
+        let water_ml = scene_item(&after, "dish-1")["properties"]["composition"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["substance_id"] == "water")
+            .and_then(|c| c["amount_ml"].as_f64())
+            .unwrap_or(0.0);
+        assert!(
+            (water_ml - 1.0).abs() < 1e-6,
+            "no evaporation below 100 °C, got {water_ml} ml"
+        );
+    }
+
+    #[tokio::test]
+    async fn post_action_applies_elapsed_heat_before_user_action() {
+        let (app, state) = test_app_state().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "elapsed-post@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        pipette_one_ml_into_dish(&app, &cookies, &csrf_token).await;
+        assert_eq!(
+            post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "toggle_burner",
+                    "burner_item_id": "burner-1"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+
+        let scene_response = get_scene(&app, Some(&cookies)).await;
+        let mut scene = body_json(scene_response).await;
+        let past_ms = chrono::Utc::now().timestamp_millis() - 1500;
+        scene["last_applied_unix_ms"] = serde_json::json!(past_ms);
+        let lab_id = scene["lab_id"].as_str().expect("lab_id").to_string();
+        let version = scene["version"].as_u64().expect("version") as i64;
+        chemlab_db::save_lab_state(
+            state.pool(),
+            &lab_id,
+            &serde_json::to_vec(&scene).unwrap(),
+            version,
+        )
+        .await
+        .expect("seed last_applied");
+
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "put_away",
+                "tool_item_id": "pipette-1"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let after = body_json(response).await["scene"].clone();
+        let temperature = scene_item(&after, "dish-1")["properties"]["temperature_c"]
+            .as_f64()
+            .expect("temperature_c");
+        let expected = 20.0 + chemlab_core::HEAT_K_PER_S * 1.5;
+        assert!(
+            (temperature - expected).abs() < 1.0,
+            "POST should apply elapsed heat before the action: expected ~{expected}, got {temperature}"
+        );
+        assert_eq!(scene_item(&after, "burner-1")["properties"]["on"], true);
+    }
+
+    #[tokio::test]
+    async fn get_scene_clamps_elapsed_time_to_two_seconds() {
+        let (app, state) = test_app_state().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "elapsed-clamp@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        pipette_one_ml_into_dish(&app, &cookies, &csrf_token).await;
+        assert_eq!(
+            post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "toggle_burner",
+                    "burner_item_id": "burner-1"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+
+        let mut scene = body_json(get_scene(&app, Some(&cookies)).await).await;
+        let past_ms = chrono::Utc::now().timestamp_millis() - 10_000;
+        scene["last_applied_unix_ms"] = serde_json::json!(past_ms);
+        let lab_id = scene["lab_id"].as_str().expect("lab_id").to_string();
+        let version = scene["version"].as_u64().expect("version") as i64;
+        chemlab_db::save_lab_state(
+            state.pool(),
+            &lab_id,
+            &serde_json::to_vec(&scene).unwrap(),
+            version,
+        )
+        .await
+        .unwrap();
+
+        let after = body_json(get_scene(&app, Some(&cookies)).await).await;
+        let temperature = scene_item(&after, "dish-1")["properties"]["temperature_c"]
+            .as_f64()
+            .expect("temperature_c");
+        let expected = 20.0 + chemlab_core::HEAT_K_PER_S * 2.0;
+        assert!(
+            (temperature - expected).abs() < 1.0,
+            "elapsed dt must clamp to 2 s: expected ~{expected}, got {temperature}"
+        );
     }
 }

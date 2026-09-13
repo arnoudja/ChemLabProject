@@ -109,4 +109,4 @@ A **pipette** transfers **1.00 ml** of mixed solution (water + aqueous ions in p
 - Multiplayer command log / lab sharing
 - 3D glassware
 - A general reaction engine
-- HTTP elapsed-time persistence and LabBench pipette/burner UI (later PRs)
+- HTTP LabBench pipette/burner UI (later PR)

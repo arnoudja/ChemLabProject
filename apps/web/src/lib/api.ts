@@ -5,6 +5,9 @@ import type {
   DissolveResponse,
   ErrorResponse,
   HealthResponse,
+  LabAction,
+  LabActionResponse,
+  LabScene,
   LoginRequest,
   MeResponse,
   RegisterRequest,
@@ -89,6 +92,7 @@ export async function logout(): Promise<void> {
   }
 }
 
+/** Predict-only dissolve endpoint (welcome picker). LabBench uses scene actions instead. */
 export async function dissolve(body: DissolveRequest): Promise<DissolveResponse> {
   const response = await fetch('/api/lab/dissolve', {
     method: 'POST',
@@ -97,4 +101,19 @@ export async function dissolve(body: DissolveRequest): Promise<DissolveResponse>
     body: JSON.stringify(body),
   })
   return parseJson<DissolveResponse>(response)
+}
+
+export async function fetchLabScene(): Promise<LabScene> {
+  const response = await fetch('/api/lab/scene', { credentials: 'include' })
+  return parseJson<LabScene>(response)
+}
+
+export async function postLabAction(action: LabAction): Promise<LabActionResponse> {
+  const response = await fetch('/api/lab/action', {
+    method: 'POST',
+    credentials: 'include',
+    headers: await mutateHeaders(true),
+    body: JSON.stringify(action),
+  })
+  return parseJson<LabActionResponse>(response)
 }

@@ -33,7 +33,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Line coverage
-        run: cargo llvm-cov --workspace --fail-under-lines 88
+        run: cargo llvm-cov --workspace --fail-under-lines 92
 
   web:
     runs-on: ubuntu-latest

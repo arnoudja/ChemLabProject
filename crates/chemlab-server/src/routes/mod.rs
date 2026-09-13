@@ -611,6 +611,15 @@ mod tests {
             .unwrap();
         assert_eq!(scene["version"], 1);
         assert_eq!(spoon["properties"]["holding"][0]["substance_id"], "nacl");
+        assert_eq!(spoon["properties"]["holding"][0]["amount_g"], 0.2);
+        let nacl = scene["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "beaker-nacl")
+            .unwrap();
+        assert_eq!(nacl["properties"]["composition"][0]["amount_scoop"], 9);
+        assert_eq!(nacl["properties"]["composition"][0]["amount_g"], 1.8);
     }
 
     #[tokio::test]

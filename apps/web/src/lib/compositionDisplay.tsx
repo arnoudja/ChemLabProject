@@ -79,7 +79,7 @@ export function solventVolumeLitres(composition: CompositionEntry[]): number | n
   return water.amount_ml / 1000
 }
 
-/** Format molarity or mass suffix from server amounts (display only). */
+/** Format molarity, mass, or volume suffix from server amounts (display only). */
 export function formatCompositionAmount(
   entry: CompositionEntry,
   solventVolumeL: number | null,
@@ -90,6 +90,9 @@ export function formatCompositionAmount(
   }
   if (entry.phase === 'solid' && entry.amount_g != null) {
     return `${formatMassGrams(entry.amount_g)} g`
+  }
+  if (entry.phase === 'liquid' && entry.amount_ml != null) {
+    return `${formatVolumeMl(entry.amount_ml)} ml`
   }
   return null
 }
@@ -109,6 +112,10 @@ function formatMassGrams(value: number): string {
 /** Format beaker/scene temperature for inspect labels (always two decimals). */
 export function formatTemperatureC(temperatureC: number): string {
   return temperatureC.toFixed(2)
+}
+
+function formatVolumeMl(value: number): string {
+  return formatMassGrams(value)
 }
 
 /** Label + optional amount for the beaker inspect list. */

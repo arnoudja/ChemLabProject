@@ -236,16 +236,28 @@ fn apply_use_tool(
         return Err(SceneError::InvalidAction);
     }
 
-    let solid = scene.items[target_idx]
+    let solid_idx = scene.items[target_idx]
         .properties
         .composition
         .iter()
-        .find(|c| c.phase == "solid" && (c.substance_id == "nacl" || c.substance_id == "sand"))
-        .cloned()
+        .position(|c| c.phase == "solid" && (c.substance_id == "nacl" || c.substance_id == "sand"))
         .ok_or(SceneError::InvalidAction)?;
 
+    let solid = &mut scene.items[target_idx].properties.composition[solid_idx];
+    let scoops_available = solid.amount_scoop.unwrap_or(0);
+    let mass_available = solid.amount_g.unwrap_or(0.0);
+    if scoops_available < 1 || mass_available + 1e-12 < SPOON_SCOOP_MASS_G {
+        return Err(SceneError::InvalidAction);
+    }
+
+    let substance_id = solid.substance_id.clone();
+    let scoops_remaining = scoops_available - 1;
+    solid.amount_scoop = Some(scoops_remaining);
+    // Derive grams from scoop count so stock stays aligned with SPOON_SCOOP_MASS_G.
+    solid.amount_g = Some(scoops_remaining as f64 * SPOON_SCOOP_MASS_G);
+
     let scoop = CompositionEntry {
-        substance_id: solid.substance_id.clone(),
+        substance_id: substance_id.clone(),
         phase: "solid".into(),
         amount_ml: None,
         amount_scoop: Some(1),
@@ -259,7 +271,7 @@ fn apply_use_tool(
 
     scene.last_events.push(SceneEvent {
         kind: "scooped".into(),
-        message: format!("Scooped {} onto the spoon.", solid.substance_id),
+        message: format!("Scooped {substance_id} onto the spoon."),
     });
     Ok(())
 }
@@ -507,6 +519,16 @@ mod tests {
         );
         assert_eq!(SPOON_SCOOP_MASS_G, 0.2);
 
+        let nacl = item(&scene, "beaker-nacl");
+        let stock = nacl
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "nacl" && c.phase == "solid")
+            .unwrap();
+        assert_eq!(stock.amount_scoop, Some(9));
+        assert_eq!(stock.amount_g, Some(9.0 * SPOON_SCOOP_MASS_G));
+
         assert!(scene.last_events.iter().any(|e| e.kind == "scooped"));
         // Dissolve must not run yet — water still only water.
         let water = item(&scene, "beaker-water");
@@ -515,6 +537,36 @@ mod tests {
             .composition
             .iter()
             .all(|c| c.substance_id == "water"));
+    }
+
+    #[test]
+    fn use_tool_fails_when_stock_is_empty() {
+        let mut scene = initial_bench_scene("lab-test");
+        let nacl = scene
+            .items
+            .iter_mut()
+            .find(|i| i.id == "beaker-nacl")
+            .unwrap();
+        let stock = nacl
+            .properties
+            .composition
+            .iter_mut()
+            .find(|c| c.substance_id == "nacl")
+            .unwrap();
+        stock.amount_scoop = Some(0);
+        stock.amount_g = Some(0.0);
+
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        let spoon = item(&scene, "spoon-1");
+        assert!(spoon.properties.holding.is_empty());
     }
 
     #[test]

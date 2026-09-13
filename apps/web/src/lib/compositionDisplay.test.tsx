@@ -80,11 +80,18 @@ describe('formatCompositionAmount', () => {
     expect(formatCompositionAmount(sand, 0.2)).toBe('0.4 g')
   })
 
+  it('formats liquid volume from server millilitres', () => {
+    const water = entry({ substance_id: 'water', phase: 'liquid', amount_ml: 200 })
+    expect(formatCompositionAmount(water, 0.2)).toBe('200 ml')
+  })
+
   it('omits amount when data is missing', () => {
     const ion = entry({ substance_id: 'na+', phase: 'aqueous' })
     expect(formatCompositionAmount(ion, 0.2)).toBeNull()
     const solid = entry({ substance_id: 'sand', phase: 'solid' })
     expect(formatCompositionAmount(solid, null)).toBeNull()
+    const liquid = entry({ substance_id: 'water', phase: 'liquid' })
+    expect(formatCompositionAmount(liquid, null)).toBeNull()
   })
 })
 
@@ -130,6 +137,18 @@ describe('CompositionInspectLine', () => {
     expect(container.querySelector('sub')?.textContent).toBe('2')
     expect(container.textContent).toContain('SiO2 (s)')
     expect(container.textContent).toContain('0.4 g')
+  })
+
+  it('shows liquid water volume from amount_ml', () => {
+    const { container } = render(
+      <CompositionInspectLine
+        entry={entry({ substance_id: 'water', phase: 'liquid', amount_ml: 200 })}
+        solventVolumeL={0.2}
+      />,
+    )
+    expect(container.querySelector('sub')?.textContent).toBe('2')
+    expect(container.textContent).toContain('H2O (l)')
+    expect(container.textContent).toContain('200 ml')
   })
 })
 

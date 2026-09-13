@@ -57,6 +57,21 @@ const EMPTY_LAB_SCENE = {
       },
     },
     {
+      id: 'beaker-cacl2',
+      kind: 'beaker',
+      label: 'Calcium chloride',
+      location: 'bench',
+      properties: {
+        volume_ml: 250,
+        fill_ml: 100,
+        transparent: true,
+        colourless: true,
+        temperature_c: 20,
+        composition: [{ substance_id: 'cacl2', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
+        holding: [],
+      },
+    },
+    {
       id: 'beaker-sand',
       kind: 'beaker',
       label: 'Sand',

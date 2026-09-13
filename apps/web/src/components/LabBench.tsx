@@ -20,34 +20,34 @@ export { SPOON_SCOOP_MASS_G, STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS, WATER_FULL_ML
 
 const SPOON_ID = 'spoon-1'
 const NACL_ID = 'beaker-nacl'
+const CACL2_ID = 'beaker-cacl2'
 const SAND_ID = 'beaker-sand'
 const WATER_ID = 'beaker-water'
 
-type ToolUi = 'none' | 'spoon' | 'nacl' | 'sand'
+type StockSolid = 'nacl' | 'cacl2' | 'sand'
+type ToolUi = 'none' | 'spoon' | StockSolid
+
+function isStockSolid(id: string): id is StockSolid {
+  return id === 'nacl' || id === 'cacl2' || id === 'sand'
+}
 
 function findItem(scene: LabScene, id: string): Item | undefined {
   return scene.items.find((item) => item.id === id)
 }
 
-function spoonHoldingSubstance(scene: LabScene): 'nacl' | 'sand' | null {
+function spoonHoldingSubstance(scene: LabScene): StockSolid | null {
   const spoon = findItem(scene, SPOON_ID)
   const held = optionalArray(spoon?.properties.holding)[0]
   if (!held || held.phase !== 'solid') return null
-  if (held.substance_id === 'nacl' || held.substance_id === 'sand') {
-    return held.substance_id
-  }
-  return null
+  return isStockSolid(held.substance_id) ? held.substance_id : null
 }
 
 /** Undissolved solid grains come only from server composition on the water item. */
-function undissolvedSolidInWater(scene: LabScene): 'nacl' | 'sand' | null {
+function undissolvedSolidInWater(scene: LabScene): StockSolid | null {
   const water = findItem(scene, WATER_ID)
   const solid = optionalArray(water?.properties.composition).find((entry) => entry.phase === 'solid')
   if (!solid) return null
-  if (solid.substance_id === 'nacl' || solid.substance_id === 'sand') {
-    return solid.substance_id
-  }
-  return null
+  return isStockSolid(solid.substance_id) ? solid.substance_id : null
 }
 
 function itemTemperatureC(scene: LabScene, item: Item): number {
@@ -67,7 +67,7 @@ function WaterBeakerSvg({
   hasAqueous,
   dissolveCue,
 }: {
-  leftoverSolid: 'nacl' | 'sand' | null
+  leftoverSolid: StockSolid | null
   busy: boolean
   amountMl?: number | null
   /** Server-authored aqueous ions in the water beaker (not a client dissolve decision). */
@@ -127,7 +127,12 @@ function WaterBeakerSvg({
         />
       ) : null}
       {leftoverSolid ? (
-        <g fill={leftoverSolid === 'nacl' ? '#F4FBFF' : '#C9B48A'} opacity="0.9">
+        <g
+          fill={
+            leftoverSolid === 'sand' ? '#C9B48A' : leftoverSolid === 'cacl2' ? '#F2F7FF' : '#F4FBFF'
+          }
+          opacity="0.9"
+        >
           <circle cx="48" cy="142" r="3.2" />
           <circle cx="62" cy="146" r="2.6" />
           <circle cx="74" cy="141" r="3" />
@@ -149,11 +154,11 @@ function SolidBeakerSvg({
   solid,
   amountG,
 }: {
-  solid: 'nacl' | 'sand'
+  solid: StockSolid
   amountG?: number | null
 }) {
-  const pile = solid === 'nacl' ? '#F4FBFF' : '#C9A36A'
-  const speck = solid === 'nacl' ? '#DDF7FF' : '#8C6A3A'
+  const pile = solid === 'sand' ? '#C9A36A' : solid === 'cacl2' ? '#EEF4FF' : '#F4FBFF'
+  const speck = solid === 'sand' ? '#8C6A3A' : solid === 'cacl2' ? '#C4D2ED' : '#DDF7FF'
   const fill = stockFillRatio(amountG)
   // Full pile top ~72; empty sits near the beaker floor (~100).
   const topY = 100 - 28 * fill
@@ -194,8 +199,9 @@ function SolidBeakerSvg({
   )
 }
 
-function SpoonSvg({ fill, floating }: { fill: 'nacl' | 'sand' | null; floating?: boolean }) {
-  const bowl = fill === 'nacl' ? '#F4FBFF' : fill === 'sand' ? '#C9A36A' : '#C4D2ED'
+function SpoonSvg({ fill, floating }: { fill: StockSolid | null; floating?: boolean }) {
+  const bowl =
+    fill === 'nacl' ? '#F4FBFF' : fill === 'cacl2' ? '#EEF4FF' : fill === 'sand' ? '#C9A36A' : '#C4D2ED'
   return (
     <svg
       viewBox="0 0 132 40"
@@ -210,7 +216,7 @@ function SpoonSvg({ fill, floating }: { fill: 'nacl' | 'sand' | null; floating?:
 }
 
 
-function stockAmountG(scene: LabScene, itemId: string, substanceId: 'nacl' | 'sand'): number | null {
+function stockAmountG(scene: LabScene, itemId: string, substanceId: StockSolid): number | null {
   const item = findItem(scene, itemId)
   const entry = optionalArray(item?.properties.composition).find(
     (c) => c.substance_id === substanceId && c.phase === 'solid',
@@ -477,6 +483,17 @@ export function LabBench() {
           >
             <SolidBeakerSvg solid="nacl" amountG={stockAmountG(scene, NACL_ID, 'nacl')} />
             <StockSubstanceLabel substanceId="nacl" />
+          </button>
+
+          <button
+            type="button"
+            className="lab-item"
+            aria-label={stockSubstanceAriaLabel('cacl2')}
+            disabled={busy}
+            onClick={(event) => onSolid(CACL2_ID, event)}
+          >
+            <SolidBeakerSvg solid="cacl2" amountG={stockAmountG(scene, CACL2_ID, 'cacl2')} />
+            <StockSubstanceLabel substanceId="cacl2" />
           </button>
 
           <button

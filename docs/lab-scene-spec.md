@@ -21,7 +21,7 @@ Matched as-is (no trim or case-fold):
 
 | Role | Allowed values |
 | --- | --- |
-| Substance | `nacl`, `sand` |
+| Substance | `nacl`, `cacl2`, `sand` |
 | Solvent | `water` |
 | Temperature (°C) | `20` |
 
@@ -88,7 +88,7 @@ Pour into water is a separate action, e.g. `{ "type": "pour", "source_item_id": 
 ## Wire types (summary)
 
 - `CompositionEntry` — `substance_id`, `phase` (`solid` \| `liquid` \| `aqueous`), optional `amount_ml` / `amount_scoop` / `amount_g` / `amount_mol`
-- One spoon scoop of solid is **0.2 g** (`amount_g`). Scooping with `use_tool` **depletes** the source beaker's `amount_scoop` / `amount_g` (server-authoritative). Using the spoon on the **matching** stock beaker while holding that solid **returns** the scoop (empties holding, restores stock). Wrong stock (e.g. salt→sand) is rejected. Dissolved NaCl authors aqueous `na+` / `cl-` with `amount_mol` (aggregated on repeat pours). Undissolved solids (e.g. sand / SiO₂) aggregate `amount_g` on one composition line. Liquid water uses `amount_ml` for inspect volume display and for the water beaker fill height (relative to the initial 200 ml bench volume), mirroring how stock solids use `amount_g` for pile height.
+- One spoon scoop of solid is **0.2 g** (`amount_g`). Scooping with `use_tool` **depletes** the source beaker's `amount_scoop` / `amount_g` (server-authoritative). Using the spoon on the **matching** stock beaker while holding that solid **returns** the scoop (empties holding, restores stock). Wrong stock (e.g. salt→sand) is rejected. Dissolved NaCl authors aqueous `na+` / `cl-` with `amount_mol` (aggregated on repeat pours). Dissolved CaCl₂ authors aqueous `ca2+` / `cl-` (1:2) with `amount_mol` and **exothermic** heating (ΔH_sol ≈ −81.3 kJ/mol). Undissolved solids (e.g. sand / SiO₂) aggregate `amount_g` on one composition line. Liquid water uses `amount_ml` for inspect volume display and for the water beaker fill height (relative to the initial 200 ml bench volume), mirroring how stock solids use `amount_g` for pile height.
 - `ItemProperties` — optional volume/fill/flags/temperature (°C as `f64`); `composition` and `holding` lists
 - `Item` — `id`, `kind`, `label`, `location`, `properties`
 - `LabScene` — `lab_id`, `version`, ambient `temperature_c` (default `20.0`), `items`, optional `last_events`
@@ -96,7 +96,7 @@ Pour into water is a separate action, e.g. `{ "type": "pour", "source_item_id": 
 - `LabAction` — tagged `type`: `use_tool` \| `pour` \| `reset`
 - `LabActionResponse` — `{ "scene": LabScene }`
 
-When NaCl dissolves into water, the scene engine applies **endothermic** cooling to the water beaker's `properties.temperature_c` (ΔH_sol ≈ 3.88 kJ/mol; water c_p = 4.184 J/(g·K); water mass ≈ liquid `amount_ml`). Ambient `LabScene.temperature_c` is unchanged. Sand that does not dissolve leaves temperature unchanged. The frontend only formats the server value (two decimal places).
+When NaCl dissolves into water, the scene engine applies **endothermic** cooling to the water beaker's `properties.temperature_c` (ΔH_sol ≈ 3.88 kJ/mol; water c_p = 4.184 J/(g·K); water mass ≈ liquid `amount_ml`). When CaCl₂ dissolves, it applies **exothermic** heating (ΔH_sol ≈ −81.3 kJ/mol) with the same mass/c_p model. Ambient `LabScene.temperature_c` is unchanged. Sand that does not dissolve leaves temperature unchanged. The frontend only formats the server value (two decimal places).
 
 ## Out of scope
 

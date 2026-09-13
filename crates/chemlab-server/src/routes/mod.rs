@@ -23,14 +23,18 @@ mod tests {
     use tower::ServiceExt;
 
     async fn test_app_state() -> (Router, AppState) {
-        let config = Config {
+        test_app_state_with(Config {
             bind_addr: "127.0.0.1:0".into(),
             database_url: "sqlite::memory:?cache=shared".into(),
             static_dir: None,
             vite_dev_proxy: None,
             cookie_secure: false,
             session_ttl_hours: 24,
-        };
+        })
+        .await
+    }
+
+    async fn test_app_state_with(config: Config) -> (Router, AppState) {
         let state = AppState::new(&config).await.expect("state");
         (router(state.clone()), state)
     }
@@ -39,9 +43,29 @@ mod tests {
         test_app_state().await.0
     }
 
+    async fn body_text(response: axum::response::Response) -> String {
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
     async fn body_json(response: axum::response::Response) -> serde_json::Value {
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         serde_json::from_slice(&bytes).unwrap()
+    }
+
+    fn set_cookie_headers(response: &axum::response::Response) -> Vec<String> {
+        response
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .map(|value| value.to_str().unwrap().to_string())
+            .collect()
+    }
+
+    fn cookie_has_secure(set_cookie: &str) -> bool {
+        set_cookie
+            .split(';')
+            .any(|part| part.trim().eq_ignore_ascii_case("secure"))
     }
 
     #[tokio::test]
@@ -95,6 +119,206 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = body_text(response).await;
+        assert!(body.contains("ChemLab frontend not configured"));
+        assert!(body.contains("CHEMLAB_STATIC_DIR"));
+    }
+
+    #[tokio::test]
+    async fn cookie_secure_true_sets_secure_on_csrf_session_and_clear() {
+        let (app, _state) = test_app_state_with(Config {
+            bind_addr: "127.0.0.1:0".into(),
+            database_url: "sqlite::memory:?cache=shared".into(),
+            static_dir: None,
+            vite_dev_proxy: None,
+            cookie_secure: true,
+            session_ttl_hours: 24,
+        })
+        .await;
+
+        let csrf = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/csrf")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(csrf.status(), StatusCode::OK);
+        let csrf_headers = set_cookie_headers(&csrf);
+        assert!(
+            csrf_headers
+                .iter()
+                .any(|c| c.contains("chemlab_csrf=") && cookie_has_secure(c)),
+            "csrf Set-Cookie should include Secure: {csrf_headers:?}"
+        );
+        let csrf_json = body_json(csrf).await;
+        let csrf_token = csrf_json["csrf_token"].as_str().unwrap().to_string();
+        let csrf_cookie = cookie_pair(
+            csrf_headers
+                .iter()
+                .find(|c| c.contains("chemlab_csrf="))
+                .unwrap(),
+        );
+
+        let register = post_register_body(
+            &app,
+            &csrf_token,
+            &csrf_cookie,
+            r#"{"email":"secure@chemlab.local","password":"secret123","display_name":"Secure"}"#
+                .into(),
+        )
+        .await;
+        assert_eq!(register.status(), StatusCode::CREATED);
+        let register_cookies = set_cookie_headers(&register);
+        assert!(
+            register_cookies
+                .iter()
+                .any(|c| c.contains("chemlab_session=") && cookie_has_secure(c)),
+            "session Set-Cookie should include Secure: {register_cookies:?}"
+        );
+        let session_cookie = session_cookie_pair(&register);
+
+        let logout = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/logout")
+                    .header("content-type", "application/json")
+                    .header("cookie", format!("{session_cookie}; {csrf_cookie}"))
+                    .header("x-csrf-token", &csrf_token)
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(logout.status(), StatusCode::NO_CONTENT);
+        let clear_cookies = set_cookie_headers(&logout);
+        assert!(
+            clear_cookies
+                .iter()
+                .any(|c| c.contains("chemlab_session=") && cookie_has_secure(c)),
+            "clear session Set-Cookie should include Secure: {clear_cookies:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cookie_secure_false_omits_secure_attribute() {
+        let app = test_app().await;
+        let csrf = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/csrf")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let headers = set_cookie_headers(&csrf);
+        assert!(
+            headers.iter().any(|c| c.contains("chemlab_csrf=")),
+            "{headers:?}"
+        );
+        assert!(
+            headers.iter().all(|c| !cookie_has_secure(c)),
+            "Secure must be omitted when cookie_secure=false: {headers:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn static_dir_serves_spa_index_html() {
+        let dir = tempfile::tempdir().unwrap();
+        let index_path = dir.path().join("index.html");
+        std::fs::write(
+            &index_path,
+            "<!doctype html><html><body>ChemLab SPA</body></html>",
+        )
+        .unwrap();
+        let asset_path = dir.path().join("asset.txt");
+        std::fs::write(&asset_path, "asset-ok").unwrap();
+
+        let (app, _state) = test_app_state_with(Config {
+            bind_addr: "127.0.0.1:0".into(),
+            database_url: "sqlite::memory:?cache=shared".into(),
+            static_dir: Some(dir.path().to_path_buf()),
+            vite_dev_proxy: None,
+            cookie_secure: false,
+            session_ttl_hours: 24,
+        })
+        .await;
+
+        let root = app
+            .clone()
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(root.status(), StatusCode::OK);
+        assert!(body_text(root).await.contains("ChemLab SPA"));
+
+        let asset = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/asset.txt")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(asset.status(), StatusCode::OK);
+        assert_eq!(body_text(asset).await, "asset-ok");
+
+        // Unknown SPA path falls back to index.html for client routing.
+        let spa = app
+            .oneshot(
+                Request::builder()
+                    .uri("/lab/bench")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(spa.status(), StatusCode::OK);
+        assert!(body_text(spa).await.contains("ChemLab SPA"));
+    }
+
+    #[tokio::test]
+    async fn static_dir_missing_index_returns_sensible_404_html() {
+        let dir = tempfile::tempdir().unwrap();
+        // Directory exists but has no index.html (misconfigured install).
+        let (app, _state) = test_app_state_with(Config {
+            bind_addr: "127.0.0.1:0".into(),
+            database_url: "sqlite::memory:?cache=shared".into(),
+            static_dir: Some(dir.path().to_path_buf()),
+            vite_dev_proxy: None,
+            cookie_secure: false,
+            session_ttl_hours: 24,
+        })
+        .await;
+
+        let root = app
+            .clone()
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(root.status(), StatusCode::NOT_FOUND);
+        let root_body = body_text(root).await;
+        assert!(root_body.contains("ChemLab frontend not configured"));
+        assert!(root_body.contains("index.html"));
+
+        let missing = app
+            .oneshot(
+                Request::builder()
+                    .uri("/anything")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert!(body_text(missing).await.contains("CHEMLAB_STATIC_DIR"));
     }
 
     fn first_set_cookie(response: &axum::response::Response) -> String {
@@ -795,6 +1019,136 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn put_away_returns_scoop_to_matching_stock_for_each_solid() {
+        let app = test_app().await;
+        for (email, beaker_id, substance) in [
+            ("putaway-nacl@chemlab.local", "beaker-nacl", "nacl"),
+            ("putaway-sand@chemlab.local", "beaker-sand", "sand"),
+            ("putaway-cacl2@chemlab.local", "beaker-cacl2", "cacl2"),
+        ] {
+            let (csrf_token, csrf_cookie, session_cookie) = register_user(&app, email).await;
+            let cookies = format!("{session_cookie}; {csrf_cookie}");
+            assert_eq!(
+                post_action(
+                    &app,
+                    &cookies,
+                    Some(&csrf_token),
+                    serde_json::json!({
+                        "type": "use_tool",
+                        "tool_item_id": "spoon-1",
+                        "target_item_id": beaker_id
+                    }),
+                )
+                .await
+                .status(),
+                StatusCode::OK
+            );
+
+            let response = post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "put_away",
+                    "tool_item_id": "spoon-1"
+                }),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let scene = body_json(response).await["scene"].clone();
+            assert_eq!(scene["last_events"][0]["kind"], "returned");
+            let spoon = scene["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == "spoon-1")
+                .unwrap();
+            assert_eq!(spoon["location"], "bench");
+            assert!(
+                spoon["properties"].get("holding").is_none()
+                    || spoon["properties"]["holding"]
+                        .as_array()
+                        .is_some_and(|holding| holding.is_empty())
+            );
+            let stock = scene["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == beaker_id)
+                .unwrap();
+            let solid = stock["properties"]["composition"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["substance_id"] == substance && c["phase"] == "solid")
+                .unwrap();
+            assert_eq!(solid["amount_scoop"], 10);
+            assert_eq!(solid["amount_g"], 2.0);
+
+            let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
+            assert_eq!(persisted, scene);
+        }
+    }
+
+    #[tokio::test]
+    async fn put_away_empty_spoon_is_noop() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "putaway-empty@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        let before = body_json(get_scene(&app, Some(&cookies)).await).await;
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "put_away",
+                "tool_item_id": "spoon-1"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let scene = body_json(response).await["scene"].clone();
+        assert!(
+            scene.get("last_events").is_none()
+                || scene["last_events"]
+                    .as_array()
+                    .is_some_and(|events| events.is_empty())
+        );
+        for beaker_id in ["beaker-nacl", "beaker-sand", "beaker-cacl2"] {
+            let before_stock = before["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == beaker_id)
+                .unwrap();
+            let after_stock = scene["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == beaker_id)
+                .unwrap();
+            assert_eq!(
+                after_stock["properties"]["composition"],
+                before_stock["properties"]["composition"]
+            );
+        }
+        let spoon = scene["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "spoon-1")
+            .unwrap();
+        assert_eq!(spoon["location"], "bench");
+        assert!(
+            spoon["properties"].get("holding").is_none()
+                || spoon["properties"]["holding"]
+                    .as_array()
+                    .is_some_and(|holding| holding.is_empty())
+        );
+    }
+
+    #[tokio::test]
     async fn use_tool_rejects_putting_nacl_into_sand_stock() {
         let app = test_app().await;
         let (csrf_token, csrf_cookie, session_cookie) =
@@ -1054,10 +1408,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pour_at_unsupported_temperature_maps_dissolve_error() {
+    async fn pour_sand_at_non_bench_temperature_leaves_undissolved_solid() {
         let (app, state) = test_app_state().await;
         let (csrf_token, csrf_cookie, session_cookie) =
-            register_user(&app, "bad-temp@chemlab.local").await;
+            register_user(&app, "sand-warm@chemlab.local").await;
         let cookies = format!("{session_cookie}; {csrf_cookie}");
         assert_eq!(
             post_action(
@@ -1067,7 +1421,7 @@ mod tests {
                 serde_json::json!({
                     "type": "use_tool",
                     "tool_item_id": "spoon-1",
-                    "target_item_id": "beaker-nacl"
+                    "target_item_id": "beaker-sand"
                 }),
             )
             .await
@@ -1089,7 +1443,7 @@ mod tests {
         let blob = serde_json::to_vec(&scene).expect("serialize scene");
         chemlab_db::save_lab_state(state.pool(), &lab_id, &blob, version)
             .await
-            .expect("seed bad temperature");
+            .expect("seed warm temperature");
 
         let response = post_action(
             &app,
@@ -1102,8 +1456,221 @@ mod tests {
             }),
         )
         .await;
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(body_json(response).await["code"], "unsupported_temperature");
+        assert_eq!(response.status(), StatusCode::OK);
+        let action = body_json(response).await;
+        assert_eq!(
+            action["scene"]["last_events"][1]["kind"],
+            "did_not_dissolve"
+        );
+        assert_eq!(
+            action["scene"]["last_events"][1]["message"],
+            "Sand (silica) does not dissolve in water at bench temperature."
+        );
+        let water = action["scene"]["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .find(|item| item["id"] == "beaker-water")
+            .expect("beaker-water");
+        assert_eq!(water["properties"]["temperature_c"], 21.0);
+        let sand_solid = water["properties"]["composition"]
+            .as_array()
+            .expect("composition")
+            .iter()
+            .find(|c| c["substance_id"] == "sand" && c["phase"] == "solid")
+            .expect("solid sand leftover");
+        assert_eq!(sand_solid["amount_scoop"], 1);
+        assert!((sand_solid["amount_g"].as_f64().unwrap() - 0.2).abs() < 1e-12);
+    }
+
+    #[tokio::test]
+    async fn pour_sand_after_cacl2_heating_succeeds() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "sand-after-heat@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+
+        // One scoop only raises T by ~0.175 °C (still rounds to 20). Pour until the
+        // dissolve lookup sees a non-bench integer °C — the real warm-water bug path.
+        let mut after_heat = 20.0_f64;
+        for scoop_n in 1..=4 {
+            assert_eq!(
+                post_action(
+                    &app,
+                    &cookies,
+                    Some(&csrf_token),
+                    serde_json::json!({
+                        "type": "use_tool",
+                        "tool_item_id": "spoon-1",
+                        "target_item_id": "beaker-cacl2"
+                    }),
+                )
+                .await
+                .status(),
+                StatusCode::OK,
+                "scoop cacl2 {scoop_n}"
+            );
+            let heat_response = post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "pour",
+                    "source_item_id": "spoon-1",
+                    "target_item_id": "beaker-water"
+                }),
+            )
+            .await;
+            assert_eq!(
+                heat_response.status(),
+                StatusCode::OK,
+                "pour cacl2 {scoop_n}"
+            );
+            after_heat = body_json(heat_response).await["scene"]["items"]
+                .as_array()
+                .expect("items")
+                .iter()
+                .find(|item| item["id"] == "beaker-water")
+                .expect("beaker-water")["properties"]["temperature_c"]
+                .as_f64()
+                .expect("temperature_c");
+        }
+        assert!(
+            after_heat.round() as i32 != 20,
+            "CaCl2 heating must leave a non-bench lookup T, got {after_heat}"
+        );
+
+        assert_eq!(
+            post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "use_tool",
+                    "tool_item_id": "spoon-1",
+                    "target_item_id": "beaker-sand"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "pour",
+                "source_item_id": "spoon-1",
+                "target_item_id": "beaker-water"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let action = body_json(response).await;
+        assert_eq!(
+            action["scene"]["last_events"][1]["kind"],
+            "did_not_dissolve"
+        );
+        assert_eq!(
+            action["scene"]["last_events"][1]["message"],
+            "Sand (silica) does not dissolve in water at bench temperature."
+        );
+        let water = action["scene"]["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .find(|item| item["id"] == "beaker-water")
+            .expect("beaker-water");
+        assert_eq!(water["properties"]["temperature_c"], after_heat);
+        let sand_solid = water["properties"]["composition"]
+            .as_array()
+            .expect("composition")
+            .iter()
+            .find(|c| c["substance_id"] == "sand" && c["phase"] == "solid")
+            .expect("solid sand leftover");
+        assert_eq!(sand_solid["amount_scoop"], 1);
+        assert!((sand_solid["amount_g"].as_f64().unwrap() - 0.2).abs() < 1e-12);
+        assert!(
+            water["properties"]["composition"]
+                .as_array()
+                .expect("composition")
+                .iter()
+                .all(|c| !(c["substance_id"] == "sand" && c["phase"] == "aqueous")),
+            "sand must not invent an aqueous phase"
+        );
+    }
+
+    #[tokio::test]
+    async fn pour_second_cacl2_scoop_after_heating_succeeds() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "cacl2-hot@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+
+        for scoop_n in 1..=2 {
+            assert_eq!(
+                post_action(
+                    &app,
+                    &cookies,
+                    Some(&csrf_token),
+                    serde_json::json!({
+                        "type": "use_tool",
+                        "tool_item_id": "spoon-1",
+                        "target_item_id": "beaker-cacl2"
+                    }),
+                )
+                .await
+                .status(),
+                StatusCode::OK
+            );
+            let response = post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "pour",
+                    "source_item_id": "spoon-1",
+                    "target_item_id": "beaker-water"
+                }),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK, "pour scoop {scoop_n}");
+            let action = body_json(response).await;
+            assert_eq!(
+                action["scene"]["last_events"][1]["kind"], "dissolved",
+                "scoop {scoop_n}: {action}"
+            );
+            assert_eq!(
+                action["scene"]["last_events"][1]["message"],
+                "Calcium chloride (CaCl2) dissolves in water at bench temperature."
+            );
+        }
+
+        let scene_response = get_scene(&app, Some(&cookies)).await;
+        assert_eq!(scene_response.status(), StatusCode::OK);
+        let scene = body_json(scene_response).await;
+        let water = scene["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .find(|item| item["id"] == "beaker-water")
+            .expect("beaker-water");
+        let temperature = water["properties"]["temperature_c"]
+            .as_f64()
+            .expect("temperature_c");
+        assert!(
+            temperature > 20.0,
+            "two CaCl2 scoops should leave water above 20 °C, got {temperature}"
+        );
+        let ca_mol = water["properties"]["composition"]
+            .as_array()
+            .expect("composition")
+            .iter()
+            .find(|c| c["substance_id"] == "ca2+" && c["phase"] == "aqueous")
+            .and_then(|c| c["amount_mol"].as_f64())
+            .expect("ca2+ moles");
+        assert!(ca_mol > 0.0);
     }
 
     #[tokio::test]
@@ -1246,9 +1813,37 @@ mod tests {
                 "Sodium chloride (NaCl) dissolves in water at bench temperature.",
             ),
             (
+                "cacl2",
+                "water",
+                20,
+                true,
+                "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
+            ),
+            (
+                "cacl2",
+                "water",
+                25,
+                true,
+                "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
+            ),
+            (
+                "nacl",
+                "water",
+                19,
+                true,
+                "Sodium chloride (NaCl) dissolves in water at bench temperature.",
+            ),
+            (
                 "sand",
                 "water",
                 20,
+                false,
+                "Sand (silica) does not dissolve in water at bench temperature.",
+            ),
+            (
+                "sand",
+                "water",
+                21,
                 false,
                 "Sand (silica) does not dissolve in water at bench temperature.",
             ),
@@ -1292,7 +1887,6 @@ mod tests {
             ("NaCl", "water", 20, "unknown_substance"),
             (" nacl ", "water", 20, "unknown_substance"),
             ("nacl", "ethanol", 20, "unsupported_solvent"),
-            ("nacl", "water", 21, "unsupported_temperature"),
             ("", "water", 20, "invalid_input"),
             ("nacl", " ", 20, "invalid_input"),
         ];

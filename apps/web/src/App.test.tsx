@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { clearCsrfTokenCache } from './lib/api'
-import { STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS } from './lib/scoopMass'
+import { STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS } from './lib/benchAmounts'
 
 const userPayload = {
   id: 'u1',
@@ -53,6 +53,21 @@ const EMPTY_LAB_SCENE = {
         colourless: true,
         temperature_c: 20,
         composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
+        holding: [],
+      },
+    },
+    {
+      id: 'beaker-cacl2',
+      kind: 'beaker',
+      label: 'Calcium chloride',
+      location: 'bench',
+      properties: {
+        volume_ml: 250,
+        fill_ml: 100,
+        transparent: true,
+        colourless: true,
+        temperature_c: 20,
+        composition: [{ substance_id: 'cacl2', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
         holding: [],
       },
     },

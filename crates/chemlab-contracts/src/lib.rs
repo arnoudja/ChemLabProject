@@ -171,7 +171,7 @@ pub struct LabScene {
     pub last_events: Vec<LabEvent>,
 }
 
-/// Client → server lab action. Tagged JSON `type`: `use_tool` | `pour` | `reset`.
+/// Client → server lab action. Tagged JSON `type`: `use_tool` | `pour` | `put_away` | `reset`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export, export_to = "../../../apps/web/src/generated/")]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -184,6 +184,8 @@ pub enum LabAction {
         source_item_id: String,
         target_item_id: String,
     },
+    /// Return the spoon to the bench holder. Held scoops restore to matching stock.
+    PutAway { tool_item_id: String },
     /// Rebuild the default bench scene (pure water, empty spoon, stock jars).
     Reset,
 }
@@ -303,6 +305,22 @@ mod tests {
             }
         );
         let json = serde_json::to_string(&action).unwrap();
+        let back: LabAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(action, back);
+    }
+
+    #[test]
+    fn put_away_action_deserializes_from_json() {
+        let raw = r#"{ "type": "put_away", "tool_item_id": "spoon-1" }"#;
+        let action: LabAction = serde_json::from_str(raw).unwrap();
+        assert_eq!(
+            action,
+            LabAction::PutAway {
+                tool_item_id: "spoon-1".into(),
+            }
+        );
+        let json = serde_json::to_string(&action).unwrap();
+        assert!(json.contains(r#""type":"put_away""#));
         let back: LabAction = serde_json::from_str(&json).unwrap();
         assert_eq!(action, back);
     }

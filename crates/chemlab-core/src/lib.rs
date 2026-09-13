@@ -1,7 +1,8 @@
 //! ChemLab core domain.
 //!
-//! Chemistry rules live here. This crate currently exposes a two-row dissolve
-//! lookup (NaCl vs sand in water at bench temperature), not a general simulator.
+//! Chemistry rules live here. This crate currently exposes a small dissolve
+//! lookup (NaCl / CaCl₂ / sand in water) plus the lab scene engine — not a
+//! general simulator.
 
 mod dissolve;
 mod scene;

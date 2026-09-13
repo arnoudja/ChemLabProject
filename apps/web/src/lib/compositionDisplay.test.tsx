@@ -34,8 +34,10 @@ describe('formatCompositionLabel', () => {
   it('maps known substances and phases to readable plain-text formulas', () => {
     expect(formatCompositionLabel('water', 'liquid')).toBe('H2O (l)')
     expect(formatCompositionLabel('nacl', 'solid')).toBe('NaCl (s)')
+    expect(formatCompositionLabel('cacl2', 'solid')).toBe('CaCl2 (s)')
     expect(formatCompositionLabel('sand', 'solid')).toBe('SiO2 (s)')
     expect(formatCompositionLabel('na+', 'aqueous')).toBe('Na+ (aq)')
+    expect(formatCompositionLabel('ca2+', 'aqueous')).toBe('Ca2+ (aq)')
     expect(formatCompositionLabel('cl-', 'aqueous')).toBe('Cl- (aq)')
   })
 
@@ -153,12 +155,20 @@ describe('CompositionInspectLine', () => {
 })
 
 describe('StockSubstanceLabel', () => {
-  it('shows formula, chemical name, and common name for salt and sand', () => {
+  it('shows formula, chemical name, and common name for salts and sand', () => {
     const salt = render(<StockSubstanceLabel substanceId="nacl" />)
     expect(salt.container.textContent).toContain('NaCl')
     expect(salt.container.textContent).toContain('(Sodium chloride)')
     expect(salt.container.textContent).toContain('(Table salt)')
     expect(stockSubstanceAriaLabel('nacl')).toBe('Sodium chloride (NaCl)')
+
+    cleanup()
+    const cacl2 = render(<StockSubstanceLabel substanceId="cacl2" />)
+    expect(cacl2.container.querySelector('sub')?.textContent).toBe('2')
+    expect(cacl2.container.textContent).toContain('CaCl2')
+    expect(cacl2.container.textContent).toContain('(Calcium chloride)')
+    expect(cacl2.container.textContent).toContain('(De-icing salt)')
+    expect(stockSubstanceAriaLabel('cacl2')).toBe('Calcium chloride (CaCl2)')
 
     cleanup()
     const sand = render(<StockSubstanceLabel substanceId="sand" />)

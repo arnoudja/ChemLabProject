@@ -13,55 +13,91 @@ import {
   SPOON_SCOOP_MASS_G,
   STOCK_FULL_MASS_G,
   STOCK_FULL_SCOOPS,
-} from '../lib/scoopMass'
+  WATER_FULL_ML,
+} from '../lib/benchAmounts'
 
-export { SPOON_SCOOP_MASS_G, STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS }
+export { SPOON_SCOOP_MASS_G, STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS, WATER_FULL_ML }
 
 const SPOON_ID = 'spoon-1'
 const NACL_ID = 'beaker-nacl'
+const CACL2_ID = 'beaker-cacl2'
 const SAND_ID = 'beaker-sand'
 const WATER_ID = 'beaker-water'
 
-type ToolUi = 'none' | 'spoon' | 'nacl' | 'sand'
+type StockSolid = 'nacl' | 'cacl2' | 'sand'
+type ToolUi = 'none' | 'spoon' | StockSolid
+
+function isStockSolid(id: string): id is StockSolid {
+  return id === 'nacl' || id === 'cacl2' || id === 'sand'
+}
 
 function findItem(scene: LabScene, id: string): Item | undefined {
   return scene.items.find((item) => item.id === id)
 }
 
-function spoonHoldingSubstance(scene: LabScene): 'nacl' | 'sand' | null {
+function spoonHoldingSubstance(scene: LabScene): StockSolid | null {
   const spoon = findItem(scene, SPOON_ID)
   const held = optionalArray(spoon?.properties.holding)[0]
   if (!held || held.phase !== 'solid') return null
-  if (held.substance_id === 'nacl' || held.substance_id === 'sand') {
-    return held.substance_id
-  }
-  return null
+  return isStockSolid(held.substance_id) ? held.substance_id : null
 }
 
 /** Undissolved solid grains come only from server composition on the water item. */
-function undissolvedSolidInWater(scene: LabScene): 'nacl' | 'sand' | null {
+function undissolvedSolidInWater(scene: LabScene): StockSolid | null {
   const water = findItem(scene, WATER_ID)
   const solid = optionalArray(water?.properties.composition).find((entry) => entry.phase === 'solid')
   if (!solid) return null
-  if (solid.substance_id === 'nacl' || solid.substance_id === 'sand') {
-    return solid.substance_id
-  }
-  return null
+  return isStockSolid(solid.substance_id) ? solid.substance_id : null
 }
 
 function itemTemperatureC(scene: LabScene, item: Item): number {
   return item.properties.temperature_c ?? scene.temperature_c
 }
 
+/** Fill fraction 0..1 from server amount_ml relative to initial water volume. */
+export function waterFillRatio(amountMl: number | null | undefined): number {
+  if (amountMl == null || amountMl <= 0) return 0
+  return Math.min(1, amountMl / WATER_FULL_ML)
+}
+
 function WaterBeakerSvg({
   leftoverSolid,
   busy,
+  amountMl,
+  hasAqueous,
+  dissolveCue,
 }: {
-  leftoverSolid: 'nacl' | 'sand' | null
+  leftoverSolid: StockSolid | null
   busy: boolean
+  amountMl?: number | null
+  /** Server-authored aqueous ions in the water beaker (not a client dissolve decision). */
+  hasAqueous?: boolean
+  /** Latest dissolve-related kind from scene `last_events`. */
+  dissolveCue?: 'dissolved' | 'did_not_dissolve' | null
 }) {
+  const fill = waterFillRatio(amountMl)
+  // Full liquid top ~86; empty sits at the beaker floor (~148).
+  const floorY = 148
+  const fullHeight = 62
+  const topY = floorY - fullHeight * fill
+  const leftTop = 30 + 6 * fill
+  const rightTop = 90 - 6 * fill
+  const liquidClass = [
+    busy ? 'lab-water-busy' : null,
+    dissolveCue === 'dissolved' ? 'lab-water-dissolved-cue' : null,
+    hasAqueous ? 'lab-water-aqueous' : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
   return (
-    <svg viewBox="0 0 120 168" className="h-40 w-28" aria-hidden>
+    <svg
+      viewBox="0 0 120 168"
+      className="h-40 w-28"
+      aria-hidden
+      data-water-fill={fill.toFixed(2)}
+      data-water-aqueous={hasAqueous ? 'true' : 'false'}
+      data-dissolve-cue={dissolveCue ?? 'none'}
+    >
       <defs>
         <linearGradient id="bench-glass" x1="20" y1="8" x2="100" y2="160" gradientUnits="userSpaceOnUse">
           <stop stopColor="#3E4058" stopOpacity="0.55" />
@@ -71,6 +107,10 @@ function WaterBeakerSvg({
           <stop stopColor="#7CF8F7" stopOpacity="0.72" />
           <stop offset="1" stopColor="#85E1FB" stopOpacity="0.38" />
         </linearGradient>
+        <linearGradient id="bench-water-aqueous" x1="40" y1="80" x2="80" y2="150" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#A4FFEC" stopOpacity="0.78" />
+          <stop offset="1" stopColor="#7CF8F7" stopOpacity="0.48" />
+        </linearGradient>
       </defs>
       <path d="M28 18h64v10H28z" fill="#86A7DF" opacity="0.85" />
       <path
@@ -79,13 +119,20 @@ function WaterBeakerSvg({
         stroke="#C4D2ED"
         strokeWidth="2.4"
       />
-      <path
-        className={busy ? 'lab-water-busy' : undefined}
-        d="M36 86h48l6 62c0 6-4 10-10 10H40c-6 0-10-4-10-10l6-62z"
-        fill="url(#bench-water)"
-      />
+      {fill > 0 ? (
+        <path
+          className={liquidClass || undefined}
+          d={`M${leftTop} ${topY} H${rightTop} L90 ${floorY - 10} C90 ${floorY - 4} 86 ${floorY} 80 ${floorY} H40 C34 ${floorY} 30 ${floorY - 4} 30 ${floorY - 10} Z`}
+          fill={hasAqueous ? 'url(#bench-water-aqueous)' : 'url(#bench-water)'}
+        />
+      ) : null}
       {leftoverSolid ? (
-        <g fill={leftoverSolid === 'nacl' ? '#F4FBFF' : '#C9B48A'} opacity="0.9">
+        <g
+          fill={
+            leftoverSolid === 'sand' ? '#C9B48A' : leftoverSolid === 'cacl2' ? '#F2F7FF' : '#F4FBFF'
+          }
+          opacity="0.9"
+        >
           <circle cx="48" cy="142" r="3.2" />
           <circle cx="62" cy="146" r="2.6" />
           <circle cx="74" cy="141" r="3" />
@@ -107,11 +154,11 @@ function SolidBeakerSvg({
   solid,
   amountG,
 }: {
-  solid: 'nacl' | 'sand'
+  solid: StockSolid
   amountG?: number | null
 }) {
-  const pile = solid === 'nacl' ? '#F4FBFF' : '#C9A36A'
-  const speck = solid === 'nacl' ? '#DDF7FF' : '#8C6A3A'
+  const pile = solid === 'sand' ? '#C9A36A' : solid === 'cacl2' ? '#EEF4FF' : '#F4FBFF'
+  const speck = solid === 'sand' ? '#8C6A3A' : solid === 'cacl2' ? '#C4D2ED' : '#DDF7FF'
   const fill = stockFillRatio(amountG)
   // Full pile top ~72; empty sits near the beaker floor (~100).
   const topY = 100 - 28 * fill
@@ -152,8 +199,9 @@ function SolidBeakerSvg({
   )
 }
 
-function SpoonSvg({ fill, floating }: { fill: 'nacl' | 'sand' | null; floating?: boolean }) {
-  const bowl = fill === 'nacl' ? '#F4FBFF' : fill === 'sand' ? '#C9A36A' : '#C4D2ED'
+function SpoonSvg({ fill, floating }: { fill: StockSolid | null; floating?: boolean }) {
+  const bowl =
+    fill === 'nacl' ? '#F4FBFF' : fill === 'cacl2' ? '#EEF4FF' : fill === 'sand' ? '#C9A36A' : '#C4D2ED'
   return (
     <svg
       viewBox="0 0 132 40"
@@ -168,7 +216,7 @@ function SpoonSvg({ fill, floating }: { fill: 'nacl' | 'sand' | null; floating?:
 }
 
 
-function stockAmountG(scene: LabScene, itemId: string, substanceId: 'nacl' | 'sand'): number | null {
+function stockAmountG(scene: LabScene, itemId: string, substanceId: StockSolid): number | null {
   const item = findItem(scene, itemId)
   const entry = optionalArray(item?.properties.composition).find(
     (c) => c.substance_id === substanceId && c.phase === 'solid',
@@ -176,11 +224,38 @@ function stockAmountG(scene: LabScene, itemId: string, substanceId: 'nacl' | 'sa
   return entry?.amount_g ?? null
 }
 
+function waterAmountMl(scene: LabScene): number | null {
+  const item = findItem(scene, WATER_ID)
+  const entry = optionalArray(item?.properties.composition).find(
+    (c) => c.substance_id === 'water' && c.phase === 'liquid',
+  )
+  return entry?.amount_ml ?? null
+}
+
+/** True when the water beaker composition includes server-authored aqueous ions. */
+function waterHasAqueous(scene: LabScene): boolean {
+  const item = findItem(scene, WATER_ID)
+  return optionalArray(item?.properties.composition).some((c) => c.phase === 'aqueous')
+}
+
+/** Latest dissolve-related cue from server `last_events` (no client chemistry). */
+function dissolveCueFromEvents(
+  events: { kind: string; message: string }[],
+): 'dissolved' | 'did_not_dissolve' | null {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const kind = events[i]?.kind
+    if (kind === 'dissolved' || kind === 'did_not_dissolve') return kind
+  }
+  return null
+}
+
 function outcomeLabel(kind: string): string | null {
-  if (kind === 'dissolved') return 'dissolved'
-  if (kind === 'did_not_dissolve') return 'did not dissolve'
-  if (kind === 'returned') return 'returned'
-  if (kind === 'reset') return 'reset'
+  if (kind === 'dissolved') return 'Dissolved'
+  if (kind === 'did_not_dissolve') return 'Did not dissolve'
+  if (kind === 'returned') return 'Returned'
+  if (kind === 'reset') return 'Reset'
+  if (kind === 'scooped') return 'Scooped'
+  if (kind === 'poured') return 'Poured'
   return null
 }
 
@@ -268,7 +343,38 @@ export function LabBench() {
   function onSpoon(event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
     // Keep inspect open across tool pick-up / put-away; only Close dismisses it.
-    setSelectedToolItemId((current) => (current === SPOON_ID ? null : SPOON_ID))
+    if (selectedToolItemId === SPOON_ID) {
+      void putSpoonAway()
+      return
+    }
+    setSelectedToolItemId(SPOON_ID)
+  }
+
+  async function putSpoonAway() {
+    if (!scene) {
+      setSelectedToolItemId(null)
+      return
+    }
+    // Empty spoon put-away is a client no-op (no server round-trip).
+    if (!spoonHoldingSubstance(scene)) {
+      setSelectedToolItemId(null)
+      return
+    }
+    if (busy) return
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await postLabAction({
+        type: 'put_away',
+        tool_item_id: SPOON_ID,
+      })
+      setScene(response.scene)
+      setSelectedToolItemId(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function onSolid(targetItemId: string, event: MouseEvent<HTMLButtonElement>) {
@@ -346,6 +452,8 @@ export function LabBench() {
   const water = scene ? findItem(scene, WATER_ID) : undefined
   const spoon = scene ? findItem(scene, SPOON_ID) : undefined
   const lastEvents = scene ? optionalArray(scene.last_events) : []
+  const dissolveCue = dissolveCueFromEvents(lastEvents)
+  const hasAqueous = scene ? waterHasAqueous(scene) : false
   const inspectItem = scene && inspectItemId ? findItem(scene, inspectItemId) : undefined
 
   return (
@@ -387,7 +495,13 @@ export function LabBench() {
             disabled={busy}
             onClick={onWater}
           >
-            <WaterBeakerSvg leftoverSolid={leftoverSolid} busy={busy} />
+            <WaterBeakerSvg
+              leftoverSolid={leftoverSolid}
+              busy={busy}
+              amountMl={waterAmountMl(scene)}
+              hasAqueous={hasAqueous}
+              dissolveCue={dissolveCue}
+            />
             <span className="lab-item-label">{water?.label ?? 'Water'}</span>
           </button>
 
@@ -400,6 +514,17 @@ export function LabBench() {
           >
             <SolidBeakerSvg solid="nacl" amountG={stockAmountG(scene, NACL_ID, 'nacl')} />
             <StockSubstanceLabel substanceId="nacl" />
+          </button>
+
+          <button
+            type="button"
+            className="lab-item"
+            aria-label={stockSubstanceAriaLabel('cacl2')}
+            disabled={busy}
+            onClick={(event) => onSolid(CACL2_ID, event)}
+          >
+            <SolidBeakerSvg solid="cacl2" amountG={stockAmountG(scene, CACL2_ID, 'cacl2')} />
+            <StockSubstanceLabel substanceId="cacl2" />
           </button>
 
           <button
@@ -452,18 +577,35 @@ export function LabBench() {
       ) : null}
 
       {lastEvents.length > 0 ? (
-        <div className="mt-3 space-y-2 text-sm" role="status" aria-live="polite">
-          {lastEvents.map((event, index) => {
-            const outcome = outcomeLabel(event.kind)
-            return (
-              <div key={`${event.kind}-${index}`} className="space-y-1">
-                {outcome ? (
-                  <p className="font-medium text-[var(--ink)]">Server outcome: {outcome}</p>
-                ) : null}
-                <p className="text-[var(--ink-soft)]">{event.message}</p>
-              </div>
-            )
-          })}
+        <div className="lab-bench-events mt-3 space-y-2 text-sm" role="status" aria-live="polite">
+          {dissolveCue ? (
+            <p
+              className="lab-bench-status text-[var(--ink)]"
+              data-bench-status={dissolveCue}
+            >
+              <span className="font-medium text-[var(--hackerman-bright-aqua)]">
+                {outcomeLabel(dissolveCue)}
+              </span>
+              {': '}
+              <span className="text-[var(--ink-soft)]">
+                {dissolveCue === 'dissolved'
+                  ? lastEvents.find((event) => event.kind === 'dissolved')?.message
+                  : lastEvents.find((event) => event.kind === 'did_not_dissolve')?.message}
+              </span>
+            </p>
+          ) : (
+            lastEvents.map((event, index) => {
+              const outcome = outcomeLabel(event.kind)
+              return (
+                <div key={`${event.kind}-${index}`} className="space-y-1" data-event-kind={event.kind}>
+                  {outcome ? (
+                    <p className="font-medium text-[var(--ink)]">{outcome}</p>
+                  ) : null}
+                  <p className="text-[var(--ink-soft)]">{event.message}</p>
+                </div>
+              )
+            })
+          )}
         </div>
       ) : null}
     </section>

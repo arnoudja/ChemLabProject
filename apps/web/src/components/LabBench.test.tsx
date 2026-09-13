@@ -8,7 +8,9 @@ import {
   SPOON_SCOOP_MASS_G,
   STOCK_FULL_MASS_G,
   STOCK_FULL_SCOOPS,
+  WATER_FULL_ML,
   stockFillRatio,
+  waterFillRatio,
 } from './LabBench'
 import { clearCsrfTokenCache } from '../lib/api'
 import { optionalArray } from '../lib/scene'
@@ -20,8 +22,14 @@ const SAND_EXPLANATION =
 
 /** Mirror `chemlab-core::scene::NACL_DELTA_H_SOLUTION_J_PER_MOL` — keep in sync. */
 const NACL_DELTA_H_SOLUTION_J_PER_MOL = 3880
+/** Mirror `chemlab-core::scene::CACL2_DELTA_H_SOLUTION_J_PER_MOL` — keep in sync. */
+const CACL2_DELTA_H_SOLUTION_J_PER_MOL = -81300
 /** Mirror `chemlab-core::scene::WATER_SPECIFIC_HEAT_J_PER_G_K` — keep in sync. */
 const WATER_SPECIFIC_HEAT_J_PER_G_K = 4.184
+const NACL_MOLAR_MASS_G_PER_MOL = 58.44
+const CACL2_MOLAR_MASS_G_PER_MOL = 110.98
+const CACL2_EXPLANATION =
+  'Calcium chloride (CaCl2) dissolves in water at bench temperature.'
 
 function emptyProps() {
   return {
@@ -65,6 +73,21 @@ function initialScene(): LabScene {
         },
       },
       {
+        id: 'beaker-cacl2',
+        kind: 'beaker',
+        label: 'Calcium chloride',
+        location: 'bench',
+        properties: {
+          volume_ml: 250,
+          fill_ml: 100,
+          transparent: true,
+          colourless: true,
+          temperature_c: 20,
+          composition: [{ substance_id: 'cacl2', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
+          holding: [],
+        },
+      },
+      {
         id: 'beaker-sand',
         kind: 'beaker',
         label: 'Sand',
@@ -104,10 +127,11 @@ function cloneScene(scene: LabScene): LabScene {
   return structuredClone(scene)
 }
 
-function withScoop(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
+function withScoop(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand'): LabScene {
   const next = cloneScene(scene)
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
-  const stockId = substance === 'nacl' ? 'beaker-nacl' : 'beaker-sand'
+  const stockId =
+    substance === 'nacl' ? 'beaker-nacl' : substance === 'cacl2' ? 'beaker-cacl2' : 'beaker-sand'
   const stock = next.items.find((item) => item.id === stockId)!
   const solid = optionalArray(stock.properties.composition).find(
     (entry) => entry.substance_id === substance && entry.phase === 'solid',
@@ -133,10 +157,11 @@ function withScoop(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
   return next
 }
 
-function withPutBack(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
+function withPutBack(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand'): LabScene {
   const next = cloneScene(scene)
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
-  const stockId = substance === 'nacl' ? 'beaker-nacl' : 'beaker-sand'
+  const stockId =
+    substance === 'nacl' ? 'beaker-nacl' : substance === 'cacl2' ? 'beaker-cacl2' : 'beaker-sand'
   const stock = next.items.find((item) => item.id === stockId)!
   const solid = optionalArray(stock.properties.composition).find(
     (entry) => entry.substance_id === substance && entry.phase === 'solid',
@@ -149,6 +174,7 @@ function withPutBack(scene: LabScene, substance: 'nacl' | 'sand'): LabScene {
     solid.amount_g = scoops * SPOON_SCOOP_MASS_G
   }
   spoon.properties.holding = []
+  spoon.location = 'bench'
   next.last_events = [{ kind: 'returned', message: `Returned ${substance}.` }]
   next.version += 1
   return next
@@ -161,7 +187,7 @@ function afterNaclPour(scene: LabScene): LabScene {
   spoon.properties.holding = []
   // Mirror server-authored aqueous ions after NaCl dissolve (not client dissociation).
   // SPOON_SCOOP_MASS_G NaCl / 58.44 g·mol⁻¹
-  const moles = SPOON_SCOOP_MASS_G / 58.44
+  const moles = SPOON_SCOOP_MASS_G / NACL_MOLAR_MASS_G_PER_MOL
   water.properties.composition = [
     ...optionalArray(water.properties.composition),
     {
@@ -193,6 +219,47 @@ function afterNaclPour(scene: LabScene): LabScene {
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
     { kind: 'dissolved', message: NACL_EXPLANATION },
+  ]
+  next.version += 1
+  return next
+}
+
+function afterCacl2Pour(scene: LabScene): LabScene {
+  const next = cloneScene(scene)
+  const spoon = next.items.find((item) => item.id === 'spoon-1')!
+  const water = next.items.find((item) => item.id === 'beaker-water')!
+  spoon.properties.holding = []
+  const moles = SPOON_SCOOP_MASS_G / CACL2_MOLAR_MASS_G_PER_MOL
+  water.properties.composition = [
+    ...optionalArray(water.properties.composition),
+    {
+      substance_id: 'ca2+',
+      phase: 'aqueous',
+      amount_ml: null,
+      amount_scoop: null,
+      amount_g: null,
+      amount_mol: moles,
+    },
+    {
+      substance_id: 'cl-',
+      phase: 'aqueous',
+      amount_ml: null,
+      amount_scoop: null,
+      amount_g: null,
+      amount_mol: 2 * moles,
+    },
+  ]
+  const waterMassG =
+    optionalArray(water.properties.composition).find(
+      (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
+    )?.amount_ml ?? 0
+  const heatJ = moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL
+  const currentT = water.properties.temperature_c ?? next.temperature_c
+  water.properties.temperature_c =
+    currentT - heatJ / (waterMassG * WATER_SPECIFIC_HEAT_J_PER_G_K)
+  next.last_events = [
+    { kind: 'poured', message: 'Poured onto water.' },
+    { kind: 'dissolved', message: CACL2_EXPLANATION },
   ]
   next.version += 1
   return next
@@ -262,8 +329,13 @@ function stubLabFetch(options?: {
         scene = result
         return jsonResponse({ scene })
       }
-      if (action.type === 'use_tool' && (action.target_item_id === 'beaker-nacl' || action.target_item_id === 'beaker-sand')) {
-        const targetSubstance = action.target_item_id === 'beaker-nacl' ? 'nacl' : 'sand'
+      if (action.type === 'use_tool' && (action.target_item_id === 'beaker-nacl' || action.target_item_id === 'beaker-cacl2' || action.target_item_id === 'beaker-sand')) {
+        const targetSubstance =
+          action.target_item_id === 'beaker-nacl'
+            ? 'nacl'
+            : action.target_item_id === 'beaker-cacl2'
+              ? 'cacl2'
+              : 'sand'
         const held = optionalArray(
           scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
         )[0]
@@ -277,12 +349,32 @@ function stubLabFetch(options?: {
         scene = withScoop(scene, targetSubstance)
         return jsonResponse({ scene })
       }
+      if (action.type === 'put_away') {
+        const held = optionalArray(
+          scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
+        )[0]
+        if (held && (held.substance_id === 'nacl' || held.substance_id === 'cacl2' || held.substance_id === 'sand')) {
+          scene = withPutBack(scene, held.substance_id)
+          return jsonResponse({ scene })
+        }
+        const next = cloneScene(scene)
+        const spoon = next.items.find((item) => item.id === 'spoon-1')!
+        spoon.location = 'bench'
+        next.last_events = []
+        next.version += 1
+        scene = next
+        return jsonResponse({ scene })
+      }
       if (action.type === 'pour') {
         const held = optionalArray(
           scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
         )[0]
         if (held?.substance_id === 'nacl') {
           scene = afterNaclPour(scene)
+          return jsonResponse({ scene })
+        }
+        if (held?.substance_id === 'cacl2') {
+          scene = afterCacl2Pour(scene)
           return jsonResponse({ scene })
         }
         if (held?.substance_id === 'sand') {
@@ -330,16 +422,22 @@ describe('LabBench', () => {
 
     expect(await screen.findByRole('button', { name: 'Spoon' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sand' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Water beaker' })).toBeInTheDocument()
     const saltLabel = document.querySelector('[data-stock-label="nacl"]')
     expect(saltLabel?.textContent).toContain('NaCl')
     expect(saltLabel?.textContent).toContain('(Sodium chloride)')
     expect(saltLabel?.textContent).toContain('(Table salt)')
+    const cacl2Label = document.querySelector('[data-stock-label="cacl2"]')
+    expect(cacl2Label?.querySelector('sub')?.textContent).toBe('2')
+    expect(cacl2Label?.textContent).toContain('(Calcium chloride)')
+    expect(cacl2Label?.textContent).toContain('(De-icing salt)')
     const sandLabel = document.querySelector('[data-stock-label="sand"]')
     expect(sandLabel?.querySelector('sub')?.textContent).toBe('2')
     expect(sandLabel?.textContent).toContain('(Silicon dioxide)')
     expect(sandLabel?.textContent).toContain('(Sand)')
+    expect(document.querySelector('[data-stock-solid="cacl2"]')).toHaveAttribute('data-stock-fill', '1.00')
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
     expect(fetchMock).toHaveBeenCalledWith('/api/lab/scene', { credentials: 'include' })
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
@@ -372,6 +470,20 @@ describe('LabBench', () => {
             colourless: true,
             temperature_c: 20,
             composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
+          },
+        },
+        {
+          id: 'beaker-cacl2',
+          kind: 'beaker',
+          label: 'Calcium chloride',
+          location: 'bench',
+          properties: {
+            volume_ml: 250,
+            fill_ml: 100,
+            transparent: true,
+            colourless: true,
+            temperature_c: 20,
+            composition: [{ substance_id: 'cacl2', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
           },
         },
         {
@@ -654,6 +766,78 @@ describe('LabBench', () => {
     expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
   })
 
+  it('shows water fill from server amount_ml and updates after pour and reset', async () => {
+    const fetchMock = stubLabFetch({
+      actionHandler: (action, scene) => {
+        if (action.type === 'use_tool' && action.target_item_id === 'beaker-nacl') {
+          return withScoop(scene, 'nacl')
+        }
+        if (action.type === 'pour') {
+          const next = afterNaclPour(scene)
+          const water = next.items.find((item) => item.id === 'beaker-water')!
+          const liquid = optionalArray(water.properties.composition).find(
+            (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
+          )
+          // Exercise fill tracking when the server reports a different volume after pour.
+          if (liquid) liquid.amount_ml = WATER_FULL_ML / 2
+          return next
+        }
+        if (action.type === 'reset') {
+          const next = initialScene()
+          next.lab_id = scene.lab_id
+          next.version = scene.version + 1
+          next.last_events = [{ kind: 'reset', message: 'Lab reset to the starting bench.' }]
+          return next
+        }
+        return { error: 'invalid action', code: 'invalid_action', status: 400 }
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
+    expect(waterFillRatio(WATER_FULL_ML)).toBe(1)
+    expect(waterFillRatio(WATER_FULL_ML / 2)).toBeCloseTo(0.5)
+    expect(waterFillRatio(0)).toBe(0)
+    expect(waterFillRatio(null)).toBe(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+    // Scoop does not change water volume — fill stays full from server amount_ml.
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.50')
+    })
+    expect(screen.getByRole('status')).toHaveTextContent(NACL_EXPLANATION)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset lab' }))
+    await waitFor(() => {
+      expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
+    })
+  })
+
+  it('renders half-full water when the initial scene reports half amount_ml', async () => {
+    const scene = initialScene()
+    const water = scene.items.find((item) => item.id === 'beaker-water')!
+    const liquid = optionalArray(water.properties.composition).find(
+      (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
+    )!
+    liquid.amount_ml = WATER_FULL_ML / 2
+    vi.stubGlobal('fetch', stubLabFetch({ scene }))
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.50')
+  })
+
   it('puts salt back into the salt stock and restores fill from the server scene', async () => {
     const fetchMock = stubLabFetch()
     vi.stubGlobal('fetch', fetchMock)
@@ -671,7 +855,7 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '1.00')
     })
-    expect(screen.getByRole('status')).toHaveTextContent('returned')
+    expect(screen.getByRole('status')).toHaveTextContent('Returned')
     // Spoon holding cleared — cursor tool stays spoon without solid fill.
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
   })
@@ -732,7 +916,10 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent(NACL_EXPLANATION)
     })
-    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: dissolved')
+    expect(screen.getByRole('status')).toHaveTextContent('Dissolved')
+    expect(document.querySelector('[data-bench-status="dissolved"]')).toHaveTextContent(NACL_EXPLANATION)
+    expect(document.querySelector('[data-dissolve-cue="dissolved"]')).toBeTruthy()
+    expect(document.querySelector('[data-water-aqueous="true"]')).toBeTruthy()
     expect(lastActionInit(fetchMock)).toEqual(
       expect.objectContaining({
         method: 'POST',
@@ -750,6 +937,50 @@ describe('LabBench', () => {
     )
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
+  })
+
+  it('spoon then cacl2 then water dissolves with server ions, heating, and molarity on inspect', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    expect(document.querySelector('[data-stock-solid="cacl2"]')).toHaveAttribute('data-stock-fill', '1.00')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'cacl2')
+    })
+    expect(document.querySelector('[data-stock-solid="cacl2"]')).toHaveAttribute('data-stock-fill', '0.90')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(CACL2_EXPLANATION)
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Dissolved')
+    expect(document.querySelector('[data-water-aqueous="true"]')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    expect(panel).toHaveTextContent('Ca')
+    expect(panel).toHaveTextContent('2+')
+    expect(panel).toHaveTextContent('(aq)')
+    const moles = SPOON_SCOOP_MASS_G / CACL2_MOLAR_MASS_G_PER_MOL
+    const expectedCaM = moles / 0.2
+    const expectedClM = (2 * moles) / 0.2
+    expect(panel).toHaveTextContent(`${expectedCaM.toExponential(2)} M`)
+    expect(panel).toHaveTextContent('Cl')
+    expect(panel).toHaveTextContent(
+      `${expectedClM.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')} M`,
+    )
+    const expectedT =
+      20 -
+      (moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL) / (200 * WATER_SPECIFIC_HEAT_J_PER_G_K)
+    expect(panel).toHaveTextContent(`Temperature: ${expectedT.toFixed(2)}°C`)
+    expect(expectedT).toBeGreaterThan(20)
   })
 
   it('renders a surprising server sand event without client solubility branching', async () => {
@@ -781,7 +1012,10 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent('Unexpected server sentence for sand.')
     })
-    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: dissolved')
+    expect(screen.getByRole('status')).toHaveTextContent('Dissolved')
+    expect(document.querySelector('[data-bench-status="dissolved"]')).toHaveTextContent(
+      'Unexpected server sentence for sand.',
+    )
     expect(screen.queryByText(SAND_EXPLANATION)).not.toBeInTheDocument()
     // No undissolved solid in the surprising payload → no leftover grains invented.
     expect(screen.getByRole('button', { name: 'Water beaker' }).querySelectorAll('circle')).toHaveLength(0)
@@ -804,7 +1038,12 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent(SAND_EXPLANATION)
     })
-    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: did not dissolve')
+    expect(screen.getByRole('status')).toHaveTextContent('Did not dissolve')
+    expect(document.querySelector('[data-bench-status="did_not_dissolve"]')).toHaveTextContent(
+      SAND_EXPLANATION,
+    )
+    expect(document.querySelector('[data-dissolve-cue="did_not_dissolve"]')).toBeTruthy()
+    expect(document.querySelector('[data-water-aqueous="false"]')).toBeTruthy()
     // Leftover grains are SVG circles rendered only because the server put solid sand in water.
     expect(
       screen.getByRole('button', { name: 'Water beaker' }).querySelectorAll('circle').length,
@@ -823,6 +1062,64 @@ describe('LabBench', () => {
 
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['nacl', 'Sodium chloride (NaCl)'] as const,
+    ['sand', 'Sand'] as const,
+    ['cacl2', 'Calcium chloride (CaCl2)'] as const,
+  ])(
+    'scoop %s then put spoon away restores stock and empties the spoon',
+    async (substance, label) => {
+      const fetchMock = stubLabFetch()
+      vi.stubGlobal('fetch', fetchMock)
+
+      render(<LabBench />)
+      await screen.findByRole('button', { name: 'Spoon' })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+      fireEvent.click(screen.getByRole('button', { name: label }))
+      await waitFor(() => {
+        expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute(
+          'data-tool',
+          substance,
+        )
+      })
+      expect(document.querySelector(`[data-stock-solid="${substance}"]`)).toHaveAttribute(
+        'data-stock-fill',
+        '0.90',
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+      })
+      expect(document.querySelector(`[data-stock-solid="${substance}"]`)).toHaveAttribute(
+        'data-stock-fill',
+        '1.00',
+      )
+      expect(screen.getByRole('status')).toHaveTextContent(`Returned ${substance}.`)
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+        type: 'put_away',
+        tool_item_id: 'spoon-1',
+      })
+    },
+  )
+
+  it('empty spoon put-away is a no-op with no server action', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 
   it('shows the server action error and no outcome after a pour', async () => {

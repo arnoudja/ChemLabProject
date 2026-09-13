@@ -22,6 +22,10 @@ const FORMULA_PARTS_BY_SUBSTANCE_ID: Record<string, FormulaPart[]> = {
     { kind: 'text', value: 'O' },
   ],
   nacl: [{ kind: 'text', value: 'NaCl' }],
+  cacl2: [
+    { kind: 'text', value: 'CaCl' },
+    { kind: 'sub', value: '2' },
+  ],
   sand: [
     { kind: 'text', value: 'SiO' },
     { kind: 'sub', value: '2' },
@@ -29,6 +33,10 @@ const FORMULA_PARTS_BY_SUBSTANCE_ID: Record<string, FormulaPart[]> = {
   'na+': [
     { kind: 'text', value: 'Na' },
     { kind: 'sup', value: '+' },
+  ],
+  'ca2+': [
+    { kind: 'text', value: 'Ca' },
+    { kind: 'sup', value: '2+' },
   ],
   'cl-': [
     { kind: 'text', value: 'Cl' },
@@ -134,7 +142,7 @@ export function CompositionInspectLine({
 }
 
 /** Stock jar captions under salt / sand beakers (display only). */
-export type StockSubstanceId = 'nacl' | 'sand'
+export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand'
 
 const STOCK_SUBSTANCE_LABELS: Record<
   StockSubstanceId,
@@ -144,6 +152,11 @@ const STOCK_SUBSTANCE_LABELS: Record<
     chemicalName: 'Sodium chloride',
     commonName: 'Table salt',
     ariaName: 'Sodium chloride (NaCl)',
+  },
+  cacl2: {
+    chemicalName: 'Calcium chloride',
+    commonName: 'De-icing salt',
+    ariaName: 'Calcium chloride (CaCl2)',
   },
   sand: {
     chemicalName: 'Silicon dioxide',

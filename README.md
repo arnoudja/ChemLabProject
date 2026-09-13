@@ -1,7 +1,7 @@
 # ChemLabProject
 
 ChemLab is a web lab game that is fun and as realistic as practical.  
-**v0.1** is framework plus the first chemistry API — welcome page, login/session stub, session-gated `POST /api/lab/dissolve` (NaCl vs sand), a signed-in picker, and a 2D spoon bench that both show the server result. No evaporate yet.
+**v0.1** is framework plus the first chemistry API — welcome page, login/session stub, session-gated lab scene (`GET /api/lab/scene`, `POST /api/lab/action`) with a 2D spoon bench, plus predict-only `POST /api/lab/dissolve` (NaCl vs sand). No evaporate yet.
 
 Primary browsers: **Firefox**. Backend targets **Linux** (Ubuntu / Omarchy). Production shape later: Raspberry Pi 4 + Caddy.
 
@@ -139,11 +139,13 @@ Working thin stub (not a fake button):
 | `POST` | `/api/auth/login` | email, password → rotates session (invalidates previous, sets new cookie); requires CSRF; rate-limited |
 | `POST` | `/api/auth/logout` | clears cookie + deletes server session; requires CSRF |
 | `GET`  | `/api/auth/me` | `{ authenticated, user }` |
-| `POST` | `/api/lab/dissolve` | `{ substance_id, solvent_id, temperature_c }` → `{ dissolved, explanation }`; session + CSRF |
+| `GET`  | `/api/lab/scene` | current lab snapshot; session required |
+| `POST` | `/api/lab/action` | `{ type: use_tool \| pour, … }` → updated scene; session + CSRF |
+| `POST` | `/api/lab/dissolve` | predict-only `{ substance_id, solvent_id, temperature_c }` → `{ dissolved, explanation }`; session + CSRF |
 
 - Passwords: Argon2  
 - Session cookie: `chemlab_session` (HttpOnly, SameSite=Lax; Secure when configured). Successful login issues a new session and invalidates the previous one.  
-- CSRF: double-submit synchronizer — `GET /api/auth/csrf`, then send `X-CSRF-Token` matching `chemlab_csrf` on mutating POSTs (`/api/auth/*` and `/api/lab/dissolve` via `require_csrf`)  
+- CSRF: double-submit synchronizer — `GET /api/auth/csrf`, then send `X-CSRF-Token` matching `chemlab_csrf` on mutating POSTs (`/api/auth/*`, `/api/lab/action`, `/api/lab/dissolve` via `require_csrf`)  
 - Rate limits: in-process sliding window on `POST /api/auth/register` and `POST /api/auth/login` (5 / 60s per IP and per email). Over limit → `429` `{ code: "rate_limited" }`. Logout is not limited.  
 - Store: SQLite `users` + `sessions` (token **hash** only)
 
@@ -172,7 +174,7 @@ v0.1 also keeps `apps/web/src/generated/contracts.ts` in sync by hand when neede
 
 - Chemistry rules live in `chemlab-core` (server-authoritative). Browser never decides “did NaCl dissolve?”
 - Login is required even for single-player (see project context).
-- Welcome-page dissolve control and the 2D spoon bench show the server result only (issue #9); no evaporate.
+- Signed-in UI is the 2D lab bench only; dissolve outcomes come from scene pour events (server-owned). No evaporate.
 
 ## License
 

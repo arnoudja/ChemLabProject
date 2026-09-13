@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { clearCsrfTokenCache } from './lib/api'
@@ -18,16 +18,6 @@ function jsonResponse(body: unknown, status = 200) {
     headers: { 'content-type': 'application/json' },
   })
 }
-
-const NACL_SERVER = {
-  dissolved: true,
-  explanation: 'Sodium chloride (NaCl) dissolves in water at bench temperature.',
-} as const
-
-const SAND_SERVER = {
-  dissolved: false,
-  explanation: 'Sand (silica) does not dissolve in water at bench temperature.',
-} as const
 
 const EMPTY_LAB_SCENE = {
   lab_id: 'lab-1',
@@ -102,10 +92,6 @@ const EMPTY_LAB_SCENE = {
 
 function stubAppFetch(options?: {
   authenticated?: boolean
-  dissolveBody?: unknown
-  dissolveStatus?: number
-  dissolveBySubstance?: Record<string, { body: unknown; status?: number }>
-  dissolveNetworkError?: Error
   healthNetworkError?: Error
   registerBody?: unknown
   registerStatus?: number
@@ -115,6 +101,7 @@ function stubAppFetch(options?: {
 }) {
   const authenticated = options?.authenticated ?? false
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void init
     const url = String(input)
     if (url === '/api/health') {
       if (options?.healthNetworkError) {
@@ -154,20 +141,6 @@ function stubAppFetch(options?: {
       }
       return jsonResponse({ error: 'Could not log out', code: 'internal' }, status)
     }
-    if (url === '/api/lab/dissolve') {
-      if (options?.dissolveNetworkError) {
-        throw options.dissolveNetworkError
-      }
-      const sent = init?.body ? JSON.parse(String(init.body)) : {}
-      const bySubstance = options?.dissolveBySubstance?.[sent.substance_id]
-      if (bySubstance) {
-        return jsonResponse(bySubstance.body, bySubstance.status ?? 200)
-      }
-      return jsonResponse(
-        options?.dissolveBody ?? NACL_SERVER,
-        options?.dissolveStatus ?? 200,
-      )
-    }
     if (url === '/api/lab/scene') {
       return jsonResponse(EMPTY_LAB_SCENE)
     }
@@ -176,11 +149,6 @@ function stubAppFetch(options?: {
     }
     return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
   })
-}
-
-function lastDissolveInit(fetchMock: ReturnType<typeof vi.fn>) {
-  const calls = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/dissolve')
-  return calls.at(-1)?.[1] as RequestInit | undefined
 }
 
 describe('App', () => {
@@ -200,174 +168,32 @@ describe('App', () => {
 
     expect(await screen.findByText('Display name')).toBeTruthy()
     expect(screen.getByText(/API 0.1.0/)).toBeTruthy()
+    expect(screen.queryByLabelText('Lab bench')).not.toBeInTheDocument()
   })
 
-  it('welcomes a signed-in user', async () => {
+  it('welcomes a signed-in user and shows the lab bench', async () => {
     vi.stubGlobal('fetch', stubAppFetch({ authenticated: true }))
 
     render(<App />)
 
     expect(await screen.findByText('Welcome back, Ada')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeTruthy()
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dissolve' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Solid')).not.toBeInTheDocument()
   })
 
-  it('replaces unlock-later copy with a dissolve control after login', async () => {
+  it('signed-in copy points at the bench, not a text dissolve picker', async () => {
     vi.stubGlobal('fetch', stubAppFetch({ authenticated: true }))
 
     render(<App />)
 
-    expect(await screen.findByRole('button', { name: 'Dissolve' })).toBeInTheDocument()
+    expect(await screen.findByText(/lab bench below/i)).toBeInTheDocument()
     expect(screen.queryByText(/benches unlock/i)).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Solid')).toBeInTheDocument()
-    expect(screen.getByText(/water at 20/i)).toBeInTheDocument()
+    expect(screen.queryByText(/pick a solid/i)).not.toBeInTheDocument()
   })
 
-  it('shows nacl then sand from the server payload only', async () => {
-    const fetchMock = stubAppFetch({
-      authenticated: true,
-      dissolveBySubstance: {
-        nacl: { body: NACL_SERVER },
-        sand: { body: SAND_SERVER },
-      },
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(<App />)
-    expect(await screen.findByRole('button', { name: 'Dissolve' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Dissolve' }))
-    await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent(NACL_SERVER.explanation)
-    })
-    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: dissolved')
-    expect(screen.getByRole('status')).not.toHaveTextContent(SAND_SERVER.explanation)
-    expect(lastDissolveInit(fetchMock)).toEqual(
-      expect.objectContaining({
-        method: 'POST',
-        credentials: 'include',
-        headers: expect.objectContaining({
-          'content-type': 'application/json',
-          'X-CSRF-Token': 'tok-123',
-        }),
-        body: JSON.stringify({
-          substance_id: 'nacl',
-          solvent_id: 'water',
-          temperature_c: 20,
-        }),
-      }),
-    )
-
-    fireEvent.change(screen.getByLabelText('Solid'), { target: { value: 'sand' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Dissolve' }))
-    await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent(SAND_SERVER.explanation)
-    })
-    expect(screen.getByRole('status')).toHaveTextContent('Server outcome: did not dissolve')
-    expect(screen.getByRole('status')).not.toHaveTextContent(NACL_SERVER.explanation)
-    expect(lastDissolveInit(fetchMock)).toEqual(
-      expect.objectContaining({
-        credentials: 'include',
-        headers: expect.objectContaining({ 'X-CSRF-Token': 'tok-123' }),
-        body: JSON.stringify({
-          substance_id: 'sand',
-          solvent_id: 'water',
-          temperature_c: 20,
-        }),
-      }),
-    )
-  })
-
-  it('renders a surprising server payload instead of inferring from the picker', async () => {
-    vi.stubGlobal(
-      'fetch',
-      stubAppFetch({
-        authenticated: true,
-        dissolveBody: {
-          dissolved: false,
-          explanation: 'Unexpected server sentence for nacl.',
-        },
-      }),
-    )
-
-    render(<App />)
-    expect(await screen.findByRole('button', { name: 'Dissolve' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Dissolve' }))
-
-    await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent(
-        'Unexpected server sentence for nacl.',
-      )
-    })
-    expect(screen.getByRole('status')).toHaveTextContent('did not dissolve')
-    expect(screen.queryByText(/Sodium chloride \(NaCl\) dissolves/)).not.toBeInTheDocument()
-  })
-
-  it.each([
-    {
-      name: 'unknown substance',
-      body: { error: 'unknown substance', code: 'unknown_substance' },
-      status: 400,
-    },
-    {
-      name: 'unsupported solvent',
-      body: { error: 'unsupported solvent', code: 'unsupported_solvent' },
-      status: 400,
-    },
-    {
-      name: 'unsupported temperature',
-      body: { error: 'unsupported temperature', code: 'unsupported_temperature' },
-      status: 400,
-    },
-    {
-      name: 'logged-out session',
-      body: { error: 'Login required', code: 'unauthenticated' },
-      status: 401,
-    },
-  ])('shows the server $name dissolve error and no outcome', async ({ body, status }) => {
-    vi.stubGlobal(
-      'fetch',
-      stubAppFetch({
-        authenticated: true,
-        dissolveBody: body,
-        dissolveStatus: status,
-      }),
-    )
-
-    render(<App />)
-    expect(await screen.findByRole('button', { name: 'Dissolve' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Dissolve' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(body.error)
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
-  })
-
-  it('shows a dissolve network failure and clears a prior server outcome', async () => {
-    const fetchMock = stubAppFetch({
-      authenticated: true,
-      dissolveBySubstance: { nacl: { body: NACL_SERVER } },
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(<App />)
-    expect(await screen.findByRole('button', { name: 'Dissolve' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Dissolve' }))
-    expect(await screen.findByRole('status')).toHaveTextContent(NACL_SERVER.explanation)
-
-    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === '/api/lab/dissolve') {
-        throw new Error('Failed to fetch')
-      }
-      return stubAppFetch({ authenticated: true })(input, init)
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Dissolve' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to fetch')
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
-  })
-
-  it('creates an account and then shows the dissolve control', async () => {
+  it('creates an account and then shows the lab bench', async () => {
     const fetchMock = stubAppFetch({ authenticated: false })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -382,7 +208,8 @@ describe('App', () => {
     fireEvent.submit(screen.getByLabelText('Email').closest('form')!)
 
     expect(await screen.findByText('Welcome back, Ada')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Dissolve' })).toBeInTheDocument()
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dissolve' })).not.toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/auth/register',
       expect.objectContaining({
@@ -415,7 +242,7 @@ describe('App', () => {
     fireEvent.submit(screen.getByLabelText('Email').closest('form')!)
 
     expect(await screen.findByText('Welcome back, Ada')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Dissolve' })).toBeInTheDocument()
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/auth/login',
       expect.objectContaining({
@@ -461,18 +288,16 @@ describe('App', () => {
     )
   })
 
-  it('sign-out clears the dissolve result and returns the account form', async () => {
-    vi.stubGlobal('fetch', stubAppFetch({ authenticated: true, dissolveBody: NACL_SERVER }))
+  it('sign-out hides the lab bench and returns the account form', async () => {
+    vi.stubGlobal('fetch', stubAppFetch({ authenticated: true }))
 
     render(<App />)
-    expect(await screen.findByRole('button', { name: 'Dissolve' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Dissolve' }))
-    expect(await screen.findByRole('status')).toHaveTextContent(NACL_SERVER.explanation)
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
 
     expect(await screen.findByText('Display name')).toBeTruthy()
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Lab bench')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Dissolve' })).not.toBeInTheDocument()
   })
 

@@ -714,6 +714,7 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
     if temperature < BOILING_TEMPERATURE_C {
         scene.items[dish_idx].properties.temperature_c =
             Some((temperature + HEAT_K_PER_S * dt).min(BOILING_TEMPERATURE_C));
+        crate::solubility::enforce_saturation(&mut scene.items[dish_idx]);
         return;
     }
     evaporate_water(&mut scene.items[dish_idx], dt);
@@ -2276,6 +2277,82 @@ mod tests {
             .composition
             .iter()
             .any(|c| c.substance_id == "nacl" && c.phase == "solid"));
+    }
+
+    #[test]
+    fn heating_below_boil_redissolves_nacl_as_solubility_rises() {
+        let mut scene = initial_bench_scene("lab-test");
+        let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+        dish.properties.temperature_c = Some(20.0);
+        dish.properties.composition = vec![
+            CompositionEntry {
+                substance_id: "water".into(),
+                phase: "liquid".into(),
+                amount_ml: Some(1.0),
+                amount_scoop: None,
+                amount_g: None,
+                amount_mol: None,
+            },
+            CompositionEntry {
+                substance_id: "na+".into(),
+                phase: "aqueous".into(),
+                amount_ml: None,
+                amount_scoop: None,
+                amount_g: None,
+                amount_mol: Some(0.02),
+            },
+            CompositionEntry {
+                substance_id: "cl-".into(),
+                phase: "aqueous".into(),
+                amount_ml: None,
+                amount_scoop: None,
+                amount_g: None,
+                amount_mol: Some(0.02),
+            },
+        ];
+        crate::solubility::enforce_saturation(dish);
+        let dish = item(&scene, "dish-1");
+        let na_before = aqueous_mol(dish, "na+");
+        let solid_before = dish
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "nacl" && c.phase == "solid")
+            .and_then(|c| c.amount_mol)
+            .unwrap_or(0.0);
+        assert!(solid_before > 1e-6, "need leftover solid at 20 °C");
+
+        apply_action(
+            &mut scene,
+            Action::ToggleBurner {
+                burner_item_id: "burner-1".into(),
+            },
+        )
+        .unwrap();
+        apply_elapsed(&mut scene, 4.0);
+
+        let dish = item(&scene, "dish-1");
+        assert!((dish.properties.temperature_c.unwrap() - 60.0).abs() < 1e-9);
+        assert!(
+            (water_ml(dish) - 1.0).abs() < 1e-9,
+            "no evaporation below 100"
+        );
+        let na_after = aqueous_mol(dish, "na+");
+        let solid_after = dish
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "nacl" && c.phase == "solid")
+            .and_then(|c| c.amount_mol)
+            .unwrap_or(0.0);
+        assert!(
+            na_after > na_before + 1e-6,
+            "heating must redissolve NaCl as s(T) rises; {na_after} vs {na_before}"
+        );
+        assert!(solid_after < solid_before - 1e-6);
+        let max_60 =
+            crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, 60.0) * 0.001;
+        assert!((na_after - max_60).abs() < 1e-9);
     }
 
     #[test]

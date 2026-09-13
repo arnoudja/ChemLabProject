@@ -571,7 +571,7 @@ describe('LabBench', () => {
 
     const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
     expect(panel).toHaveTextContent('H2O (l)')
-    expect(panel).toHaveTextContent('200 ml')
+    expect(panel).toHaveTextContent('200.00 ml')
     expect(panel).toHaveTextContent('Temperature: 20.00°C')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
@@ -587,7 +587,7 @@ describe('LabBench', () => {
 
     const panel = await screen.findByRole('dialog', { name: 'Contents of Sodium chloride' })
     expect(panel).toHaveTextContent('NaCl (s)')
-    expect(panel).toHaveTextContent(`${STOCK_FULL_MASS_G} g`)
+    expect(panel).toHaveTextContent(`${STOCK_FULL_MASS_G.toFixed(2)} g`)
   })
 
   it('after scoop, salt inspect shows depleted server stock mass', async () => {
@@ -602,7 +602,7 @@ describe('LabBench', () => {
 
     const panel = await screen.findByRole('dialog', { name: 'Contents of Sodium chloride' })
     expect(panel).toHaveTextContent('NaCl (s)')
-    expect(panel).toHaveTextContent('1.8 g')
+    expect(panel).toHaveTextContent('1.80 g')
   })
 
   it('idle inspect after dissolve shows aqueous ions from the server composition', async () => {
@@ -620,7 +620,7 @@ describe('LabBench', () => {
     expect(panel).toHaveTextContent('H2O (l)')
     expect(panel).toHaveTextContent('Na+ (aq)')
     expect(panel).toHaveTextContent('Cl− (aq)')
-    expect(panel).toHaveTextContent('0.017 M')
+    expect(panel).toHaveTextContent('0.0171 M')
     expect(panel.querySelectorAll('sup')).toHaveLength(2)
     expect(panel).toHaveTextContent('Temperature: 19.98°C')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
@@ -639,7 +639,7 @@ describe('LabBench', () => {
 
     const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
     expect(panel).toHaveTextContent('SiO2 (s)')
-    expect(panel).toHaveTextContent(`${SPOON_SCOOP_MASS_G} g`)
+    expect(panel).toHaveTextContent(`${SPOON_SCOOP_MASS_G.toFixed(2)} g`)
     expect(panel.querySelector('sub')?.textContent).toBe('2')
     expect(panel).not.toHaveTextContent(' M')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
@@ -670,7 +670,7 @@ describe('LabBench', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     const panel = await screen.findByRole('dialog', { name: 'Contents of Sodium chloride' })
-    expect(panel).toHaveTextContent(`${STOCK_FULL_MASS_G} g`)
+    expect(panel).toHaveTextContent(`${STOCK_FULL_MASS_G.toFixed(2)} g`)
 
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
     expect(screen.getByRole('dialog', { name: 'Contents of Sodium chloride' })).toBeInTheDocument()
@@ -678,7 +678,7 @@ describe('LabBench', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: 'Contents of Sodium chloride' })).toHaveTextContent(
-        `${STOCK_FULL_MASS_G - SPOON_SCOOP_MASS_G} g`,
+        `${(STOCK_FULL_MASS_G - SPOON_SCOOP_MASS_G).toFixed(2)} g`,
       )
     })
     expect(fetchMock).toHaveBeenCalledWith('/api/lab/action', expect.anything())
@@ -709,7 +709,7 @@ describe('LabBench', () => {
       const open = screen.getByRole('dialog', { name: 'Contents of Water' })
       expect(open).toHaveTextContent('Na+ (aq)')
       expect(open).toHaveTextContent('Cl− (aq)')
-      expect(open).toHaveTextContent('0.017 M')
+      expect(open).toHaveTextContent('0.0171 M')
       expect(open).toHaveTextContent('Temperature: 19.98°C')
     })
   })
@@ -723,20 +723,20 @@ describe('LabBench', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     expect(await screen.findByRole('dialog', { name: 'Contents of Sodium chloride' })).toHaveTextContent(
-      `${STOCK_FULL_MASS_G} g`,
+      `${STOCK_FULL_MASS_G.toFixed(2)} g`,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toHaveTextContent(
-        `${STOCK_FULL_MASS_G - SPOON_SCOOP_MASS_G} g`,
+        `${(STOCK_FULL_MASS_G - SPOON_SCOOP_MASS_G).toFixed(2)} g`,
       )
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     await waitFor(() => {
-      expect(screen.getByRole('dialog')).toHaveTextContent(`${STOCK_FULL_MASS_G} g`)
+      expect(screen.getByRole('dialog')).toHaveTextContent(`${STOCK_FULL_MASS_G.toFixed(2)} g`)
     })
     expect(screen.getByRole('status')).toHaveTextContent('Returned nacl.')
 
@@ -971,11 +971,9 @@ describe('LabBench', () => {
     const moles = SPOON_SCOOP_MASS_G / CACL2_MOLAR_MASS_G_PER_MOL
     const expectedCaM = moles / 0.2
     const expectedClM = (2 * moles) / 0.2
-    expect(panel).toHaveTextContent(`${expectedCaM.toExponential(2)} M`)
+    expect(panel).toHaveTextContent(`${expectedCaM.toPrecision(3)} M`)
     expect(panel).toHaveTextContent('Cl')
-    expect(panel).toHaveTextContent(
-      `${expectedClM.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')} M`,
-    )
+    expect(panel).toHaveTextContent(`${expectedClM.toPrecision(3)} M`)
     const expectedT =
       20 -
       (moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL) / (200 * WATER_SPECIFIC_HEAT_J_PER_G_K)

@@ -106,16 +106,12 @@ export function formatCompositionAmount(
 }
 
 function formatMolarity(value: number): string {
-  if (value === 0) return '0'
-  if (value >= 1) return value.toFixed(2).replace(/\.?0+$/, '')
-  if (value >= 0.01) return value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
-  return value.toExponential(2)
+  return value.toPrecision(3)
 }
 
-/** Shared number formatting for mass (g) and volume (ml) suffixes. */
+/** Shared number formatting for mass (g) and volume (ml) suffixes — always two decimals. */
 function formatFixedAmount(value: number): string {
-  if (Number.isInteger(value)) return String(value)
-  return value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+  return value.toFixed(2)
 }
 
 /** Format beaker/scene temperature for inspect labels (always two decimals). */

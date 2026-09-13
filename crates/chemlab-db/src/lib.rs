@@ -42,6 +42,17 @@ pub struct SessionRecord {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LabRecord {
+    pub id: String,
+    pub owner_user_id: String,
+    pub name: String,
+    pub state_blob: Option<Vec<u8>>,
+    pub version: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 /// Open (or create) a SQLite database and run migrations.
 pub async fn connect(database_url: &str) -> Result<DbPool, DbError> {
     let options = SqliteConnectOptions::from_str(database_url)?
@@ -211,6 +222,67 @@ pub async fn delete_sessions_for_user(pool: &DbPool, user_id: &str) -> Result<()
     Ok(())
 }
 
+pub async fn get_or_create_lab_for_user(
+    pool: &DbPool,
+    user_id: &str,
+) -> Result<LabRecord, DbError> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    sqlx::query(
+        r#"
+        INSERT INTO labs (id, owner_user_id, name, state_blob, version, created_at, updated_at)
+        SELECT ?, ?, 'Lab', NULL, 0, ?, ?
+        WHERE NOT EXISTS (
+            SELECT 1 FROM labs WHERE owner_user_id = ? AND name = 'Lab'
+        )
+        "#,
+    )
+    .bind(id)
+    .bind(user_id)
+    .bind(now.to_rfc3339())
+    .bind(now.to_rfc3339())
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    let row = sqlx::query_as::<_, LabRow>(
+        r#"
+        SELECT id, owner_user_id, name, state_blob, version, created_at, updated_at
+        FROM labs
+        WHERE owner_user_id = ? AND name = 'Lab'
+        LIMIT 1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row.into())
+}
+
+pub async fn save_lab_state(
+    pool: &DbPool,
+    lab_id: &str,
+    state_blob: &[u8],
+    version: i64,
+) -> Result<(), DbError> {
+    // Single-player v1 intentionally uses last-write-wins persistence.
+    sqlx::query(
+        r#"
+        UPDATE labs
+        SET state_blob = ?, version = ?, updated_at = ?
+        WHERE id = ?
+        "#,
+    )
+    .bind(state_blob)
+    .bind(version)
+    .bind(Utc::now().to_rfc3339())
+    .bind(lab_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 #[derive(sqlx::FromRow)]
 struct UserRow {
     id: String,
@@ -264,6 +336,31 @@ impl From<SessionUserRow> for (SessionRecord, UserRecord) {
             created_at: parse_dt(&row.user_created_at),
         };
         (session, user)
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct LabRow {
+    id: String,
+    owner_user_id: String,
+    name: String,
+    state_blob: Option<Vec<u8>>,
+    version: i64,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<LabRow> for LabRecord {
+    fn from(row: LabRow) -> Self {
+        Self {
+            id: row.id,
+            owner_user_id: row.owner_user_id,
+            name: row.name,
+            state_blob: row.state_blob,
+            version: row.version,
+            created_at: parse_dt(&row.created_at),
+            updated_at: parse_dt(&row.updated_at),
+        }
     }
 }
 
@@ -340,5 +437,39 @@ mod tests {
             .unwrap();
         assert_eq!(found.id, session.id);
         assert_eq!(found_user.id, user.id);
+    }
+
+    #[tokio::test]
+    async fn get_or_create_lab_for_user_returns_one_lab_row() {
+        let pool = test_pool().await;
+        let user = insert_user(&pool, "owner@chemlab.local", "Owner", "hash")
+            .await
+            .unwrap();
+
+        let created = get_or_create_lab_for_user(&pool, &user.id).await.unwrap();
+        let loaded = get_or_create_lab_for_user(&pool, &user.id).await.unwrap();
+
+        assert_eq!(created.id, loaded.id);
+        assert_eq!(created.owner_user_id, user.id);
+        assert_eq!(created.name, "Lab");
+        assert_eq!(created.state_blob, None);
+        assert_eq!(created.version, 0);
+    }
+
+    #[tokio::test]
+    async fn save_lab_state_round_trips_blob_and_version() {
+        let pool = test_pool().await;
+        let user = insert_user(&pool, "save@chemlab.local", "Saver", "hash")
+            .await
+            .unwrap();
+        let lab = get_or_create_lab_for_user(&pool, &user.id).await.unwrap();
+        let state_blob = br#"{"lab_id":"test","version":1}"#;
+
+        save_lab_state(&pool, &lab.id, state_blob, 1).await.unwrap();
+        let loaded = get_or_create_lab_for_user(&pool, &user.id).await.unwrap();
+
+        assert_eq!(loaded.state_blob.as_deref(), Some(state_blob.as_slice()));
+        assert_eq!(loaded.version, 1);
+        assert!(loaded.updated_at >= lab.updated_at);
     }
 }

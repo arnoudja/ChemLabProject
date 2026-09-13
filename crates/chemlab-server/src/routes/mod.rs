@@ -22,7 +22,7 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    async fn test_app() -> Router {
+    async fn test_app_state() -> (Router, AppState) {
         let config = Config {
             bind_addr: "127.0.0.1:0".into(),
             database_url: "sqlite::memory:?cache=shared".into(),
@@ -32,7 +32,11 @@ mod tests {
             session_ttl_hours: 24,
         };
         let state = AppState::new(&config).await.expect("state");
-        router(state)
+        (router(state.clone()), state)
+    }
+
+    async fn test_app() -> Router {
+        test_app_state().await.0
     }
 
     async fn body_json(response: axum::response::Response) -> serde_json::Value {
@@ -173,6 +177,28 @@ mod tests {
         let token = json["csrf_token"].as_str().expect("csrf_token");
         assert!(!token.is_empty());
         assert!(set_cookie.contains(token));
+    }
+
+    #[tokio::test]
+    async fn csrf_endpoint_reuses_existing_cookie_token() {
+        let app = test_app().await;
+        let (token, cookie) = issue_csrf(&app).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/csrf")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("set-cookie").is_none());
+        let json = body_json(response).await;
+        assert_eq!(json["csrf_token"], token);
     }
 
     #[tokio::test]
@@ -394,6 +420,96 @@ mod tests {
         assert_eq!(me_new["user"]["email"], "ada@chemlab.local");
     }
 
+    #[tokio::test]
+    async fn register_duplicate_email_returns_conflict() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, _session) = register_user(&app, "dup@chemlab.local").await;
+
+        let response = post_register(&app, &csrf_token, &csrf_cookie, "dup@chemlab.local").await;
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(body_json(response).await["code"], "email_taken");
+    }
+
+    #[tokio::test]
+    async fn login_wrong_password_for_existing_user_is_unauthorized() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, _session) =
+            register_user(&app, "wrong-pw@chemlab.local").await;
+
+        let response = post_login(
+            &app,
+            &csrf_token,
+            &csrf_cookie,
+            "wrong-pw@chemlab.local",
+            "not-the-password",
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(body_json(response).await["code"], "invalid_credentials");
+    }
+
+    #[tokio::test]
+    async fn register_validation_edges_return_bad_request() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie) = issue_csrf(&app).await;
+        let long_password = "x".repeat(129);
+        let long_name = "n".repeat(65);
+        let cases = [
+            r#"{"email":"not-an-email","password":"secret123","display_name":"Ada"}"#.to_string(),
+            r#"{"email":"short@chemlab.local","password":"short","display_name":"Ada"}"#
+                .to_string(),
+            format!(
+                r#"{{"email":"longpw@chemlab.local","password":"{long_password}","display_name":"Ada"}}"#
+            ),
+            r#"{"email":"empty-name@chemlab.local","password":"secret123","display_name":"   "}"#
+                .to_string(),
+            format!(
+                r#"{{"email":"longname@chemlab.local","password":"secret123","display_name":"{long_name}"}}"#
+            ),
+        ];
+
+        for body in cases {
+            let response = post_register_body(&app, &csrf_token, &csrf_cookie, body.clone()).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "body={body}");
+            assert_eq!(
+                body_json(response).await["code"],
+                "validation",
+                "body={body}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn login_validation_edges_return_bad_request() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie) = issue_csrf(&app).await;
+
+        let response = post_login(
+            &app,
+            &csrf_token,
+            &csrf_cookie,
+            "not-an-email",
+            "secret123",
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(body_json(response).await["code"], "validation");
+
+        let response = post_login(
+            &app,
+            &csrf_token,
+            &csrf_cookie,
+            "short@chemlab.local",
+            "short",
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(body_json(response).await["code"], "validation");
+    }
+
     async fn post_login(
         app: &Router,
         csrf_token: &str,
@@ -425,6 +541,15 @@ mod tests {
         email: &str,
     ) -> axum::response::Response {
         let body = format!(r#"{{"email":"{email}","password":"secret123","display_name":"Ada"}}"#);
+        post_register_body(app, csrf_token, csrf_cookie, body).await
+    }
+
+    async fn post_register_body(
+        app: &Router,
+        csrf_token: &str,
+        csrf_cookie: &str,
+        body: String,
+    ) -> axum::response::Response {
         app.clone()
             .oneshot(
                 Request::builder()
@@ -889,6 +1014,96 @@ mod tests {
             assert_eq!(response.status(), StatusCode::BAD_REQUEST);
             assert_eq!(body_json(response).await["code"], code);
         }
+    }
+
+    #[tokio::test]
+    async fn pour_into_dry_beaker_returns_invalid_action() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "dry-pour@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        assert_eq!(
+            post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "use_tool",
+                    "tool_item_id": "spoon-1",
+                    "target_item_id": "beaker-nacl"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "pour",
+                "source_item_id": "spoon-1",
+                "target_item_id": "beaker-sand"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(body_json(response).await["code"], "invalid_action");
+    }
+
+    #[tokio::test]
+    async fn pour_at_unsupported_temperature_maps_dissolve_error() {
+        let (app, state) = test_app_state().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "bad-temp@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        assert_eq!(
+            post_action(
+                &app,
+                &cookies,
+                Some(&csrf_token),
+                serde_json::json!({
+                    "type": "use_tool",
+                    "tool_item_id": "spoon-1",
+                    "target_item_id": "beaker-nacl"
+                }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+
+        let scene_response = get_scene(&app, Some(&cookies)).await;
+        assert_eq!(scene_response.status(), StatusCode::OK);
+        let mut scene = body_json(scene_response).await;
+        let items = scene["items"].as_array_mut().expect("items");
+        let water = items
+            .iter_mut()
+            .find(|item| item["id"] == "beaker-water")
+            .expect("beaker-water");
+        water["properties"]["temperature_c"] = serde_json::json!(21.0);
+        let lab_id = scene["lab_id"].as_str().expect("lab_id").to_string();
+        let version = scene["version"].as_u64().expect("version") as i64;
+        let blob = serde_json::to_vec(&scene).expect("serialize scene");
+        chemlab_db::save_lab_state(state.pool(), &lab_id, &blob, version)
+            .await
+            .expect("seed bad temperature");
+
+        let response = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "pour",
+                "source_item_id": "spoon-1",
+                "target_item_id": "beaker-water"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(body_json(response).await["code"], "unsupported_temperature");
     }
 
     #[tokio::test]

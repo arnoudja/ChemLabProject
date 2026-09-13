@@ -9,6 +9,8 @@ import {
   STOCK_FULL_MASS_G,
   STOCK_FULL_SCOOPS,
   WATER_FULL_ML,
+  DISH_CAPACITY_ML,
+  dishFillRatio,
   stockFillRatio,
   waterFillRatio,
 } from './LabBench'
@@ -117,6 +119,53 @@ function initialScene(): LabScene {
             { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null, amount_g: null, amount_mol: null},
           ],
           holding: [],
+        },
+      },
+      {
+        id: 'pipette-1',
+        kind: 'pipette',
+        label: 'Pipette',
+        location: 'bench',
+        properties: {
+          volume_ml: 1,
+          fill_ml: 0,
+          transparent: true,
+          colourless: true,
+          temperature_c: null,
+          composition: [],
+          holding: [],
+          source_item_id: null,
+        },
+      },
+      {
+        id: 'dish-1',
+        kind: 'evaporation_dish',
+        label: 'Evaporation dish',
+        location: 'bench',
+        properties: {
+          volume_ml: 25,
+          fill_ml: 0,
+          transparent: true,
+          colourless: true,
+          temperature_c: 20,
+          composition: [],
+          holding: [],
+        },
+      },
+      {
+        id: 'burner-1',
+        kind: 'burner',
+        label: 'Burner',
+        location: 'bench',
+        properties: {
+          volume_ml: null,
+          fill_ml: null,
+          transparent: null,
+          colourless: null,
+          temperature_c: null,
+          composition: [],
+          holding: [],
+          on: false,
         },
       },
     ],
@@ -289,6 +338,109 @@ function afterSandPour(scene: LabScene): LabScene {
   return next
 }
 
+function liquidWaterEntry(item: LabScene['items'][number]) {
+  return optionalArray(item.properties.composition).find(
+    (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
+  )
+}
+
+function pipetteIsFull(scene: LabScene): boolean {
+  const pipette = scene.items.find((item) => item.id === 'pipette-1')
+  return optionalArray(pipette?.properties.holding).some(
+    (entry) => entry.substance_id === 'water' && entry.phase === 'liquid' && (entry.amount_ml ?? 0) > 0,
+  )
+}
+
+function applyPipetteFill(scene: LabScene, sourceId: string): LabScene {
+  const next = cloneScene(scene)
+  const source = next.items.find((item) => item.id === sourceId)!
+  const pipette = next.items.find((item) => item.id === 'pipette-1')!
+  const water = liquidWaterEntry(source)
+  if (!water || (water.amount_ml ?? 0) < 1) return scene
+  water.amount_ml = (water.amount_ml ?? 0) - 1
+  source.properties.fill_ml = water.amount_ml
+  pipette.location = 'hand'
+  pipette.properties.holding = [
+    {
+      substance_id: 'water',
+      phase: 'liquid',
+      amount_ml: 1,
+      amount_scoop: null,
+      amount_g: null,
+      amount_mol: null,
+    },
+  ]
+  pipette.properties.source_item_id = sourceId
+  pipette.properties.temperature_c = source.properties.temperature_c
+  pipette.properties.fill_ml = 1
+  next.last_events = [{ kind: 'pipetted', message: 'Filled the pipette with 1.00 ml of solution.' }]
+  next.version += 1
+  return next
+}
+
+function applyPipetteEmpty(scene: LabScene, targetId: string): LabScene {
+  const next = cloneScene(scene)
+  const target = next.items.find((item) => item.id === targetId)!
+  const pipette = next.items.find((item) => item.id === 'pipette-1')!
+  if (!pipetteIsFull(next)) return scene
+  const existing = liquidWaterEntry(target)
+  if (existing) {
+    existing.amount_ml = (existing.amount_ml ?? 0) + 1
+    target.properties.fill_ml = existing.amount_ml
+  } else {
+    target.properties.composition = [
+      ...optionalArray(target.properties.composition),
+      {
+        substance_id: 'water',
+        phase: 'liquid',
+        amount_ml: 1,
+        amount_scoop: null,
+        amount_g: null,
+        amount_mol: null,
+      },
+    ]
+    target.properties.fill_ml = 1
+  }
+  pipette.properties.holding = []
+  pipette.properties.source_item_id = null
+  pipette.properties.fill_ml = 0
+  pipette.properties.temperature_c = null
+  next.last_events = [{ kind: 'poured', message: 'Emptied the pipette into the vessel.' }]
+  next.version += 1
+  return next
+}
+
+function applyPipetteUse(scene: LabScene, targetId: string): LabScene {
+  return pipetteIsFull(scene) ? applyPipetteEmpty(scene, targetId) : applyPipetteFill(scene, targetId)
+}
+
+function applyPipettePutAway(scene: LabScene): LabScene {
+  const pipette = scene.items.find((item) => item.id === 'pipette-1')!
+  const sourceId = pipette.properties.source_item_id
+  let next = cloneScene(scene)
+  if (pipetteIsFull(next) && sourceId) {
+    next = applyPipetteEmpty(next, sourceId)
+  }
+  const tool = next.items.find((item) => item.id === 'pipette-1')!
+  tool.location = 'bench'
+  return next
+}
+
+function withBurnerToggle(scene: LabScene): LabScene {
+  const next = cloneScene(scene)
+  const burner = next.items.find((item) => item.id === 'burner-1')!
+  const dish = next.items.find((item) => item.id === 'dish-1')!
+  const hasLiquid = (liquidWaterEntry(dish)?.amount_ml ?? 0) > 0
+  const currentlyOn = burner.properties.on === true
+  const nextOn = currentlyOn ? false : hasLiquid
+  burner.properties.on = nextOn
+  if (nextOn !== currentlyOn) {
+    next.last_events = [{ kind: 'toggled', message: nextOn ? 'Burner on.' : 'Burner off.' }]
+  }
+  next.version += 1
+  return next
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -327,6 +479,22 @@ function stubLabFetch(options?: {
           return jsonResponse({ error: result.error, code: result.code }, result.status)
         }
         scene = result
+        return jsonResponse({ scene })
+      }
+      if (action.type === 'toggle_burner') {
+        scene = withBurnerToggle(scene)
+        return jsonResponse({ scene })
+      }
+      if (action.type === 'use_tool' && action.tool_item_id === 'pipette-1') {
+        scene = applyPipetteUse(scene, action.target_item_id)
+        return jsonResponse({ scene })
+      }
+      if (action.type === 'pour' && action.source_item_id === 'pipette-1') {
+        scene = applyPipetteEmpty(scene, action.target_item_id)
+        return jsonResponse({ scene })
+      }
+      if (action.type === 'put_away' && action.tool_item_id === 'pipette-1') {
+        scene = applyPipettePutAway(scene)
         return jsonResponse({ scene })
       }
       if (action.type === 'use_tool' && (action.target_item_id === 'beaker-nacl' || action.target_item_id === 'beaker-cacl2' || action.target_item_id === 'beaker-sand')) {
@@ -412,6 +580,7 @@ describe('LabBench', () => {
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it('loads the server scene and does not call dissolve', async () => {
@@ -802,6 +971,11 @@ describe('LabBench', () => {
     expect(waterFillRatio(WATER_FULL_ML / 2)).toBeCloseTo(0.5)
     expect(waterFillRatio(0)).toBe(0)
     expect(waterFillRatio(null)).toBe(0)
+    expect(dishFillRatio(DISH_CAPACITY_ML)).toBe(1)
+    expect(dishFillRatio(DISH_CAPACITY_ML + 10)).toBe(1)
+    expect(dishFillRatio(1)).toBeCloseTo(0.04)
+    expect(dishFillRatio(0)).toBe(0)
+    expect(dishFillRatio(null)).toBe(0)
 
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
@@ -1206,5 +1380,265 @@ describe('LabBench', () => {
     expect(panel).not.toHaveTextContent('Na+')
     expect(panel).not.toHaveTextContent('(aq)')
     expect(panel.querySelectorAll('sup')).toHaveLength(0)
+  })
+
+  it('pipette transfers 1 ml from the water beaker into the dish and back', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'pipette')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+        type: 'use_tool',
+        tool_item_id: 'pipette-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.99')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+        type: 'use_tool',
+        tool_item_id: 'pipette-1',
+        target_item_id: 'dish-1',
+      })
+    })
+    expect(document.querySelector('[data-dish-fill]')).toHaveAttribute('data-dish-fill', '0.04')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+        type: 'use_tool',
+        tool_item_id: 'pipette-1',
+        target_item_id: 'dish-1',
+      })
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+        type: 'use_tool',
+        tool_item_id: 'pipette-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+    expect(document.querySelector('[data-dish-fill]')).toHaveAttribute('data-dish-fill', '0.00')
+  })
+
+  it('idle burner click toggles the burner after the dish has liquid', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Burner' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body)).type).toBe('use_tool')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body)).target_item_id).toBe('dish-1')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Burner' }))
+    await waitFor(() => {
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+        type: 'toggle_burner',
+        burner_item_id: 'burner-1',
+      })
+    })
+    expect(screen.getByRole('button', { name: 'Burner' })).toHaveAttribute('aria-pressed', 'true')
+    expect(document.querySelector('[data-burner-on]')).toHaveAttribute('data-burner-on', 'true')
+  })
+
+  it('does not toggle the burner while the pipette is selected', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Burner' }))
+
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/lab/action',
+      expect.objectContaining({
+        body: JSON.stringify({ type: 'toggle_burner', burner_item_id: 'burner-1' }),
+      }),
+    )
+  })
+
+  it('idle dish click inspects contents including temperature', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Evaporation dish' })
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Evaporation dish' })
+    expect(panel).toHaveTextContent('Temperature: 20.00°C')
+  })
+
+  it('polls the lab scene while the burner is on', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const lit = initialScene()
+    const dish = lit.items.find((item) => item.id === 'dish-1')!
+    dish.properties.composition = [
+      {
+        substance_id: 'water',
+        phase: 'liquid',
+        amount_ml: 1,
+        amount_scoop: null,
+        amount_g: null,
+        amount_mol: null,
+      },
+    ]
+    dish.properties.fill_ml = 1
+    lit.items.find((item) => item.id === 'burner-1')!.properties.on = true
+    const fetchMock = stubLabFetch({ scene: lit })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Burner' })
+    const getsBefore = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/scene').length
+
+    await vi.advanceTimersByTimeAsync(900)
+    const getsAfter = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/scene').length
+    expect(getsAfter).toBeGreaterThan(getsBefore)
+    vi.useRealTimers()
+  })
+
+  it('returns a filled pipette to the last source on put-away', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+        type: 'use_tool',
+        tool_item_id: 'pipette-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.99')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    await waitFor(() => {
+      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
+        type: 'put_away',
+        tool_item_id: 'pipette-1',
+      })
+    })
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
+  })
+
+  it('shows a pipette transfer error from the server', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubLabFetch({
+        actionHandler: () => ({ error: 'Dish is full', code: 'invalid_action', status: 400 }),
+      }),
+    )
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Dish is full')
+  })
+
+  it('shows a burner toggle error from the server', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubLabFetch({
+        actionHandler: (action) => {
+          if (action.type === 'toggle_burner') {
+            return { error: 'Burner jammed', code: 'invalid_action', status: 400 }
+          }
+          return { error: 'unexpected', code: 'invalid_action', status: 400 }
+        },
+      }),
+    )
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Burner' })
+    fireEvent.click(screen.getByRole('button', { name: 'Burner' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Burner jammed')
+  })
+
+  it('does not surface poll errors while the burner is on', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const lit = initialScene()
+    const dish = lit.items.find((item) => item.id === 'dish-1')!
+    dish.properties.composition = [
+      {
+        substance_id: 'water',
+        phase: 'liquid',
+        amount_ml: 1,
+        amount_scoop: null,
+        amount_g: null,
+        amount_mol: null,
+      },
+    ]
+    dish.properties.fill_ml = 1
+    lit.items.find((item) => item.id === 'burner-1')!.properties.on = true
+
+    let sceneGets = 0
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/auth/csrf') {
+        return jsonResponse({ csrf_token: 'tok-123' })
+      }
+      if (url === '/api/lab/scene') {
+        sceneGets += 1
+        if (sceneGets > 1) {
+          return jsonResponse({ error: 'temporary', code: 'unavailable' }, 503)
+        }
+        return jsonResponse(lit)
+      }
+      return jsonResponse({ error: 'unexpected', code: 'invalid_action' }, 400)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Burner' })
+    await vi.advanceTimersByTimeAsync(900)
+    expect(sceneGets).toBeGreaterThan(1)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it('selecting the spoon puts an empty pipette away without a server call', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'pipette')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
+    })
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 })

@@ -9,3 +9,9 @@ export const STOCK_FULL_MASS_G = STOCK_FULL_SCOOPS * SPOON_SCOOP_MASS_G
 
 /** Initial liquid water volume on the server bench (ml). */
 export const WATER_FULL_ML = 200
+
+/** Pipette aliquot volume (ml). */
+export const PIPETTE_VOLUME_ML = 1
+
+/** Evaporation dish capacity (ml). */
+export const DISH_CAPACITY_ML = 25

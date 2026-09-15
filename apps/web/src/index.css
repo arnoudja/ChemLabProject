@@ -242,6 +242,16 @@ body::before {
   padding-right: 0.2rem;
 }
 
+/* Spoon SVG is w-32 (8rem); item padding is 0.2rem each side. Pipette is narrower. */
+.lab-tool-carousel-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  min-width: calc(8rem + 0.4rem);
+}
+
 .lab-water-busy {
   animation: shimmer 900ms linear infinite;
 }

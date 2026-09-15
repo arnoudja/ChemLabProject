@@ -842,31 +842,33 @@ export function LabBench() {
             >
               ‹
             </button>
-            {visibleTool.kind === 'pipette' ? (
-              <button
-                type="button"
-                className={`lab-item ${pipetteSelected ? 'opacity-40' : ''}`}
-                aria-label="Pipette"
-                aria-pressed={pipetteSelected}
-                disabled={busy}
-                onClick={onPipette}
-              >
-                <PipetteSvg filled={pipetteFilled} />
-                <span className="lab-item-label">{pipette?.label ?? 'Pipette'}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={`lab-item ${spoonSelected ? 'opacity-40' : ''}`}
-                aria-label="Spoon"
-                aria-pressed={spoonSelected}
-                disabled={busy}
-                onClick={onSpoon}
-              >
-                <SpoonSvg fill={null} />
-                <span className="lab-item-label">{spoon?.label ?? 'Spoon'}</span>
-              </button>
-            )}
+            <div className="lab-tool-carousel-slot">
+              {visibleTool.kind === 'pipette' ? (
+                <button
+                  type="button"
+                  className={`lab-item ${pipetteSelected ? 'opacity-40' : ''}`}
+                  aria-label="Pipette"
+                  aria-pressed={pipetteSelected}
+                  disabled={busy}
+                  onClick={onPipette}
+                >
+                  <PipetteSvg filled={pipetteFilled} />
+                  <span className="lab-item-label">{pipette?.label ?? 'Pipette'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={`lab-item ${spoonSelected ? 'opacity-40' : ''}`}
+                  aria-label="Spoon"
+                  aria-pressed={spoonSelected}
+                  disabled={busy}
+                  onClick={onSpoon}
+                >
+                  <SpoonSvg fill={null} />
+                  <span className="lab-item-label">{spoon?.label ?? 'Spoon'}</span>
+                </button>
+              )}
+            </div>
             <button
               type="button"
               className="lab-tool-carousel-arrow"

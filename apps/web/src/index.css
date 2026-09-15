@@ -192,6 +192,14 @@ body::before {
   transform: translate(-10px, -44px);
 }
 
+.lab-cursor-tongs {
+  transform: translate(-16px, -18px);
+}
+
+.lab-cursor-vessel {
+  transform: translate(-32px, -48px);
+}
+
 .lab-evap-stack {
   display: flex;
   flex-direction: column;
@@ -242,7 +250,7 @@ body::before {
   padding-right: 0.2rem;
 }
 
-/* Spoon SVG is w-32 (8rem); item padding is 0.2rem each side. Pipette is narrower. */
+/* Spoon and tongs SVGs are w-32 (8rem); item padding is 0.2rem each side. Pipette is narrower. */
 .lab-tool-carousel-slot {
   display: flex;
   flex-direction: column;

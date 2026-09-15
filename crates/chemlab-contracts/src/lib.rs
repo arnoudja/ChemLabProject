@@ -136,7 +136,7 @@ pub struct ItemProperties {
     /// Burner flame; omitted when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on: Option<bool>,
-    /// Last vessel a pipette drew from (`beaker-water` or `dish-1`); used on put-away.
+    /// Last vessel a pipette drew from, or the vessel tongs currently hold.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_item_id: Option<String>,
 }
@@ -146,10 +146,10 @@ pub struct ItemProperties {
 #[ts(export, export_to = "../../../apps/web/src/generated/")]
 pub struct Item {
     pub id: String,
-    /// `"beaker"` | `"spoon"` | `"pipette"` | `"evaporation_dish"` | `"burner"` | …
+    /// `"beaker"` | `"spoon"` | `"pipette"` | `"tongs"` | `"evaporation_dish"` | `"burner"` | …
     pub kind: String,
     pub label: String,
-    /// `"bench"` | `"hand"` | …
+    /// `"bench"` | `"hand"` | `"held"` | …
     pub location: String,
     pub properties: ItemProperties,
 }
@@ -528,5 +528,59 @@ mod tests {
         );
         assert_eq!(back.items[2].properties.on, Some(false));
         assert_eq!(back.last_applied_unix_ms, Some(1_700_000_000_000));
+    }
+
+    #[test]
+    fn tongs_item_round_trips_held_vessel() {
+        let tongs = Item {
+            id: "tongs-1".into(),
+            kind: "tongs".into(),
+            label: "Tongs".into(),
+            location: "hand".into(),
+            properties: ItemProperties {
+                volume_ml: None,
+                fill_ml: None,
+                transparent: None,
+                colourless: None,
+                temperature_c: None,
+                composition: vec![],
+                holding: vec![],
+                on: None,
+                source_item_id: Some("beaker-water".into()),
+            },
+        };
+        let water = Item {
+            id: "beaker-water".into(),
+            kind: "beaker".into(),
+            label: "Water".into(),
+            location: "held".into(),
+            properties: ItemProperties {
+                volume_ml: Some(250.0),
+                fill_ml: Some(200.0),
+                transparent: Some(true),
+                colourless: Some(true),
+                temperature_c: Some(20.0),
+                composition: vec![CompositionEntry {
+                    substance_id: "water".into(),
+                    phase: "liquid".into(),
+                    amount_ml: Some(200.0),
+                    amount_scoop: None,
+                    amount_g: None,
+                    amount_mol: None,
+                }],
+                holding: vec![],
+                on: None,
+                source_item_id: None,
+            },
+        };
+        let json = serde_json::to_string(&tongs).unwrap();
+        assert!(json.contains(r#""kind":"tongs""#));
+        assert!(json.contains(r#""source_item_id":"beaker-water""#));
+        let back: Item = serde_json::from_str(&json).unwrap();
+        assert_eq!(tongs, back);
+        let water_json = serde_json::to_string(&water).unwrap();
+        assert!(water_json.contains(r#""location":"held""#));
+        let water_back: Item = serde_json::from_str(&water_json).unwrap();
+        assert_eq!(water, water_back);
     }
 }

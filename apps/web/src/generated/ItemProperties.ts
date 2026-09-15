@@ -18,6 +18,6 @@ holding?: Array<CompositionEntry>,
  */
 on?: boolean | null, 
 /**
- * Last vessel a pipette drew from (`beaker-water` or `dish-1`); used on put-away.
+ * Last vessel a pipette drew from, or the vessel tongs currently hold.
  */
 source_item_id?: string | null, };

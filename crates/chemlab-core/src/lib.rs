@@ -13,7 +13,7 @@ pub use scene::{
     apply_action, apply_elapsed, initial_bench_scene, Action, CompositionEntry, ItemProperties,
     Scene, SceneError, SceneEvent, SceneItem, AMBIENT_TEMPERATURE_C, BOILING_TEMPERATURE_C,
     DISH_CAPACITY_ML, EVAP_ML_PER_S, HEAT_K_PER_S, NACL_DELTA_H_SOLUTION_J_PER_MOL,
-    PIPETTE_VOLUME_ML, SPOON_SCOOP_MASS_G, WATER_SPECIFIC_HEAT_J_PER_G_K,
+    PIPETTE_VOLUME_ML, SPOON_SCOOP_MASS_G, WATER_CAPACITY_ML, WATER_SPECIFIC_HEAT_J_PER_G_K,
 };
 
 /// Semantic version of the ChemLab core crate.

@@ -136,7 +136,8 @@ pub struct ItemProperties {
     /// Burner flame; omitted when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on: Option<bool>,
-    /// Last vessel a pipette drew from, or the vessel tongs currently hold.
+    /// Last vessel a pipette drew from, the vessel tongs currently hold, or the
+    /// dish a spoon scoop came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_item_id: Option<String>,
 }
@@ -193,7 +194,8 @@ pub enum LabAction {
         source_item_id: String,
         target_item_id: String,
     },
-    /// Return the spoon to the bench holder. Held scoops restore to matching stock.
+    /// Return the tool to the bench holder. Spoon scoops restore to the dish they
+    /// came from, or to the matching stock if scooped from a jar.
     PutAway { tool_item_id: String },
     /// Rebuild the default bench scene (pure water, empty spoon, stock jars).
     Reset,
@@ -582,5 +584,51 @@ mod tests {
         assert!(water_json.contains(r#""location":"held""#));
         let water_back: Item = serde_json::from_str(&water_json).unwrap();
         assert_eq!(water, water_back);
+    }
+
+    #[test]
+    fn spoon_dish_scoop_round_trips_source_and_mixed_holding() {
+        let spoon = Item {
+            id: "spoon-1".into(),
+            kind: "spoon".into(),
+            label: "Spoon".into(),
+            location: "hand".into(),
+            properties: ItemProperties {
+                volume_ml: None,
+                fill_ml: None,
+                transparent: None,
+                colourless: None,
+                temperature_c: None,
+                composition: vec![],
+                holding: vec![
+                    CompositionEntry {
+                        substance_id: "nacl".into(),
+                        phase: "solid".into(),
+                        amount_ml: None,
+                        amount_scoop: None,
+                        amount_g: Some(0.12),
+                        amount_mol: None,
+                    },
+                    CompositionEntry {
+                        substance_id: "cacl2".into(),
+                        phase: "solid".into(),
+                        amount_ml: None,
+                        amount_scoop: None,
+                        amount_g: Some(0.08),
+                        amount_mol: None,
+                    },
+                ],
+                on: None,
+                source_item_id: Some("dish-1".into()),
+            },
+        };
+        let json = serde_json::to_string(&spoon).unwrap();
+        assert!(json.contains(r#""source_item_id":"dish-1""#));
+        assert!(json.contains(r#""amount_g":0.12"#));
+        assert!(json.contains(r#""amount_g":0.08"#));
+        let back: Item = serde_json::from_str(&json).unwrap();
+        assert_eq!(spoon, back);
+        assert_eq!(back.properties.holding.len(), 2);
+        assert_eq!(back.properties.source_item_id.as_deref(), Some("dish-1"));
     }
 }

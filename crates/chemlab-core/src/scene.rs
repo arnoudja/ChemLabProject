@@ -398,7 +398,14 @@ fn apply_use_tool(
     let scoops_remaining = scoops_available - 1;
     solid.amount_scoop = Some(scoops_remaining);
     // Decrement grams by the scoop mass so returned dish mass is not dropped.
-    solid.amount_g = Some(mass_available - SPOON_SCOOP_MASS_G);
+    // Repeated 0.2 g subtractions leave a ~1e-16 remainder; snap that to 0 so
+    // empty stock does not keep a floor sliver in the beaker visual.
+    let remaining_g = mass_available - SPOON_SCOOP_MASS_G;
+    solid.amount_g = Some(if remaining_g.abs() <= AMOUNT_EPS {
+        0.0
+    } else {
+        remaining_g
+    });
 
     let scoop = CompositionEntry {
         substance_id: substance_id.clone(),
@@ -1599,6 +1606,44 @@ mod tests {
         assert_eq!(err, SceneError::InvalidAction);
         let spoon = item(&scene, "spoon-1");
         assert!(spoon.properties.holding.is_empty());
+    }
+
+    #[test]
+    fn scooping_stock_empty_leaves_zero_grams() {
+        let mut scene = initial_bench_scene("lab-test");
+        for _ in 0..10 {
+            apply_action(
+                &mut scene,
+                Action::UseTool {
+                    tool_item_id: "spoon-1".into(),
+                    target_item_id: "beaker-nacl".into(),
+                },
+            )
+            .unwrap();
+            apply_action(
+                &mut scene,
+                Action::Pour {
+                    source_item_id: "spoon-1".into(),
+                    target_item_id: "beaker-water".into(),
+                },
+            )
+            .unwrap();
+        }
+
+        let nacl = item(&scene, "beaker-nacl");
+        let stock = nacl
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == "nacl" && c.phase == "solid")
+            .unwrap();
+        assert_eq!(stock.amount_scoop, Some(0));
+        assert_eq!(
+            stock.amount_g,
+            Some(0.0),
+            "leftover grams {:?} would still draw a floor sliver",
+            stock.amount_g
+        );
     }
 
     #[test]

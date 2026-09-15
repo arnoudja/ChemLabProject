@@ -1349,6 +1349,29 @@ describe('LabBench', () => {
     expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
   })
 
+  it('draws no salt pile when leftover stock grams display as empty', async () => {
+    const leftoverG = 2.7755575615628914e-16
+    const scene = initialScene()
+    const nacl = scene.items.find((item) => item.id === 'beaker-nacl')!
+    const solid = optionalArray(nacl.properties.composition).find(
+      (entry) => entry.substance_id === 'nacl' && entry.phase === 'solid',
+    )!
+    solid.amount_scoop = 0
+    solid.amount_g = leftoverG
+
+    const fetchMock = stubLabFetch({ scene })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+
+    expect(leftoverG.toFixed(2)).toBe('0.00')
+    expect(stockFillRatio(leftoverG)).toBe(0)
+    const svg = document.querySelector('[data-stock-solid="nacl"]')
+    expect(svg).toHaveAttribute('data-stock-fill', '0.00')
+    expect(svg?.querySelector('path[fill="#F4FBFF"]')).not.toBeInTheDocument()
+  })
+
   it('shows water fill from server amount_ml and updates after pour and reset', async () => {
     const fetchMock = stubLabFetch({
       actionHandler: (action, scene) => {

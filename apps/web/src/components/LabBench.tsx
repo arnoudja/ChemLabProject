@@ -185,6 +185,8 @@ function WaterBeakerSvg({
 /** Fill fraction 0..1 from server amount_g relative to initial stock. */
 export function stockFillRatio(amountG: number | null | undefined): number {
   if (amountG == null || amountG <= 0) return 0
+  // Inspect shows two decimals; leftover float that displays as 0.00 g is empty.
+  if (Number(amountG.toFixed(2)) === 0) return 0
   return Math.min(1, amountG / STOCK_FULL_MASS_G)
 }
 

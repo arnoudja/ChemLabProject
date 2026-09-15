@@ -192,22 +192,23 @@ body::before {
   transform: translate(-10px, -44px);
 }
 
-.lab-evap-stack,
-.lab-tool-well {
+.lab-evap-stack {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.05rem;
 }
 
-.lab-stock-carousel {
+.lab-stock-carousel,
+.lab-tool-carousel {
   display: flex;
   flex-direction: row;
   align-items: flex-end;
   gap: 0.1rem;
 }
 
-.lab-stock-carousel-arrow {
+.lab-stock-carousel-arrow,
+.lab-tool-carousel-arrow {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -225,14 +226,30 @@ body::before {
   border-radius: 0.5rem;
 }
 
-.lab-stock-carousel-arrow:focus-visible {
+.lab-tool-carousel-arrow {
+  margin-bottom: 1.15rem;
+}
+
+.lab-stock-carousel-arrow:focus-visible,
+.lab-tool-carousel-arrow:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 
-.lab-stock-carousel .lab-item {
+.lab-stock-carousel .lab-item,
+.lab-tool-carousel .lab-item {
   padding-left: 0.2rem;
   padding-right: 0.2rem;
+}
+
+/* Spoon SVG is w-32 (8rem); item padding is 0.2rem each side. Pipette is narrower. */
+.lab-tool-carousel-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  min-width: calc(8rem + 0.4rem);
 }
 
 .lab-water-busy {

@@ -609,6 +609,24 @@ function showStockInCarousel(name: string) {
   throw new Error(`stock ${name} not visible after wrapping carousel`)
 }
 
+function clickToolCarousel(direction: 'next' | 'previous') {
+  const name = direction === 'next' ? 'Next tool' : 'Previous tool'
+  fireEvent.click(screen.getByRole('button', { name }))
+}
+
+function showToolInCarousel(name: string) {
+  for (let i = 0; i < 2; i++) {
+    if (screen.queryByRole('button', { name })) return
+    clickToolCarousel('next')
+  }
+  throw new Error(`tool ${name} not visible after wrapping carousel`)
+}
+
+function clickSpoon() {
+  showToolInCarousel('Spoon')
+  fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+}
+
 describe('LabBench', () => {
   beforeEach(() => {
     clearCsrfTokenCache()
@@ -626,7 +644,8 @@ describe('LabBench', () => {
 
     render(<LabBench />)
 
-    expect(await screen.findByRole('button', { name: 'Spoon' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Pipette' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Calcium chloride (CaCl2)' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Sand' })).not.toBeInTheDocument()
@@ -681,9 +700,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     clickCarousel('next')
 
     expect(screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' })).toBeInTheDocument()
@@ -706,6 +725,63 @@ describe('LabBench', () => {
       expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
     })
     expect(screen.queryByRole('button', { name: 'Calcium chloride (CaCl2)' })).not.toBeInTheDocument()
+  })
+
+  it('wraps the tool carousel pipette → spoon and hides the other tool from the DOM', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+    expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
+
+    clickToolCarousel('next')
+    expect(screen.getByRole('button', { name: 'Spoon' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pipette' })).not.toBeInTheDocument()
+
+    clickToolCarousel('next')
+    expect(screen.getByRole('button', { name: 'Pipette' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
+
+    clickToolCarousel('previous')
+    expect(screen.getByRole('button', { name: 'Spoon' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pipette' })).not.toBeInTheDocument()
+  })
+
+  it('does not pick up or put away a tool when clicking tool carousel arrows', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'pipette')
+
+    clickToolCarousel('next')
+    expect(screen.getByRole('button', { name: 'Spoon' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pipette' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'pipette')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+
+    clickToolCarousel('next')
+    expect(screen.getByRole('button', { name: 'Pipette' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'pipette')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+  })
+
+  it('returns the tool carousel to pipette after Reset', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+
+    clickToolCarousel('next')
+    expect(screen.getByRole('button', { name: 'Spoon' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset lab' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Pipette' })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
   })
 
   it('renders when server omits empty holding/composition/last_events (serde skip)', async () => {
@@ -791,7 +867,7 @@ describe('LabBench', () => {
     )
 
     expect(() => render(<LabBench />)).not.toThrow()
-    expect(await screen.findByRole('button', { name: 'Spoon' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Pipette' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Water beaker' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -802,9 +878,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', stubLabFetch())
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
 
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
     expect(screen.getByRole('button', { name: 'Spoon' })).toHaveAttribute('aria-pressed', 'true')
@@ -815,7 +891,7 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
@@ -914,9 +990,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
 
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
@@ -936,7 +1012,7 @@ describe('LabBench', () => {
     const panel = await screen.findByRole('dialog', { name: 'Contents of Sodium chloride' })
     expect(panel).toHaveTextContent(`${STOCK_FULL_MASS_G.toFixed(2)} g`)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     expect(screen.getByRole('dialog', { name: 'Contents of Sodium chloride' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
@@ -961,7 +1037,7 @@ describe('LabBench', () => {
     expect(panel).toHaveTextContent('Temperature: 20.00°C')
     expect(panel).not.toHaveTextContent('Na+')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
@@ -990,7 +1066,7 @@ describe('LabBench', () => {
       `${STOCK_FULL_MASS_G.toFixed(2)} g`,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toHaveTextContent(
@@ -1014,7 +1090,7 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
     expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '1.00')
     expect(stockFillRatio(STOCK_FULL_MASS_G)).toBe(1)
@@ -1024,7 +1100,7 @@ describe('LabBench', () => {
     expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
     showStockInCarousel('Sodium chloride (NaCl)')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
 
     await waitFor(() => {
@@ -1063,7 +1139,7 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
     expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
     expect(waterFillRatio(WATER_FULL_ML)).toBe(1)
@@ -1076,7 +1152,7 @@ describe('LabBench', () => {
     expect(dishFillRatio(0)).toBe(0)
     expect(dishFillRatio(null)).toBe(0)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
@@ -1116,9 +1192,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     await waitFor(() => {
       expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '0.90')
@@ -1138,9 +1214,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
@@ -1162,9 +1238,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
 
     await waitFor(() => {
@@ -1219,12 +1295,12 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
     showStockInCarousel('Calcium chloride (CaCl2)')
     expect(document.querySelector('[data-stock-solid="cacl2"]')).toHaveAttribute('data-stock-fill', '1.00')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' }))
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'cacl2')
@@ -1238,7 +1314,7 @@ describe('LabBench', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Dissolved')
     expect(document.querySelector('[data-water-aqueous="true"]')).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
     const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
     expect(panel).toHaveTextContent('Ca')
@@ -1274,10 +1350,10 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
     showStockInCarousel('Sand')
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sand' }))
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'sand')
@@ -1301,10 +1377,10 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
     showStockInCarousel('Sand')
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sand' }))
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'sand')
@@ -1331,9 +1407,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
 
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
@@ -1351,10 +1427,10 @@ describe('LabBench', () => {
       vi.stubGlobal('fetch', fetchMock)
 
       render(<LabBench />)
-      await screen.findByRole('button', { name: 'Spoon' })
+      await screen.findByRole('button', { name: 'Pipette' })
 
       showStockInCarousel(label)
-      fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+      clickSpoon()
       fireEvent.click(screen.getByRole('button', { name: label }))
       await waitFor(() => {
         expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute(
@@ -1367,7 +1443,7 @@ describe('LabBench', () => {
         '0.90',
       )
 
-      fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+      clickSpoon()
 
       await waitFor(() => {
         expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
@@ -1389,12 +1465,12 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
@@ -1411,9 +1487,9 @@ describe('LabBench', () => {
     )
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
@@ -1444,9 +1520,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Spoon' })
+    await screen.findByRole('button', { name: 'Pipette' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
@@ -1457,7 +1533,7 @@ describe('LabBench', () => {
     })
 
     // Put the spoon away so idle inspect works, then confirm ions are present.
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
     fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
     expect(await screen.findByRole('dialog')).toHaveTextContent('Na+ (aq)')
@@ -1740,7 +1816,7 @@ describe('LabBench', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'pipette')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickSpoon()
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
     })
@@ -1762,16 +1838,35 @@ describe('LabBench', () => {
     expect(precedesInDocument(stack as HTMLElement, water)).toBe(true)
   })
 
-  it('places the pipette above the spoon in the tool well', async () => {
+  it('places the tool carousel after the stock slot with flanking arrows', async () => {
     vi.stubGlobal('fetch', stubLabFetch())
 
     render(<LabBench />)
     const pipette = await screen.findByRole('button', { name: 'Pipette' })
-    const spoon = screen.getByRole('button', { name: 'Spoon' })
-    const well = pipette.closest('.lab-tool-well')
+    const stock = screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })
+    const carousel = pipette.closest('.lab-tool-carousel')
+    const previous = screen.getByRole('button', { name: 'Previous tool' })
+    const next = screen.getByRole('button', { name: 'Next tool' })
 
-    expect(well).not.toBeNull()
-    expect(well).toContainElement(spoon)
-    expect(precedesInDocument(pipette, spoon)).toBe(true)
+    expect(carousel).not.toBeNull()
+    expect(carousel).toContainElement(previous)
+    expect(carousel).toContainElement(next)
+    expect(precedesInDocument(previous, pipette)).toBe(true)
+    expect(precedesInDocument(pipette, next)).toBe(true)
+    expect(precedesInDocument(stock, carousel as HTMLElement)).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
+  })
+
+  it('reserves a fixed-width tool slot so pipette and spoon do not shift the bench', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    const pipette = await screen.findByRole('button', { name: 'Pipette' })
+    expect(pipette.parentElement).toHaveClass('lab-tool-carousel-slot')
+
+    clickToolCarousel('next')
+    expect(screen.getByRole('button', { name: 'Spoon' }).parentElement).toHaveClass(
+      'lab-tool-carousel-slot',
+    )
   })
 })

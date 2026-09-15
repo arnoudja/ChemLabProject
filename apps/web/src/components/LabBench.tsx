@@ -45,6 +45,11 @@ const STOCK_CAROUSEL: { itemId: string; solid: StockSolid }[] = [
   { itemId: SAND_ID, solid: 'sand' },
 ]
 
+const TOOL_CAROUSEL: { itemId: string; kind: 'pipette' | 'spoon' }[] = [
+  { itemId: PIPETTE_ID, kind: 'pipette' },
+  { itemId: SPOON_ID, kind: 'spoon' },
+]
+
 type ToolUi = 'none' | 'spoon' | 'pipette' | StockSolid
 
 function isStockSolid(id: string): id is StockSolid {
@@ -425,6 +430,7 @@ export function LabBench() {
   const [busy, setBusy] = useState(false)
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
   const [stockCarouselIndex, setStockCarouselIndex] = useState(0)
+  const [toolCarouselIndex, setToolCarouselIndex] = useState(0)
 
   const burnerOn = scene ? burnerIsOn(scene) : false
 
@@ -668,6 +674,7 @@ export function LabBench() {
       setScene(response.scene)
       setSelectedToolItemId(null)
       setStockCarouselIndex(0)
+      setToolCarouselIndex(0)
       // Inspect stays open and rebinds to the reset scene item by id.
       setPointer(null)
     } catch (err) {
@@ -698,11 +705,19 @@ export function LabBench() {
   const inspectItem = scene && inspectItemId ? findItem(scene, inspectItemId) : undefined
   const pipetteFilled = scene ? pipetteIsFilled(scene) : false
   const visibleStock = STOCK_CAROUSEL[stockCarouselIndex] ?? STOCK_CAROUSEL[0]
+  const visibleTool = TOOL_CAROUSEL[toolCarouselIndex] ?? TOOL_CAROUSEL[0]
 
   function stepStockCarousel(delta: number, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
     setStockCarouselIndex(
       (index) => (index + delta + STOCK_CAROUSEL.length) % STOCK_CAROUSEL.length,
+    )
+  }
+
+  function stepToolCarousel(delta: number, event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    setToolCarouselIndex(
+      (index) => (index + delta + TOOL_CAROUSEL.length) % TOOL_CAROUSEL.length,
     )
   }
 
@@ -818,31 +833,49 @@ export function LabBench() {
             </button>
           </div>
 
-          <div className="lab-tool-well">
-            {pipette ? (
-              <button
-                type="button"
-                className={`lab-item ${pipetteSelected ? 'opacity-40' : ''}`}
-                aria-label="Pipette"
-                aria-pressed={pipetteSelected}
-                disabled={busy}
-                onClick={onPipette}
-              >
-                <PipetteSvg filled={pipetteFilled} />
-                <span className="lab-item-label">{pipette.label}</span>
-              </button>
-            ) : null}
-
+          <div className="lab-tool-carousel">
             <button
               type="button"
-              className={`lab-item ${spoonSelected ? 'opacity-40' : ''}`}
-              aria-label="Spoon"
-              aria-pressed={spoonSelected}
-              disabled={busy}
-              onClick={onSpoon}
+              className="lab-tool-carousel-arrow"
+              aria-label="Previous tool"
+              onClick={(event) => stepToolCarousel(-1, event)}
             >
-              <SpoonSvg fill={null} />
-              <span className="lab-item-label">{spoon?.label ?? 'Spoon'}</span>
+              ‹
+            </button>
+            <div className="lab-tool-carousel-slot">
+              {visibleTool.kind === 'pipette' ? (
+                <button
+                  type="button"
+                  className={`lab-item ${pipetteSelected ? 'opacity-40' : ''}`}
+                  aria-label="Pipette"
+                  aria-pressed={pipetteSelected}
+                  disabled={busy}
+                  onClick={onPipette}
+                >
+                  <PipetteSvg filled={pipetteFilled} />
+                  <span className="lab-item-label">{pipette?.label ?? 'Pipette'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={`lab-item ${spoonSelected ? 'opacity-40' : ''}`}
+                  aria-label="Spoon"
+                  aria-pressed={spoonSelected}
+                  disabled={busy}
+                  onClick={onSpoon}
+                >
+                  <SpoonSvg fill={null} />
+                  <span className="lab-item-label">{spoon?.label ?? 'Spoon'}</span>
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              className="lab-tool-carousel-arrow"
+              aria-label="Next tool"
+              onClick={(event) => stepToolCarousel(1, event)}
+            >
+              ›
             </button>
           </div>
         </div>

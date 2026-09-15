@@ -10,7 +10,7 @@ export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [healthError, setHealthError] = useState<string | null>(null)
   const [user, setUser] = useState<AuthUserResponse | null>(null)
-  const [mode, setMode] = useState<Mode>('register')
+  const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')

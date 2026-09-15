@@ -397,8 +397,8 @@ fn apply_use_tool(
     let substance_id = solid.substance_id.clone();
     let scoops_remaining = scoops_available - 1;
     solid.amount_scoop = Some(scoops_remaining);
-    // Derive grams from scoop count so stock stays aligned with SPOON_SCOOP_MASS_G.
-    solid.amount_g = Some(scoops_remaining as f64 * SPOON_SCOOP_MASS_G);
+    // Decrement grams by the scoop mass so returned dish mass is not dropped.
+    solid.amount_g = Some(mass_available - SPOON_SCOOP_MASS_G);
 
     let scoop = CompositionEntry {
         substance_id: substance_id.clone(),
@@ -573,6 +573,9 @@ fn apply_return_to_stock(
     }
     let substance_id = species[0].clone();
     if !is_stock_solid(&substance_id) {
+        return Err(SceneError::InvalidAction);
+    }
+    if scene.items[target_idx].kind != "beaker" {
         return Err(SceneError::InvalidAction);
     }
     if !scene.items[target_idx]
@@ -3700,5 +3703,75 @@ mod tests {
         assert!((solid_g(item(&scene, "dish-1"), "cacl2") - 0.4).abs() < 1e-12);
         assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 2.0);
         assert_eq!(solid_g(item(&scene, "beaker-cacl2"), "cacl2"), 2.0);
+    }
+
+    #[test]
+    fn returning_dish_scoop_then_stock_scoop_conserves_nacl_mass() {
+        let mut scene = initial_bench_scene("lab-test");
+        set_dry_dish_solids(&mut scene, vec![solid("nacl", 0.5)]);
+        let start_total =
+            solid_g(item(&scene, "beaker-nacl"), "nacl") + solid_g(item(&scene, "dish-1"), "nacl");
+        scoop_dish(&mut scene).unwrap();
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        assert!((solid_g(item(&scene, "beaker-nacl"), "nacl") - 2.2).abs() < 1e-12);
+
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+
+        let conserved = solid_g(item(&scene, "beaker-nacl"), "nacl")
+            + holding_g(item(&scene, "spoon-1"), "nacl")
+            + solid_g(item(&scene, "dish-1"), "nacl");
+        assert!(
+            (conserved - start_total).abs() < 1e-12,
+            "nacl mass leaked: start {start_total}, after {conserved}"
+        );
+        assert!((solid_g(item(&scene, "beaker-nacl"), "nacl") - 2.0).abs() < 1e-12);
+        assert!((holding_g(item(&scene, "spoon-1"), "nacl") - SPOON_SCOOP_MASS_G).abs() < 1e-12);
+        assert!((solid_g(item(&scene, "dish-1"), "nacl") - 0.3).abs() < 1e-12);
+    }
+
+    #[test]
+    fn use_tool_holding_stock_scoop_rejects_dish_even_with_matching_solid() {
+        let mut scene = initial_bench_scene("lab-test");
+        set_dry_dish_solids(&mut scene, vec![solid("nacl", 0.5)]);
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "dish-1".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+
+        let spoon = item(&scene, "spoon-1");
+        assert_eq!(spoon.properties.holding.len(), 1);
+        assert_eq!(spoon.properties.holding[0].substance_id, "nacl");
+        assert!((holding_g(spoon, "nacl") - SPOON_SCOOP_MASS_G).abs() < 1e-12);
+        assert!((solid_g(item(&scene, "dish-1"), "nacl") - 0.5).abs() < 1e-12);
+        assert!((solid_g(item(&scene, "beaker-nacl"), "nacl") - 1.8).abs() < 1e-12);
+        assert!(!scene.last_events.iter().any(|e| e.kind == "returned"));
     }
 }

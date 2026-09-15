@@ -18,6 +18,7 @@ holding?: Array<CompositionEntry>,
  */
 on?: boolean | null, 
 /**
- * Last vessel a pipette drew from, or the vessel tongs currently hold.
+ * Last vessel a pipette drew from, the vessel tongs currently hold, or the
+ * dish a spoon scoop came from.
  */
 source_item_id?: string | null, };

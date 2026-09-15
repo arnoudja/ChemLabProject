@@ -936,18 +936,13 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
         if !has_solids {
             return Err(SceneError::EmptyHolding);
         }
-        let taken = take_all_solids(&mut scene.items[source_idx]);
-        mix_transfer_into(&mut scene.items[dest_idx], &taken, None);
-        crate::solubility::enforce_saturation(&mut scene.items[source_idx]);
-        crate::solubility::enforce_saturation(&mut scene.items[dest_idx]);
-        scene.last_events.push(SceneEvent {
-            kind: "poured".into(),
-            message: "Poured solids into the vessel.".into(),
-        });
-        return Ok(());
+        return dump_all_solids(scene, source_idx, dest_idx);
     }
 
     if dest_room <= AMOUNT_EPS {
+        if has_solids {
+            return dump_all_solids(scene, source_idx, dest_idx);
+        }
         return Err(SceneError::InvalidAction);
     }
 
@@ -964,6 +959,22 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Poured from the held vessel.".into(),
+    });
+    Ok(())
+}
+
+fn dump_all_solids(
+    scene: &mut Scene,
+    source_idx: usize,
+    dest_idx: usize,
+) -> Result<(), SceneError> {
+    let taken = take_all_solids(&mut scene.items[source_idx]);
+    mix_transfer_into(&mut scene.items[dest_idx], &taken, None);
+    crate::solubility::enforce_saturation(&mut scene.items[source_idx]);
+    crate::solubility::enforce_saturation(&mut scene.items[dest_idx]);
+    scene.last_events.push(SceneEvent {
+        kind: "poured".into(),
+        message: "Poured solids into the vessel.".into(),
     });
     Ok(())
 }
@@ -3045,6 +3056,62 @@ mod tests {
             .iter()
             .all(|c| c.phase != "solid"));
         assert_eq!(item(&scene, "dish-1").location, "held");
+    }
+
+    #[test]
+    fn tongs_full_dest_dumps_all_solids_from_wet_source_and_keeps_liquid() {
+        let mut scene = initial_bench_scene("lab-test");
+        let water = scene
+            .items
+            .iter_mut()
+            .find(|i| i.id == "beaker-water")
+            .unwrap();
+        water.properties.composition = vec![CompositionEntry {
+            substance_id: "water".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(250.0),
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: None,
+        }];
+        crate::solubility::sync_fill_ml(water);
+
+        let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+        dish.properties.composition = vec![
+            CompositionEntry {
+                substance_id: "water".into(),
+                phase: "liquid".into(),
+                amount_ml: Some(10.0),
+                amount_scoop: None,
+                amount_g: None,
+                amount_mol: None,
+            },
+            CompositionEntry {
+                substance_id: "sand".into(),
+                phase: "solid".into(),
+                amount_ml: None,
+                amount_scoop: Some(2),
+                amount_g: Some(2.0 * SPOON_SCOOP_MASS_G),
+                amount_mol: None,
+            },
+        ];
+        crate::solubility::sync_fill_ml(dish);
+
+        use_tongs(&mut scene, "dish-1").unwrap();
+        use_tongs(&mut scene, "beaker-water").unwrap();
+
+        assert!((water_ml(item(&scene, "beaker-water")) - 250.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "dish-1")) - 10.0).abs() < 1e-9);
+        assert!(
+            (solid_g(item(&scene, "beaker-water"), "sand") - 2.0 * SPOON_SCOOP_MASS_G).abs()
+                < 1e-12
+        );
+        assert_eq!(solid_g(item(&scene, "dish-1"), "sand"), 0.0);
+        assert_eq!(item(&scene, "dish-1").location, "held");
+        assert_eq!(
+            item(&scene, "tongs-1").properties.source_item_id.as_deref(),
+            Some("dish-1")
+        );
     }
 
     #[test]

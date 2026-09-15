@@ -2321,4 +2321,77 @@ mod tests {
                 || scene_item(&restored, "tongs-1")["properties"]["source_item_id"].is_null()
         );
     }
+
+    async fn persist_scene_without_tongs(state: &AppState, app: &Router, cookies: &str) {
+        let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
+        let water_ml = scene_item(&scene, "beaker-water")["properties"]["composition"][0]
+            ["amount_ml"]
+            .as_f64()
+            .unwrap();
+        scene["items"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|item| item["id"] != "tongs-1");
+        assert!(scene["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["id"] != "tongs-1"));
+        assert!((water_ml - 200.0).abs() < 1e-9);
+        let lab_id = scene["lab_id"].as_str().unwrap().to_string();
+        let version = scene["version"].as_u64().unwrap() as i64;
+        chemlab_db::save_lab_state(
+            state.pool(),
+            &lab_id,
+            &serde_json::to_vec(&scene).unwrap(),
+            version,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn get_scene_backfills_tongs_on_persisted_lab_from_before_tongs() {
+        let (app, state) = test_app_state().await;
+        let (_csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "tongs-migrate-get@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        persist_scene_without_tongs(&state, &app, &cookies).await;
+
+        let loaded = body_json(get_scene(&app, Some(&cookies)).await).await;
+        assert_eq!(scene_item(&loaded, "tongs-1")["kind"], "tongs");
+        assert_eq!(scene_item(&loaded, "tongs-1")["location"], "bench");
+        assert_eq!(
+            scene_item(&loaded, "beaker-water")["properties"]["composition"][0]["amount_ml"],
+            200.0
+        );
+    }
+
+    #[tokio::test]
+    async fn tongs_use_tool_on_persisted_lab_without_tongs_picks_up_water() {
+        let (app, state) = test_app_state().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "tongs-migrate-use@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        persist_scene_without_tongs(&state, &app, &cookies).await;
+
+        let pickup = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "use_tool",
+                "tool_item_id": "tongs-1",
+                "target_item_id": "beaker-water"
+            }),
+        )
+        .await;
+        assert_eq!(pickup.status(), StatusCode::OK);
+        let picked = body_json(pickup).await["scene"].clone();
+        assert_eq!(scene_item(&picked, "beaker-water")["location"], "held");
+        assert_eq!(
+            scene_item(&picked, "tongs-1")["properties"]["source_item_id"],
+            "beaker-water"
+        );
+    }
 }

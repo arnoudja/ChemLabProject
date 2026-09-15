@@ -296,6 +296,19 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
     }
 }
 
+/// Insert any default bench items missing from a persisted scene.
+///
+/// Labs saved before a catalog addition (e.g. `tongs-1`) keep their vessel
+/// state; only absent ids are filled from [`initial_bench_scene`].
+pub fn ensure_default_bench_items(scene: &mut Scene) {
+    let defaults = initial_bench_scene(scene.lab_id.clone());
+    for item in defaults.items {
+        if !scene.items.iter().any(|existing| existing.id == item.id) {
+            scene.items.push(item);
+        }
+    }
+}
+
 /// Apply a single action, mutating the scene in place.
 pub fn apply_action(scene: &mut Scene, action: Action) -> Result<(), SceneError> {
     scene.last_events.clear();
@@ -2860,6 +2873,61 @@ mod tests {
             .find(|c| c.substance_id == substance_id && c.phase == "solid")
             .and_then(|c| c.amount_g)
             .unwrap_or(0.0)
+    }
+
+    #[test]
+    fn tongs_use_without_tongs_item_returns_unknown_item() {
+        let mut scene = initial_bench_scene("lab-test");
+        scene.items.retain(|item| item.id != "tongs-1");
+        assert_eq!(
+            use_tongs(&mut scene, "beaker-water").unwrap_err(),
+            SceneError::UnknownItem
+        );
+    }
+
+    #[test]
+    fn ensure_default_bench_items_is_idempotent_when_catalog_is_complete() {
+        let mut scene = initial_bench_scene("lab-test");
+        let before = scene.items.len();
+        ensure_default_bench_items(&mut scene);
+        ensure_default_bench_items(&mut scene);
+        assert_eq!(scene.items.len(), before);
+        assert_eq!(
+            scene
+                .items
+                .iter()
+                .filter(|item| item.id == "tongs-1")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn ensure_default_bench_items_restores_tongs_without_resetting_vessels() {
+        let mut scene = initial_bench_scene("lab-test");
+        scene
+            .items
+            .iter_mut()
+            .find(|item| item.id == "beaker-water")
+            .unwrap()
+            .properties
+            .fill_ml = Some(150.0);
+        scene.items.retain(|item| item.id != "tongs-1");
+
+        ensure_default_bench_items(&mut scene);
+
+        let tongs = item(&scene, "tongs-1");
+        assert_eq!(tongs.kind, "tongs");
+        assert_eq!(tongs.location, "bench");
+        assert_eq!(tongs.properties.source_item_id, None);
+        assert_eq!(item(&scene, "beaker-water").properties.fill_ml, Some(150.0));
+
+        use_tongs(&mut scene, "beaker-water").unwrap();
+        assert_eq!(item(&scene, "beaker-water").location, "held");
+        assert_eq!(
+            item(&scene, "tongs-1").properties.source_item_id.as_deref(),
+            Some("beaker-water")
+        );
     }
 
     #[test]

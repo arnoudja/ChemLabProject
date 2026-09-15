@@ -2205,6 +2205,46 @@ describe('LabBench', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 
+  it('picks up water with tongs when the loaded scene predates tongs-1', async () => {
+    const stale = initialScene()
+    stale.items = stale.items.filter((item) => item.id !== 'tongs-1')
+    const fetchMock = stubLabFetch({
+      scene: stale,
+      actionHandler: (action, scene) => {
+        if (action.type !== 'use_tool' || action.tool_item_id !== 'tongs-1') {
+          return { error: 'unexpected', code: 'invalid_action', status: 400 }
+        }
+        const next = cloneScene(scene)
+        if (!next.items.some((item) => item.id === 'tongs-1')) {
+          next.items.push({
+            id: 'tongs-1',
+            kind: 'tongs',
+            label: 'Tongs',
+            location: 'bench',
+            properties: { ...emptyProps(), source_item_id: null },
+          })
+        }
+        return applyTongsPickUp(next, action.target_item_id)
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+    clickTongs()
+    fireEvent.mouseMove(screen.getByRole('region', { name: 'Lab bench' }), { clientX: 40, clientY: 40 })
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).toBeNull()
+    expect(document.querySelector('.lab-cursor-vessel [data-water-fill]')).not.toBeNull()
+  })
+
   it('shows a tongs pour error from the server and stays holding', async () => {
     vi.stubGlobal(
       'fetch',

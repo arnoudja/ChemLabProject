@@ -69,6 +69,15 @@ function spoonHoldingSubstance(scene: LabScene): StockSolid | null {
   return isStockSolid(held.substance_id) ? held.substance_id : null
 }
 
+function spoonHoldingSpecies(scene: LabScene): string[] {
+  const ids: string[] = []
+  for (const held of optionalArray(findItem(scene, SPOON_ID)?.properties.holding)) {
+    if (held.phase !== 'solid') continue
+    if (!ids.includes(held.substance_id)) ids.push(held.substance_id)
+  }
+  return ids
+}
+
 /** Undissolved solid grains come only from server composition on the water item. */
 function undissolvedSolidInWater(scene: LabScene): StockSolid | null {
   const water = findItem(scene, WATER_ID)
@@ -176,6 +185,8 @@ function WaterBeakerSvg({
 /** Fill fraction 0..1 from server amount_g relative to initial stock. */
 export function stockFillRatio(amountG: number | null | undefined): number {
   if (amountG == null || amountG <= 0) return 0
+  // Inspect shows two decimals; leftover float that displays as 0.00 g is empty.
+  if (Number(amountG.toFixed(2)) === 0) return 0
   return Math.min(1, amountG / STOCK_FULL_MASS_G)
 }
 
@@ -651,27 +662,32 @@ export function LabBench() {
     }
   }
 
+  async function applySpoonTo(targetItemId: string) {
+    if (busy) return
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await postLabAction({
+        type: 'use_tool',
+        tool_item_id: SPOON_ID,
+        target_item_id: targetItemId,
+      })
+      setScene(response.scene)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function onSolid(targetItemId: string, event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
     if (selectedToolItemId === TONGS_ID) {
       return
     }
     if (selectedToolItemId === SPOON_ID) {
-      if (busy) return
-      setError(null)
-      setBusy(true)
-      try {
-        const response = await postLabAction({
-          type: 'use_tool',
-          tool_item_id: SPOON_ID,
-          target_item_id: targetItemId,
-        })
-        setScene(response.scene)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Action failed')
-      } finally {
-        setBusy(false)
-      }
+      if (scene && spoonHoldingSpecies(scene).length > 1) return
+      await applySpoonTo(targetItemId)
       return
     }
     if (selectedToolItemId === null) {
@@ -766,6 +782,10 @@ export function LabBench() {
     }
     if (selectedToolItemId === PIPETTE_ID) {
       await applyPipetteTo(DISH_ID)
+      return
+    }
+    if (selectedToolItemId === SPOON_ID) {
+      await applySpoonTo(DISH_ID)
       return
     }
     if (selectedToolItemId === null) {

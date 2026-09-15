@@ -187,6 +187,89 @@ function cloneScene(scene: LabScene): LabScene {
   return structuredClone(scene)
 }
 
+function withDryDishSolids(
+  scene: LabScene,
+  solids: { substance_id: 'nacl' | 'cacl2' | 'sand'; amount_g: number }[],
+): LabScene {
+  const next = cloneScene(scene)
+  const dish = next.items.find((item) => item.id === 'dish-1')!
+  dish.location = 'bench'
+  dish.properties.composition = solids.map((solid) => ({
+    substance_id: solid.substance_id,
+    phase: 'solid' as const,
+    amount_ml: null,
+    amount_scoop: null,
+    amount_g: solid.amount_g,
+    amount_mol: null,
+  }))
+  dish.properties.fill_ml = 0
+  return next
+}
+
+function applyDishScoop(scene: LabScene): LabScene | { error: string; code: string; status: number } {
+  const next = cloneScene(scene)
+  const dish = next.items.find((item) => item.id === 'dish-1')!
+  const spoon = next.items.find((item) => item.id === 'spoon-1')!
+  if (dish.location === 'held') {
+    return { error: 'invalid action', code: 'invalid_action', status: 400 }
+  }
+  const hasLiquid = optionalArray(dish.properties.composition).some(
+    (entry) => entry.phase === 'liquid' && (entry.amount_ml ?? 0) > 0,
+  )
+  if (hasLiquid) {
+    return { error: 'invalid action', code: 'invalid_action', status: 400 }
+  }
+  const solids = optionalArray(dish.properties.composition).filter((entry) => entry.phase === 'solid')
+  const total = solids.reduce((sum, entry) => sum + (entry.amount_g ?? 0), 0)
+  if (total <= 0) {
+    return { error: 'invalid action', code: 'invalid_action', status: 400 }
+  }
+  const frac = Math.min(SPOON_SCOOP_MASS_G, total) / total
+  spoon.location = 'hand'
+  spoon.properties.source_item_id = 'dish-1'
+  spoon.properties.holding = solids
+    .map((entry) => ({
+      ...entry,
+      amount_g: (entry.amount_g ?? 0) * frac,
+    }))
+    .filter((entry) => (entry.amount_g ?? 0) > 0)
+  dish.properties.composition = [
+    ...optionalArray(dish.properties.composition).filter((entry) => entry.phase !== 'solid'),
+    ...solids
+      .map((entry) => ({
+        ...entry,
+        amount_g: (entry.amount_g ?? 0) * (1 - frac),
+      }))
+      .filter((entry) => (entry.amount_g ?? 0) > 1e-12),
+  ]
+  next.last_events = [{ kind: 'scooped', message: 'Scooped solids from the dish.' }]
+  next.version += 1
+  return next
+}
+
+function applyDishPutAway(scene: LabScene): LabScene {
+  const next = cloneScene(scene)
+  const spoon = next.items.find((item) => item.id === 'spoon-1')!
+  const dish = next.items.find((item) => item.id === 'dish-1')!
+  for (const held of optionalArray(spoon.properties.holding)) {
+    if (held.phase !== 'solid') continue
+    const existing = optionalArray(dish.properties.composition).find(
+      (entry) => entry.substance_id === held.substance_id && entry.phase === 'solid',
+    )
+    if (existing) {
+      existing.amount_g = (existing.amount_g ?? 0) + (held.amount_g ?? 0)
+    } else {
+      dish.properties.composition = [...optionalArray(dish.properties.composition), { ...held }]
+    }
+  }
+  spoon.properties.holding = []
+  spoon.properties.source_item_id = null
+  spoon.location = 'bench'
+  next.last_events = [{ kind: 'returned', message: 'Returned solids to the dish.' }]
+  next.version += 1
+  return next
+}
+
 function withScoop(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand'): LabScene {
   const next = cloneScene(scene)
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
@@ -614,6 +697,14 @@ function stubLabFetch(options?: {
         scene = result
         return jsonResponse({ scene })
       }
+      if (action.type === 'use_tool' && action.tool_item_id === 'spoon-1' && action.target_item_id === 'dish-1') {
+        const result = applyDishScoop(scene)
+        if ('error' in result) {
+          return jsonResponse({ error: result.error, code: result.code }, result.status)
+        }
+        scene = result
+        return jsonResponse({ scene })
+      }
       if (action.type === 'pour' && action.source_item_id === 'pipette-1') {
         scene = applyPipetteEmpty(scene, action.target_item_id)
         return jsonResponse({ scene })
@@ -635,9 +726,14 @@ function stubLabFetch(options?: {
               : 'sand'
         const held = optionalArray(
           scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
-        )[0]
-        if (held) {
-          if (held.substance_id === targetSubstance) {
+        )
+        const species = [...new Set(held.filter((entry) => entry.phase === 'solid').map((entry) => entry.substance_id))]
+        if (species.length > 1) {
+          return jsonResponse({ error: 'invalid action', code: 'invalid_action' }, 400)
+        }
+        const first = held[0]
+        if (first) {
+          if (first.substance_id === targetSubstance) {
             scene = withPutBack(scene, targetSubstance)
             return jsonResponse({ scene })
           }
@@ -647,16 +743,19 @@ function stubLabFetch(options?: {
         return jsonResponse({ scene })
       }
       if (action.type === 'put_away') {
-        const held = optionalArray(
-          scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
-        )[0]
+        const spoon = scene.items.find((item) => item.id === 'spoon-1')
+        if (spoon?.properties.source_item_id === 'dish-1') {
+          scene = applyDishPutAway(scene)
+          return jsonResponse({ scene })
+        }
+        const held = optionalArray(spoon?.properties.holding)[0]
         if (held && (held.substance_id === 'nacl' || held.substance_id === 'cacl2' || held.substance_id === 'sand')) {
           scene = withPutBack(scene, held.substance_id)
           return jsonResponse({ scene })
         }
         const next = cloneScene(scene)
-        const spoon = next.items.find((item) => item.id === 'spoon-1')!
-        spoon.location = 'bench'
+        const nextSpoon = next.items.find((item) => item.id === 'spoon-1')!
+        nextSpoon.location = 'bench'
         next.last_events = []
         next.version += 1
         scene = next
@@ -1248,6 +1347,29 @@ describe('LabBench', () => {
     })
     showStockInCarousel('Sand')
     expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
+  })
+
+  it('draws no salt pile when leftover stock grams display as empty', async () => {
+    const leftoverG = 2.7755575615628914e-16
+    const scene = initialScene()
+    const nacl = scene.items.find((item) => item.id === 'beaker-nacl')!
+    const solid = optionalArray(nacl.properties.composition).find(
+      (entry) => entry.substance_id === 'nacl' && entry.phase === 'solid',
+    )!
+    solid.amount_scoop = 0
+    solid.amount_g = leftoverG
+
+    const fetchMock = stubLabFetch({ scene })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+
+    expect(leftoverG.toFixed(2)).toBe('0.00')
+    expect(stockFillRatio(leftoverG)).toBe(0)
+    const svg = document.querySelector('[data-stock-solid="nacl"]')
+    expect(svg).toHaveAttribute('data-stock-fill', '0.00')
+    expect(svg?.querySelector('path[fill="#F4FBFF"]')).not.toBeInTheDocument()
   })
 
   it('shows water fill from server amount_ml and updates after pour and reset', async () => {
@@ -2268,5 +2390,170 @@ describe('LabBench', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Nothing to pour')
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'tongs')
+  })
+
+  it('empty spoon on a dry solids dish posts use_tool and holds the scoop', async () => {
+    const fetchMock = stubLabFetch({
+      scene: withDryDishSolids(initialScene(), [
+        { substance_id: 'nacl', amount_g: 0.6 },
+        { substance_id: 'cacl2', amount_g: 0.4 },
+      ]),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Evaporation dish' })
+
+    clickSpoon()
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'spoon-1',
+        target_item_id: 'dish-1',
+      })
+    })
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    expect(screen.getByRole('status')).toHaveTextContent('Scooped solids from the dish.')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('water click dumps dish solids with pour and CSRF', async () => {
+    const fetchMock = stubLabFetch({
+      scene: withDryDishSolids(initialScene(), [{ substance_id: 'nacl', amount_g: 0.5 }]),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Evaporation dish' })
+
+    clickSpoon()
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'pour',
+        source_item_id: 'spoon-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+    expect(screen.getByRole('status')).toHaveTextContent(NACL_EXPLANATION)
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
+  })
+
+  it('matching stock is a target for a single-species dish scoop', async () => {
+    const fetchMock = stubLabFetch({
+      scene: withDryDishSolids(initialScene(), [{ substance_id: 'nacl', amount_g: 0.5 }]),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Evaporation dish' })
+
+    clickSpoon()
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'spoon-1',
+        target_item_id: 'beaker-nacl',
+      })
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Returned')
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
+  })
+
+  it('mixed dish scoop does not post to a stock', async () => {
+    const fetchMock = stubLabFetch({
+      scene: withDryDishSolids(initialScene(), [
+        { substance_id: 'nacl', amount_g: 0.6 },
+        { substance_id: 'cacl2', amount_g: 0.4 },
+      ]),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Evaporation dish' })
+
+    clickSpoon()
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+    const callsAfterScoop = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/action').length
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/action')).toHaveLength(
+      callsAfterScoop,
+    )
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+  })
+
+  it('water is a pour target when holding mixed dish solids', async () => {
+    const fetchMock = stubLabFetch({
+      scene: withDryDishSolids(initialScene(), [
+        { substance_id: 'nacl', amount_g: 0.6 },
+        { substance_id: 'cacl2', amount_g: 0.4 },
+      ]),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Evaporation dish' })
+
+    clickSpoon()
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'pour',
+        source_item_id: 'spoon-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+  })
+
+  it('put-away returns a dish scoop to the dish', async () => {
+    const fetchMock = stubLabFetch({
+      scene: withDryDishSolids(initialScene(), [
+        { substance_id: 'nacl', amount_g: 0.6 },
+        { substance_id: 'cacl2', amount_g: 0.4 },
+      ]),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Evaporation dish' })
+
+    clickSpoon()
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
+    })
+
+    clickSpoon()
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'put_away',
+        tool_item_id: 'spoon-1',
+      })
+    })
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    expect(screen.getByRole('status')).toHaveTextContent('Returned solids to the dish.')
+    expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '1.00')
   })
 })

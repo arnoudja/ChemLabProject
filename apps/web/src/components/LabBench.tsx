@@ -38,6 +38,13 @@ const WATER_ID = 'beaker-water'
 const BURNER_POLL_MS = 300
 
 type StockSolid = 'nacl' | 'cacl2' | 'sand'
+
+const STOCK_CAROUSEL: { itemId: string; solid: StockSolid }[] = [
+  { itemId: NACL_ID, solid: 'nacl' },
+  { itemId: CACL2_ID, solid: 'cacl2' },
+  { itemId: SAND_ID, solid: 'sand' },
+]
+
 type ToolUi = 'none' | 'spoon' | 'pipette' | StockSolid
 
 function isStockSolid(id: string): id is StockSolid {
@@ -417,6 +424,7 @@ export function LabBench() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
+  const [stockCarouselIndex, setStockCarouselIndex] = useState(0)
 
   const burnerOn = scene ? burnerIsOn(scene) : false
 
@@ -659,6 +667,7 @@ export function LabBench() {
       const response = await postLabAction({ type: 'reset' })
       setScene(response.scene)
       setSelectedToolItemId(null)
+      setStockCarouselIndex(0)
       // Inspect stays open and rebinds to the reset scene item by id.
       setPointer(null)
     } catch (err) {
@@ -688,6 +697,14 @@ export function LabBench() {
   const hasAqueous = scene ? waterHasAqueous(scene) : false
   const inspectItem = scene && inspectItemId ? findItem(scene, inspectItemId) : undefined
   const pipetteFilled = scene ? pipetteIsFilled(scene) : false
+  const visibleStock = STOCK_CAROUSEL[stockCarouselIndex] ?? STOCK_CAROUSEL[0]
+
+  function stepStockCarousel(delta: number, event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    setStockCarouselIndex(
+      (index) => (index + delta + STOCK_CAROUSEL.length) % STOCK_CAROUSEL.length,
+    )
+  }
 
   return (
     <section
@@ -769,38 +786,37 @@ export function LabBench() {
             <span className="lab-item-label">{water?.label ?? 'Water'}</span>
           </button>
 
-          <button
-            type="button"
-            className="lab-item"
-            aria-label={stockSubstanceAriaLabel('nacl')}
-            disabled={busy}
-            onClick={(event) => onSolid(NACL_ID, event)}
-          >
-            <SolidBeakerSvg solid="nacl" amountG={stockAmountG(scene, NACL_ID, 'nacl')} />
-            <StockSubstanceLabel substanceId="nacl" />
-          </button>
-
-          <button
-            type="button"
-            className="lab-item"
-            aria-label={stockSubstanceAriaLabel('cacl2')}
-            disabled={busy}
-            onClick={(event) => onSolid(CACL2_ID, event)}
-          >
-            <SolidBeakerSvg solid="cacl2" amountG={stockAmountG(scene, CACL2_ID, 'cacl2')} />
-            <StockSubstanceLabel substanceId="cacl2" />
-          </button>
-
-          <button
-            type="button"
-            className="lab-item"
-            aria-label={stockSubstanceAriaLabel('sand')}
-            disabled={busy}
-            onClick={(event) => onSolid(SAND_ID, event)}
-          >
-            <SolidBeakerSvg solid="sand" amountG={stockAmountG(scene, SAND_ID, 'sand')} />
-            <StockSubstanceLabel substanceId="sand" />
-          </button>
+          <div className="lab-stock-carousel">
+            <button
+              type="button"
+              className="lab-stock-carousel-arrow"
+              aria-label="Previous ingredient"
+              onClick={(event) => stepStockCarousel(-1, event)}
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              className="lab-item"
+              aria-label={stockSubstanceAriaLabel(visibleStock.solid)}
+              disabled={busy}
+              onClick={(event) => onSolid(visibleStock.itemId, event)}
+            >
+              <SolidBeakerSvg
+                solid={visibleStock.solid}
+                amountG={stockAmountG(scene, visibleStock.itemId, visibleStock.solid)}
+              />
+              <StockSubstanceLabel substanceId={visibleStock.solid} />
+            </button>
+            <button
+              type="button"
+              className="lab-stock-carousel-arrow"
+              aria-label="Next ingredient"
+              onClick={(event) => stepStockCarousel(1, event)}
+            >
+              ›
+            </button>
+          </div>
 
           <div className="lab-tool-well">
             {pipette ? (

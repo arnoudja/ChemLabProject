@@ -592,6 +592,10 @@ function expectCsrfLabAction(fetchMock: ReturnType<typeof vi.fn>, body: unknown)
   )
 }
 
+function precedesInDocument(earlier: HTMLElement, later: HTMLElement) {
+  return Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING)
+}
+
 describe('LabBench', () => {
   beforeEach(() => {
     clearCsrfTokenCache()
@@ -1660,5 +1664,33 @@ describe('LabBench', () => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
     })
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+  })
+
+  it('keeps the dish stacked on the burner to the left of the water beaker', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    const water = await screen.findByRole('button', { name: 'Water beaker' })
+    const dish = screen.getByRole('button', { name: 'Evaporation dish' })
+    const burner = screen.getByRole('button', { name: 'Burner' })
+    const stack = dish.closest('.lab-evap-stack')
+
+    expect(stack).not.toBeNull()
+    expect(stack).toContainElement(burner)
+    expect(precedesInDocument(dish, burner)).toBe(true)
+    expect(precedesInDocument(stack as HTMLElement, water)).toBe(true)
+  })
+
+  it('places the pipette above the spoon in the tool well', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    const pipette = await screen.findByRole('button', { name: 'Pipette' })
+    const spoon = screen.getByRole('button', { name: 'Spoon' })
+    const well = pipette.closest('.lab-tool-well')
+
+    expect(well).not.toBeNull()
+    expect(well).toContainElement(spoon)
+    expect(precedesInDocument(pipette, spoon)).toBe(true)
   })
 })

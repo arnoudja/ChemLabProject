@@ -596,6 +596,19 @@ function precedesInDocument(earlier: HTMLElement, later: HTMLElement) {
   return Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING)
 }
 
+function clickCarousel(direction: 'next' | 'previous') {
+  const name = direction === 'next' ? 'Next ingredient' : 'Previous ingredient'
+  fireEvent.click(screen.getByRole('button', { name }))
+}
+
+function showStockInCarousel(name: string) {
+  for (let i = 0; i < 3; i++) {
+    if (screen.queryByRole('button', { name })) return
+    clickCarousel('next')
+  }
+  throw new Error(`stock ${name} not visible after wrapping carousel`)
+}
+
 describe('LabBench', () => {
   beforeEach(() => {
     clearCsrfTokenCache()
@@ -615,26 +628,84 @@ describe('LabBench', () => {
 
     expect(await screen.findByRole('button', { name: 'Spoon' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Sand' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Calcium chloride (CaCl2)' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sand' })).not.toBeInTheDocument()
+    expect(document.querySelector('[data-stock-solid="cacl2"]')).toBeNull()
+    expect(document.querySelector('[data-stock-solid="sand"]')).toBeNull()
     expect(screen.getByRole('button', { name: 'Water beaker' })).toBeInTheDocument()
     const saltLabel = document.querySelector('[data-stock-label="nacl"]')
     expect(saltLabel?.textContent).toContain('NaCl')
     expect(saltLabel?.textContent).toContain('(Sodium chloride)')
     expect(saltLabel?.textContent).toContain('(Table salt)')
-    const cacl2Label = document.querySelector('[data-stock-label="cacl2"]')
-    expect(cacl2Label?.querySelector('sub')?.textContent).toBe('2')
-    expect(cacl2Label?.textContent).toContain('(Calcium chloride)')
-    expect(cacl2Label?.textContent).toContain('(De-icing salt)')
-    const sandLabel = document.querySelector('[data-stock-label="sand"]')
-    expect(sandLabel?.querySelector('sub')?.textContent).toBe('2')
-    expect(sandLabel?.textContent).toContain('(Silicon dioxide)')
-    expect(sandLabel?.textContent).toContain('(Sand)')
-    expect(document.querySelector('[data-stock-solid="cacl2"]')).toHaveAttribute('data-stock-fill', '1.00')
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
     expect(fetchMock).toHaveBeenCalledWith('/api/lab/scene', { credentials: 'include' })
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('wraps the stock carousel NaCl → CaCl2 → SiO2 and hides other stocks from the DOM', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Sodium chloride (NaCl)' })
+
+    clickCarousel('next')
+    expect(screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sodium chloride (NaCl)' })).not.toBeInTheDocument()
+    expect(document.querySelector('[data-stock-solid="nacl"]')).toBeNull()
+    const cacl2Label = document.querySelector('[data-stock-label="cacl2"]')
+    expect(cacl2Label?.querySelector('sub')?.textContent).toBe('2')
+    expect(cacl2Label?.textContent).toContain('(Calcium chloride)')
+    expect(cacl2Label?.textContent).toContain('(De-icing salt)')
+    expect(document.querySelector('[data-stock-solid="cacl2"]')).toHaveAttribute('data-stock-fill', '1.00')
+
+    clickCarousel('next')
+    expect(screen.getByRole('button', { name: 'Sand' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Calcium chloride (CaCl2)' })).not.toBeInTheDocument()
+    const sandLabel = document.querySelector('[data-stock-label="sand"]')
+    expect(sandLabel?.querySelector('sub')?.textContent).toBe('2')
+    expect(sandLabel?.textContent).toContain('(Silicon dioxide)')
+    expect(sandLabel?.textContent).toContain('(Sand)')
+
+    clickCarousel('next')
+    expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sand' })).not.toBeInTheDocument()
+
+    clickCarousel('previous')
+    expect(screen.getByRole('button', { name: 'Sand' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sodium chloride (NaCl)' })).not.toBeInTheDocument()
+  })
+
+  it('does not scoop or inspect when clicking carousel arrows', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Spoon' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+    clickCarousel('next')
+
+    expect(screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+  })
+
+  it('returns the stock carousel to NaCl after Reset', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Sodium chloride (NaCl)' })
+
+    clickCarousel('next')
+    expect(screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset lab' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: 'Calcium chloride (CaCl2)' })).not.toBeInTheDocument()
   })
 
   it('renders when server omits empty holding/composition/last_events (serde skip)', async () => {
@@ -946,9 +1017,12 @@ describe('LabBench', () => {
     await screen.findByRole('button', { name: 'Spoon' })
 
     expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '1.00')
-    expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
     expect(stockFillRatio(STOCK_FULL_MASS_G)).toBe(1)
     expect(stockFillRatio(STOCK_FULL_MASS_G - SPOON_SCOOP_MASS_G)).toBeCloseTo(0.9)
+
+    showStockInCarousel('Sand')
+    expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
+    showStockInCarousel('Sodium chloride (NaCl)')
 
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
@@ -956,6 +1030,7 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '0.90')
     })
+    showStockInCarousel('Sand')
     expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
   })
 
@@ -1071,11 +1146,13 @@ describe('LabBench', () => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
     })
 
+    showStockInCarousel('Sand')
     fireEvent.click(screen.getByRole('button', { name: 'Sand' }))
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
     })
     expect(document.querySelector('[data-stock-solid="sand"]')).toHaveAttribute('data-stock-fill', '1.00')
+    showStockInCarousel('Sodium chloride (NaCl)')
     expect(document.querySelector('[data-stock-solid="nacl"]')).toHaveAttribute('data-stock-fill', '0.90')
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
   })
@@ -1144,6 +1221,7 @@ describe('LabBench', () => {
     render(<LabBench />)
     await screen.findByRole('button', { name: 'Spoon' })
 
+    showStockInCarousel('Calcium chloride (CaCl2)')
     expect(document.querySelector('[data-stock-solid="cacl2"]')).toHaveAttribute('data-stock-fill', '1.00')
 
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
@@ -1198,6 +1276,7 @@ describe('LabBench', () => {
     render(<LabBench />)
     await screen.findByRole('button', { name: 'Spoon' })
 
+    showStockInCarousel('Sand')
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sand' }))
     await waitFor(() => {
@@ -1224,6 +1303,7 @@ describe('LabBench', () => {
     render(<LabBench />)
     await screen.findByRole('button', { name: 'Spoon' })
 
+    showStockInCarousel('Sand')
     fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sand' }))
     await waitFor(() => {
@@ -1273,6 +1353,7 @@ describe('LabBench', () => {
       render(<LabBench />)
       await screen.findByRole('button', { name: 'Spoon' })
 
+      showStockInCarousel(label)
       fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
       fireEvent.click(screen.getByRole('button', { name: label }))
       await waitFor(() => {

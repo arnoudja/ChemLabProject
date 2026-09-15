@@ -200,6 +200,41 @@ body::before {
   gap: 0.05rem;
 }
 
+.lab-stock-carousel {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.lab-stock-carousel-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.55rem;
+  min-height: 2.75rem;
+  margin-bottom: 3.4rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 1.55rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 0.5rem;
+}
+
+.lab-stock-carousel-arrow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.lab-stock-carousel .lab-item {
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
+}
+
 .lab-water-busy {
   animation: shimmer 900ms linear infinite;
 }

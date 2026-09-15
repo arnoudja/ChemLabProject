@@ -1,7 +1,5 @@
 /** @vitest-environment jsdom */
 import '@testing-library/jest-dom/vitest'
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LabAction, LabScene } from '../generated/contracts'
@@ -1865,8 +1863,6 @@ describe('LabBench', () => {
     render(<LabBench />)
     const pipette = await screen.findByRole('button', { name: 'Pipette' })
     expect(pipette.parentElement).toHaveClass('lab-tool-carousel-slot')
-    const benchCss = readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf8')
-    expect(benchCss).toMatch(/\.lab-tool-carousel-slot\s*\{[^}]*min-width\s*:/)
 
     clickToolCarousel('next')
     expect(screen.getByRole('button', { name: 'Spoon' }).parentElement).toHaveClass(

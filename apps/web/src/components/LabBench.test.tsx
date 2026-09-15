@@ -139,6 +139,16 @@ function initialScene(): LabScene {
         },
       },
       {
+        id: 'tongs-1',
+        kind: 'tongs',
+        label: 'Tongs',
+        location: 'bench',
+        properties: {
+          ...emptyProps(),
+          source_item_id: null,
+        },
+      },
+      {
         id: 'dish-1',
         kind: 'evaporation_dish',
         label: 'Evaporation dish',
@@ -352,6 +362,107 @@ function pipetteIsFull(scene: LabScene): boolean {
   )
 }
 
+function applyTongsPickUp(scene: LabScene, targetId: string): LabScene {
+  const next = cloneScene(scene)
+  const tongs = next.items.find((item) => item.id === 'tongs-1')!
+  const target = next.items.find((item) => item.id === targetId)!
+  target.location = 'held'
+  tongs.location = 'hand'
+  tongs.properties.source_item_id = targetId
+  if (targetId === 'dish-1') {
+    const burner = next.items.find((item) => item.id === 'burner-1')!
+    burner.properties.on = false
+  }
+  next.last_events = [{ kind: 'picked', message: `Picked up ${targetId} with the tongs.` }]
+  next.version += 1
+  return next
+}
+
+function liquidCapacityMl(itemId: string): number {
+  return itemId === 'dish-1' ? DISH_CAPACITY_ML : 250
+}
+
+function applyTongsPour(scene: LabScene, destId: string): LabScene | { error: string; code: string; status: number } {
+  const next = cloneScene(scene)
+  const tongs = next.items.find((item) => item.id === 'tongs-1')!
+  const sourceId = tongs.properties.source_item_id
+  if (!sourceId || sourceId === destId) {
+    return { error: 'invalid action', code: 'invalid_action', status: 400 }
+  }
+  const source = next.items.find((item) => item.id === sourceId)!
+  const dest = next.items.find((item) => item.id === destId)!
+  const sourceWater = liquidWaterEntry(source)
+  const sourceMl = sourceWater?.amount_ml ?? 0
+  const destWater = liquidWaterEntry(dest)
+  const destMl = destWater?.amount_ml ?? 0
+  const room = Math.max(0, liquidCapacityMl(destId) - destMl)
+  const solids = optionalArray(source.properties.composition).filter((entry) => entry.phase === 'solid')
+  if (sourceMl <= 0) {
+    if (solids.length === 0) {
+      return { error: 'empty holding', code: 'empty_holding', status: 400 }
+    }
+    dest.properties.composition = [...optionalArray(dest.properties.composition), ...solids]
+    source.properties.composition = optionalArray(source.properties.composition).filter(
+      (entry) => entry.phase !== 'solid',
+    )
+    next.last_events = [{ kind: 'poured', message: 'Poured solids into the vessel.' }]
+    next.version += 1
+    return next
+  }
+  if (room <= 0) {
+    return { error: 'invalid action', code: 'invalid_action', status: 400 }
+  }
+  const transferred = Math.min(sourceMl, room)
+  if (sourceWater) {
+    sourceWater.amount_ml = sourceMl - transferred
+    source.properties.fill_ml = sourceWater.amount_ml
+  }
+  if (destWater) {
+    destWater.amount_ml = destMl + transferred
+    dest.properties.fill_ml = destWater.amount_ml
+  } else {
+    dest.properties.composition = [
+      ...optionalArray(dest.properties.composition),
+      {
+        substance_id: 'water',
+        phase: 'liquid',
+        amount_ml: transferred,
+        amount_scoop: null,
+        amount_g: null,
+        amount_mol: null,
+      },
+    ]
+    dest.properties.fill_ml = transferred
+  }
+  next.last_events = [{ kind: 'poured', message: 'Poured from the held vessel.' }]
+  next.version += 1
+  return next
+}
+
+function applyTongsUse(
+  scene: LabScene,
+  targetId: string,
+): LabScene | { error: string; code: string; status: number } {
+  const held = scene.items.find((item) => item.id === 'tongs-1')?.properties.source_item_id
+  if (!held) return applyTongsPickUp(scene, targetId)
+  return applyTongsPour(scene, targetId)
+}
+
+function applyTongsPutAway(scene: LabScene): LabScene {
+  const next = cloneScene(scene)
+  const tongs = next.items.find((item) => item.id === 'tongs-1')!
+  const heldId = tongs.properties.source_item_id
+  if (heldId) {
+    const held = next.items.find((item) => item.id === heldId)
+    if (held) held.location = 'bench'
+    tongs.properties.source_item_id = null
+  }
+  tongs.location = 'bench'
+  next.last_events = []
+  next.version += 1
+  return next
+}
+
 function applyPipetteFill(scene: LabScene, sourceId: string): LabScene {
   const next = cloneScene(scene)
   const source = next.items.find((item) => item.id === sourceId)!
@@ -495,12 +606,24 @@ function stubLabFetch(options?: {
         scene = applyPipetteUse(scene, action.target_item_id)
         return jsonResponse({ scene })
       }
+      if (action.type === 'use_tool' && action.tool_item_id === 'tongs-1') {
+        const result = applyTongsUse(scene, action.target_item_id)
+        if ('error' in result) {
+          return jsonResponse({ error: result.error, code: result.code }, result.status)
+        }
+        scene = result
+        return jsonResponse({ scene })
+      }
       if (action.type === 'pour' && action.source_item_id === 'pipette-1') {
         scene = applyPipetteEmpty(scene, action.target_item_id)
         return jsonResponse({ scene })
       }
       if (action.type === 'put_away' && action.tool_item_id === 'pipette-1') {
         scene = applyPipettePutAway(scene)
+        return jsonResponse({ scene })
+      }
+      if (action.type === 'put_away' && action.tool_item_id === 'tongs-1') {
+        scene = applyTongsPutAway(scene)
         return jsonResponse({ scene })
       }
       if (action.type === 'use_tool' && (action.target_item_id === 'beaker-nacl' || action.target_item_id === 'beaker-cacl2' || action.target_item_id === 'beaker-sand')) {
@@ -615,7 +738,7 @@ function clickToolCarousel(direction: 'next' | 'previous') {
 }
 
 function showToolInCarousel(name: string) {
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 3; i++) {
     if (screen.queryByRole('button', { name })) return
     clickToolCarousel('next')
   }
@@ -625,6 +748,11 @@ function showToolInCarousel(name: string) {
 function clickSpoon() {
   showToolInCarousel('Spoon')
   fireEvent.click(screen.getByRole('button', { name: 'Spoon' }))
+}
+
+function clickTongs() {
+  showToolInCarousel('Tongs')
+  fireEvent.click(screen.getByRole('button', { name: 'Tongs' }))
 }
 
 describe('LabBench', () => {
@@ -727,23 +855,30 @@ describe('LabBench', () => {
     expect(screen.queryByRole('button', { name: 'Calcium chloride (CaCl2)' })).not.toBeInTheDocument()
   })
 
-  it('wraps the tool carousel pipette → spoon and hides the other tool from the DOM', async () => {
+  it('wraps the tool carousel pipette → spoon → tongs and hides the other tools from the DOM', async () => {
     vi.stubGlobal('fetch', stubLabFetch())
 
     render(<LabBench />)
     await screen.findByRole('button', { name: 'Pipette' })
     expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tongs' })).not.toBeInTheDocument()
 
     clickToolCarousel('next')
     expect(screen.getByRole('button', { name: 'Spoon' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pipette' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tongs' })).not.toBeInTheDocument()
+
+    clickToolCarousel('next')
+    expect(screen.getByRole('button', { name: 'Tongs' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pipette' })).not.toBeInTheDocument()
 
     clickToolCarousel('next')
     expect(screen.getByRole('button', { name: 'Pipette' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tongs' })).not.toBeInTheDocument()
 
     clickToolCarousel('previous')
-    expect(screen.getByRole('button', { name: 'Spoon' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tongs' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pipette' })).not.toBeInTheDocument()
   })
 
@@ -759,6 +894,11 @@ describe('LabBench', () => {
     clickToolCarousel('next')
     expect(screen.getByRole('button', { name: 'Spoon' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pipette' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'pipette')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+
+    clickToolCarousel('next')
+    expect(screen.getByRole('button', { name: 'Tongs' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'pipette')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
 
@@ -1857,7 +1997,7 @@ describe('LabBench', () => {
     expect(screen.queryByRole('button', { name: 'Spoon' })).not.toBeInTheDocument()
   })
 
-  it('reserves a fixed-width tool slot so pipette and spoon do not shift the bench', async () => {
+  it('reserves a fixed-width tool slot so pipette, spoon, and tongs do not shift the bench', async () => {
     vi.stubGlobal('fetch', stubLabFetch())
 
     render(<LabBench />)
@@ -1868,5 +2008,265 @@ describe('LabBench', () => {
     expect(screen.getByRole('button', { name: 'Spoon' }).parentElement).toHaveClass(
       'lab-tool-carousel-slot',
     )
+    clickToolCarousel('next')
+    expect(screen.getByRole('button', { name: 'Tongs' }).parentElement).toHaveClass(
+      'lab-tool-carousel-slot',
+    )
+  })
+
+  it('picks up the water beaker with tongs, hides the bench vessel, and pours into the dish', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+    clickTongs()
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'tongs')
+
+    const water = screen.getByRole('button', { name: 'Water beaker' })
+    fireEvent.mouseMove(screen.getByRole('region', { name: 'Lab bench' }), { clientX: 40, clientY: 40 })
+    fireEvent.click(water)
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+    expect(water.querySelector('[data-water-fill]')).toBeNull()
+    expect(document.querySelector('.lab-cursor-vessel [data-water-fill]')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'dish-1',
+      })
+    })
+    expect(document.querySelector('[data-dish-fill]')).toHaveAttribute('data-dish-fill', '1.00')
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'tongs')
+  })
+
+  it('picks up the dish with tongs, turns the burner off, and pours back into water', async () => {
+    const lit = initialScene()
+    const dish = lit.items.find((item) => item.id === 'dish-1')!
+    dish.properties.composition = [
+      {
+        substance_id: 'water',
+        phase: 'liquid',
+        amount_ml: DISH_CAPACITY_ML,
+        amount_scoop: null,
+        amount_g: null,
+        amount_mol: null,
+      },
+    ]
+    dish.properties.fill_ml = DISH_CAPACITY_ML
+    lit.items.find((item) => item.id === 'burner-1')!.properties.on = true
+    const fetchMock = stubLabFetch({ scene: lit })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Burner' })
+    expect(screen.getByRole('button', { name: 'Burner' })).toHaveAttribute('aria-pressed', 'true')
+
+    clickTongs()
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'dish-1',
+      })
+    })
+    expect(screen.getByRole('button', { name: 'Burner' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Evaporation dish' }).querySelector('[data-dish-fill]')).toBeNull()
+    expect(document.querySelector('.lab-cursor-vessel [data-dish-fill]')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
+  })
+
+  it('put-away and clicking the empty water slot return the held beaker home', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+    clickTongs()
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'put_away',
+        tool_item_id: 'tongs-1',
+      })
+    })
+    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).not.toBeNull()
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+  })
+
+  it('does not use tongs on stock or the burner', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Sodium chloride (NaCl)' })
+    clickTongs()
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Burner' }))
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+  })
+
+  it('clicking the empty dish slot or the tongs put-away returns the held dish home', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Evaporation dish' })
+    clickTongs()
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'dish-1',
+      })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'put_away',
+        tool_item_id: 'tongs-1',
+      })
+    })
+    expect(screen.getByRole('button', { name: 'Evaporation dish' }).querySelector('[data-dish-fill]')).not.toBeNull()
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+  })
+
+  it('switching tools puts tongs away first, including a held vessel', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+    clickTongs()
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+
+    clickSpoon()
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'put_away',
+        tool_item_id: 'tongs-1',
+      })
+    })
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
+    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).not.toBeNull()
+  })
+
+  it('selecting the pipette puts empty tongs away without a server call', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+    clickTongs()
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'tongs')
+
+    showToolInCarousel('Pipette')
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'pipette')
+    })
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
+  })
+
+  it('picks up water with tongs when the loaded scene predates tongs-1', async () => {
+    const stale = initialScene()
+    stale.items = stale.items.filter((item) => item.id !== 'tongs-1')
+    const fetchMock = stubLabFetch({
+      scene: stale,
+      actionHandler: (action, scene) => {
+        if (action.type !== 'use_tool' || action.tool_item_id !== 'tongs-1') {
+          return { error: 'unexpected', code: 'invalid_action', status: 400 }
+        }
+        const next = cloneScene(scene)
+        if (!next.items.some((item) => item.id === 'tongs-1')) {
+          next.items.push({
+            id: 'tongs-1',
+            kind: 'tongs',
+            label: 'Tongs',
+            location: 'bench',
+            properties: { ...emptyProps(), source_item_id: null },
+          })
+        }
+        return applyTongsPickUp(next, action.target_item_id)
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+    clickTongs()
+    fireEvent.mouseMove(screen.getByRole('region', { name: 'Lab bench' }), { clientX: 40, clientY: 40 })
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).toBeNull()
+    expect(document.querySelector('.lab-cursor-vessel [data-water-fill]')).not.toBeNull()
+  })
+
+  it('shows a tongs pour error from the server and stays holding', async () => {
+    vi.stubGlobal(
+      'fetch',
+      stubLabFetch({
+        actionHandler: (action, scene) => {
+          if (action.type === 'use_tool' && action.tool_item_id === 'tongs-1') {
+            const held = scene.items.find((item) => item.id === 'tongs-1')?.properties.source_item_id
+            if (!held) return applyTongsPickUp(scene, action.target_item_id)
+            return { error: 'Nothing to pour', code: 'empty_holding', status: 400 }
+          }
+          return { error: 'unexpected', code: 'invalid_action', status: 400 }
+        },
+      }),
+    )
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Water beaker' })
+    clickTongs()
+    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    await screen.findByRole('status')
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Nothing to pour')
+    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'tongs')
   })
 })

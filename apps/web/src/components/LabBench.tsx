@@ -29,6 +29,7 @@ export {
 
 const SPOON_ID = 'spoon-1'
 const PIPETTE_ID = 'pipette-1'
+const TONGS_ID = 'tongs-1'
 const DISH_ID = 'dish-1'
 const BURNER_ID = 'burner-1'
 const NACL_ID = 'beaker-nacl'
@@ -45,12 +46,13 @@ const STOCK_CAROUSEL: { itemId: string; solid: StockSolid }[] = [
   { itemId: SAND_ID, solid: 'sand' },
 ]
 
-const TOOL_CAROUSEL: { itemId: string; kind: 'pipette' | 'spoon' }[] = [
+const TOOL_CAROUSEL: { itemId: string; kind: 'pipette' | 'spoon' | 'tongs' }[] = [
   { itemId: PIPETTE_ID, kind: 'pipette' },
   { itemId: SPOON_ID, kind: 'spoon' },
+  { itemId: TONGS_ID, kind: 'tongs' },
 ]
 
-type ToolUi = 'none' | 'spoon' | 'pipette' | StockSolid
+type ToolUi = 'none' | 'spoon' | 'pipette' | 'tongs' | StockSolid
 
 function isStockSolid(id: string): id is StockSolid {
   return id === 'nacl' || id === 'cacl2' || id === 'sand'
@@ -91,6 +93,7 @@ function WaterBeakerSvg({
   amountMl,
   hasAqueous,
   dissolveCue,
+  floating,
 }: {
   leftoverSolid: StockSolid | null
   busy: boolean
@@ -99,6 +102,7 @@ function WaterBeakerSvg({
   hasAqueous?: boolean
   /** Latest dissolve-related kind from scene `last_events`. */
   dissolveCue?: 'dissolved' | 'did_not_dissolve' | null
+  floating?: boolean
 }) {
   const fill = waterFillRatio(amountMl)
   // Full liquid top ~86; empty sits at the beaker floor (~148).
@@ -117,7 +121,7 @@ function WaterBeakerSvg({
   return (
     <svg
       viewBox="0 0 120 168"
-      className="h-40 w-28"
+      className={floating ? 'h-24 w-16' : 'h-40 w-28'}
       aria-hidden
       data-water-fill={fill.toFixed(2)}
       data-water-aqueous={hasAqueous ? 'true' : 'false'}
@@ -262,7 +266,34 @@ function PipetteSvg({ filled, floating }: { filled: boolean; floating?: boolean 
   )
 }
 
-function EvaporationDishSvg({ amountMl }: { amountMl?: number | null }) {
+function TongsSvg({ floating }: { floating?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 132 40"
+      className={floating ? 'h-8 w-28' : 'h-10 w-32'}
+      aria-hidden
+      data-tongs
+    >
+      <rect x="6" y="8" width="16" height="24" rx="4" fill="#6A6E95" stroke="#DDF7FF" strokeWidth="1.6" />
+      <path
+        d="M22 12c28 4 72 4 98 10"
+        fill="none"
+        stroke="#C4D2ED"
+        strokeWidth="3.2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M22 28c28-4 72-4 98-10"
+        fill="none"
+        stroke="#C4D2ED"
+        strokeWidth="3.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function EvaporationDishSvg({ amountMl, floating }: { amountMl?: number | null; floating?: boolean }) {
   const fill = dishFillRatio(amountMl)
   const floorY = 42
   const height = 16 * fill
@@ -270,7 +301,7 @@ function EvaporationDishSvg({ amountMl }: { amountMl?: number | null }) {
   return (
     <svg
       viewBox="0 0 120 56"
-      className="h-14 w-28"
+      className={floating ? 'h-10 w-20' : 'h-14 w-28'}
       aria-hidden
       data-dish-fill={fill.toFixed(2)}
     >
@@ -360,6 +391,12 @@ function pipetteIsFilled(scene: LabScene): boolean {
 
 function burnerIsOn(scene: LabScene): boolean {
   return findItem(scene, BURNER_ID)?.properties.on === true
+}
+
+function tongsHeldVesselId(scene: LabScene): typeof WATER_ID | typeof DISH_ID | null {
+  const held = findItem(scene, TONGS_ID)?.properties.source_item_id
+  if (held === WATER_ID || held === DISH_ID) return held
+  return null
 }
 
 function outcomeLabel(kind: string): string | null {
@@ -488,6 +525,10 @@ export function LabBench() {
       const putAway = await putPipetteAway()
       if (!putAway) return
     }
+    if (selectedToolItemId === TONGS_ID) {
+      const putAway = await putTongsAway()
+      if (!putAway) return
+    }
     setSelectedToolItemId(SPOON_ID)
   }
 
@@ -501,7 +542,28 @@ export function LabBench() {
       const putAway = await putSpoonAway()
       if (!putAway) return
     }
+    if (selectedToolItemId === TONGS_ID) {
+      const putAway = await putTongsAway()
+      if (!putAway) return
+    }
     setSelectedToolItemId(PIPETTE_ID)
+  }
+
+  async function onTongs(event: MouseEvent<HTMLButtonElement>) {
+    trackPointer(event)
+    if (selectedToolItemId === TONGS_ID) {
+      await putTongsAway()
+      return
+    }
+    if (selectedToolItemId === SPOON_ID) {
+      const putAway = await putSpoonAway()
+      if (!putAway) return
+    }
+    if (selectedToolItemId === PIPETTE_ID) {
+      const putAway = await putPipetteAway()
+      if (!putAway) return
+    }
+    setSelectedToolItemId(TONGS_ID)
   }
 
   async function putSpoonAway(): Promise<boolean> {
@@ -561,8 +623,39 @@ export function LabBench() {
     }
   }
 
+  async function putTongsAway(): Promise<boolean> {
+    if (!scene) {
+      setSelectedToolItemId(null)
+      return true
+    }
+    if (!tongsHeldVesselId(scene)) {
+      setSelectedToolItemId(null)
+      return true
+    }
+    if (busy) return false
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await postLabAction({
+        type: 'put_away',
+        tool_item_id: TONGS_ID,
+      })
+      setScene(response.scene)
+      setSelectedToolItemId(null)
+      return true
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed')
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function onSolid(targetItemId: string, event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
+    if (selectedToolItemId === TONGS_ID) {
+      return
+    }
     if (selectedToolItemId === SPOON_ID) {
       if (busy) return
       setError(null)
@@ -604,9 +697,35 @@ export function LabBench() {
     }
   }
 
+  async function applyTongsTo(targetItemId: string) {
+    if (busy) return
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await postLabAction({
+        type: 'use_tool',
+        tool_item_id: TONGS_ID,
+        target_item_id: targetItemId,
+      })
+      setScene(response.scene)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function onWater(event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
     if (!scene) return
+    if (selectedToolItemId === TONGS_ID) {
+      if (tongsHeldVesselId(scene) === WATER_ID) {
+        await putTongsAway()
+        return
+      }
+      await applyTongsTo(WATER_ID)
+      return
+    }
     if (selectedToolItemId === PIPETTE_ID) {
       await applyPipetteTo(WATER_ID)
       return
@@ -637,6 +756,14 @@ export function LabBench() {
   async function onDish(event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
     if (!scene) return
+    if (selectedToolItemId === TONGS_ID) {
+      if (tongsHeldVesselId(scene) === DISH_ID) {
+        await putTongsAway()
+        return
+      }
+      await applyTongsTo(DISH_ID)
+      return
+    }
     if (selectedToolItemId === PIPETTE_ID) {
       await applyPipetteTo(DISH_ID)
       return
@@ -686,19 +813,26 @@ export function LabBench() {
 
   const spoonSelected = selectedToolItemId === SPOON_ID
   const pipetteSelected = selectedToolItemId === PIPETTE_ID
-  const holdingSelected = spoonSelected || pipetteSelected
+  const tongsSelected = selectedToolItemId === TONGS_ID
+  const holdingSelected = spoonSelected || pipetteSelected || tongsSelected
   const spoonFill = scene ? spoonHoldingSubstance(scene) : null
   const leftoverSolid = scene ? undissolvedSolidInWater(scene) : null
+  const heldVesselId = scene ? tongsHeldVesselId(scene) : null
   const toolUi: ToolUi = pipetteSelected
     ? 'pipette'
-    : spoonSelected
-      ? (spoonFill ?? 'spoon')
-      : 'none'
+    : tongsSelected
+      ? 'tongs'
+      : spoonSelected
+        ? (spoonFill ?? 'spoon')
+        : 'none'
   const water = scene ? findItem(scene, WATER_ID) : undefined
   const spoon = scene ? findItem(scene, SPOON_ID) : undefined
   const pipette = scene ? findItem(scene, PIPETTE_ID) : undefined
+  const tongs = scene ? findItem(scene, TONGS_ID) : undefined
   const dish = scene ? findItem(scene, DISH_ID) : undefined
   const burner = scene ? findItem(scene, BURNER_ID) : undefined
+  const waterHeld = water?.location === 'held'
+  const dishHeld = dish?.location === 'held'
   const lastEvents = scene ? optionalArray(scene.last_events) : []
   const dissolveCue = dissolveCueFromEvents(lastEvents)
   const hasAqueous = scene ? waterHasAqueous(scene) : false
@@ -733,9 +867,9 @@ export function LabBench() {
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-sm text-[var(--ink-soft)]">
-          Pick up the spoon to scoop solids, or the pipette to move {PIPETTE_VOLUME_ML.toFixed(2)} ml
-          of solution between the water beaker and the dish. With no tool selected, click a vessel to
-          inspect it, or the burner to heat the dish.
+          Pick up the spoon to scoop solids, the pipette to move {PIPETTE_VOLUME_ML.toFixed(2)} ml
+          of solution, or the tongs to lift the water beaker or dish and pour. With no tool
+          selected, click a vessel to inspect it, or the burner to heat the dish.
         </p>
         <button
           type="button"
@@ -764,7 +898,11 @@ export function LabBench() {
                   disabled={busy}
                   onClick={onDish}
                 >
-                  <EvaporationDishSvg amountMl={dishAmountMl(scene)} />
+                  {dishHeld ? (
+                    <svg viewBox="0 0 120 56" className="h-14 w-28" aria-hidden />
+                  ) : (
+                    <EvaporationDishSvg amountMl={dishAmountMl(scene)} />
+                  )}
                   <span className="lab-item-label">{dish.label}</span>
                 </button>
               ) : null}
@@ -791,13 +929,17 @@ export function LabBench() {
             disabled={busy}
             onClick={onWater}
           >
-            <WaterBeakerSvg
-              leftoverSolid={leftoverSolid}
-              busy={busy}
-              amountMl={waterAmountMl(scene)}
-              hasAqueous={hasAqueous}
-              dissolveCue={dissolveCue}
-            />
+            {waterHeld ? (
+              <svg viewBox="0 0 120 168" className="h-40 w-28" aria-hidden />
+            ) : (
+              <WaterBeakerSvg
+                leftoverSolid={leftoverSolid}
+                busy={busy}
+                amountMl={waterAmountMl(scene)}
+                hasAqueous={hasAqueous}
+                dissolveCue={dissolveCue}
+              />
+            )}
             <span className="lab-item-label">{water?.label ?? 'Water'}</span>
           </button>
 
@@ -855,7 +997,7 @@ export function LabBench() {
                   <PipetteSvg filled={pipetteFilled} />
                   <span className="lab-item-label">{pipette?.label ?? 'Pipette'}</span>
                 </button>
-              ) : (
+              ) : visibleTool.kind === 'spoon' ? (
                 <button
                   type="button"
                   className={`lab-item ${spoonSelected ? 'opacity-40' : ''}`}
@@ -866,6 +1008,18 @@ export function LabBench() {
                 >
                   <SpoonSvg fill={null} />
                   <span className="lab-item-label">{spoon?.label ?? 'Spoon'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={`lab-item ${tongsSelected ? 'opacity-40' : ''}`}
+                  aria-label="Tongs"
+                  aria-pressed={tongsSelected}
+                  disabled={busy}
+                  onClick={onTongs}
+                >
+                  <TongsSvg />
+                  <span className="lab-item-label">{tongs?.label ?? 'Tongs'}</span>
                 </button>
               )}
             </div>
@@ -884,13 +1038,34 @@ export function LabBench() {
       {holdingSelected && pointer ? (
         <div
           className={`pointer-events-none absolute z-20 ${
-            pipetteSelected ? 'lab-cursor-pipette' : 'lab-cursor-spoon'
+            pipetteSelected
+              ? 'lab-cursor-pipette'
+              : tongsSelected
+                ? heldVesselId
+                  ? 'lab-cursor-vessel'
+                  : 'lab-cursor-tongs'
+                : 'lab-cursor-spoon'
           }`}
           style={{ left: pointer.x, top: pointer.y }}
           aria-hidden
         >
           {pipetteSelected ? (
             <PipetteSvg filled={pipetteFilled} floating />
+          ) : tongsSelected ? (
+            heldVesselId === WATER_ID && scene ? (
+              <WaterBeakerSvg
+                leftoverSolid={leftoverSolid}
+                busy={busy}
+                amountMl={waterAmountMl(scene)}
+                hasAqueous={hasAqueous}
+                dissolveCue={dissolveCue}
+                floating
+              />
+            ) : heldVesselId === DISH_ID && scene ? (
+              <EvaporationDishSvg amountMl={dishAmountMl(scene)} floating />
+            ) : (
+              <TongsSvg floating />
+            )
           ) : (
             <SpoonSvg fill={spoonFill} floating />
           )}

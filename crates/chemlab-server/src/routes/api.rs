@@ -221,6 +221,7 @@ async fn load_or_initialize_scene(
         );
         scene.version = lab_version(&lab)?;
         scene.lab_id = lab.id;
+        chemlab_core::ensure_default_bench_items(&mut scene);
         return Ok(scene);
     }
 

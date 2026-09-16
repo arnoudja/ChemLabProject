@@ -2330,6 +2330,7 @@ describe('LabBench', () => {
 
     expect(paperApexY).toBeGreaterThan(paperRimY)
     expect(paperRimY).toBeGreaterThanOrEqual(funnelRimY)
+    expect(paperRimY).toBeLessThanOrEqual(funnelRimY + 2)
     expect(paperApexY).toBeLessThanOrEqual(funnelApexY)
     expect(paperApexY).toBeLessThanOrEqual(stemTopY)
   })

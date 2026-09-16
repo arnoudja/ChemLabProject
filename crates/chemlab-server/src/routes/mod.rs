@@ -907,13 +907,16 @@ mod tests {
             .find(|item| item["id"] == "beaker-water")
             .unwrap();
         assert_eq!(water["properties"]["volume_ml"], 250.0);
-        assert_eq!(water["properties"]["fill_ml"], 200.0);
+        assert_eq!(water["label"], "Beaker");
+        assert_eq!(water["properties"]["fill_ml"], 0.0);
         assert_eq!(water["properties"]["transparent"], true);
         assert_eq!(water["properties"]["colourless"], true);
         assert_eq!(water["properties"]["temperature_c"], 20.0);
-        assert_eq!(
-            water["properties"]["composition"][0]["substance_id"],
-            "water"
+        assert!(
+            water["properties"].get("composition").is_none()
+                || water["properties"]["composition"]
+                    .as_array()
+                    .is_some_and(|composition| composition.is_empty())
         );
     }
 
@@ -1194,10 +1197,11 @@ mod tests {
 
     #[tokio::test]
     async fn pour_nacl_action_persists_dissolve_scene_and_events() {
-        let app = test_app().await;
+        let (app, state) = test_app_state().await;
         let (csrf_token, csrf_cookie, session_cookie) =
             register_user(&app, "pour@chemlab.local").await;
         let cookies = format!("{session_cookie}; {csrf_cookie}");
+        persist_filled_main_beaker(&state, &app, &cookies).await;
         let scoop = serde_json::json!({
             "type": "use_tool",
             "tool_item_id": "spoon-1",
@@ -1263,10 +1267,11 @@ mod tests {
 
     #[tokio::test]
     async fn reset_action_restores_default_scene_and_persists() {
-        let app = test_app().await;
+        let (app, state) = test_app_state().await;
         let (csrf_token, csrf_cookie, session_cookie) =
             register_user(&app, "reset@chemlab.local").await;
         let cookies = format!("{session_cookie}; {csrf_cookie}");
+        persist_filled_main_beaker(&state, &app, &cookies).await;
         assert_eq!(
             post_action(
                 &app,
@@ -1316,10 +1321,14 @@ mod tests {
             .iter()
             .find(|item| item["id"] == "beaker-water")
             .unwrap();
-        let composition = water["properties"]["composition"].as_array().unwrap();
-        assert_eq!(composition.len(), 1);
-        assert_eq!(composition[0]["substance_id"], "water");
-        assert_eq!(composition[0]["phase"], "liquid");
+        assert_eq!(water["label"], "Beaker");
+        assert_eq!(water["properties"]["fill_ml"], 0.0);
+        assert!(
+            water["properties"].get("composition").is_none()
+                || water["properties"]["composition"]
+                    .as_array()
+                    .is_some_and(|composition| composition.is_empty())
+        );
 
         let spoon = action["scene"]["items"]
             .as_array()
@@ -1446,6 +1455,14 @@ mod tests {
             .find(|item| item["id"] == "beaker-water")
             .expect("beaker-water");
         water["properties"]["temperature_c"] = serde_json::json!(21.0);
+        water["properties"]["fill_ml"] = serde_json::json!(200.0);
+        water["properties"]["composition"] = serde_json::json!([
+            {
+                "substance_id": "water",
+                "phase": "liquid",
+                "amount_ml": 200.0
+            }
+        ]);
         let lab_id = scene["lab_id"].as_str().expect("lab_id").to_string();
         let version = scene["version"].as_u64().expect("version") as i64;
         let blob = serde_json::to_vec(&scene).expect("serialize scene");
@@ -1493,10 +1510,11 @@ mod tests {
 
     #[tokio::test]
     async fn pour_sand_after_cacl2_heating_succeeds() {
-        let app = test_app().await;
+        let (app, state) = test_app_state().await;
         let (csrf_token, csrf_cookie, session_cookie) =
             register_user(&app, "sand-after-heat@chemlab.local").await;
         let cookies = format!("{session_cookie}; {csrf_cookie}");
+        persist_filled_main_beaker(&state, &app, &cookies).await;
 
         // One scoop only raises T by ~0.175 °C (still rounds to 20). Pour until the
         // dissolve lookup sees a non-bench integer °C — the real warm-water bug path.
@@ -1611,10 +1629,11 @@ mod tests {
 
     #[tokio::test]
     async fn pour_second_cacl2_scoop_after_heating_succeeds() {
-        let app = test_app().await;
+        let (app, state) = test_app_state().await;
         let (csrf_token, csrf_cookie, session_cookie) =
             register_user(&app, "cacl2-hot@chemlab.local").await;
         let cookies = format!("{session_cookie}; {csrf_cookie}");
+        persist_filled_main_beaker(&state, &app, &cookies).await;
 
         for scoop_n in 1..=2 {
             assert_eq!(
@@ -1929,6 +1948,42 @@ mod tests {
             .unwrap_or_else(|| panic!("missing item {id}"))
     }
 
+    fn set_main_beaker_water(scene: &mut serde_json::Value, amount_ml: f64) {
+        let water = scene["items"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|item| item["id"] == "beaker-water")
+            .expect("beaker-water");
+        water["properties"]["fill_ml"] = serde_json::json!(amount_ml);
+        water["properties"]["composition"] = serde_json::json!([
+            {
+                "substance_id": "water",
+                "phase": "liquid",
+                "amount_ml": amount_ml
+            }
+        ]);
+    }
+
+    async fn save_scene_blob(state: &AppState, scene: &serde_json::Value) {
+        let lab_id = scene["lab_id"].as_str().unwrap().to_string();
+        let version = scene["version"].as_u64().unwrap() as i64;
+        chemlab_db::save_lab_state(
+            state.pool(),
+            &lab_id,
+            &serde_json::to_vec(scene).unwrap(),
+            version,
+        )
+        .await
+        .unwrap();
+    }
+
+    async fn persist_filled_main_beaker(state: &AppState, app: &Router, cookies: &str) {
+        let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
+        set_main_beaker_water(&mut scene, 200.0);
+        save_scene_blob(state, &scene).await;
+    }
+
     async fn pipette_one_ml_into_dish(app: &Router, cookies: &str, csrf_token: &str) {
         assert_eq!(
             post_action(
@@ -1938,7 +1993,7 @@ mod tests {
                 serde_json::json!({
                     "type": "use_tool",
                     "tool_item_id": "pipette-1",
-                    "target_item_id": "beaker-water"
+                    "target_item_id": "beaker-h2o"
                 }),
             )
             .await
@@ -2324,10 +2379,14 @@ mod tests {
 
     async fn persist_scene_without_tongs(state: &AppState, app: &Router, cookies: &str) {
         let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
-        let water_ml = scene_item(&scene, "beaker-water")["properties"]["composition"][0]
-            ["amount_ml"]
-            .as_f64()
-            .unwrap();
+        // Old labs had a filled "Water" beaker; backfill must not wipe that fill.
+        scene["items"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|item| item["id"] == "beaker-water")
+            .expect("beaker-water")["label"] = serde_json::json!("Water");
+        set_main_beaker_water(&mut scene, 200.0);
         scene["items"]
             .as_array_mut()
             .unwrap()
@@ -2337,17 +2396,7 @@ mod tests {
             .unwrap()
             .iter()
             .all(|item| item["id"] != "tongs-1"));
-        assert!((water_ml - 200.0).abs() < 1e-9);
-        let lab_id = scene["lab_id"].as_str().unwrap().to_string();
-        let version = scene["version"].as_u64().unwrap() as i64;
-        chemlab_db::save_lab_state(
-            state.pool(),
-            &lab_id,
-            &serde_json::to_vec(&scene).unwrap(),
-            version,
-        )
-        .await
-        .unwrap();
+        save_scene_blob(state, &scene).await;
     }
 
     #[tokio::test]
@@ -2365,6 +2414,7 @@ mod tests {
             scene_item(&loaded, "beaker-water")["properties"]["composition"][0]["amount_ml"],
             200.0
         );
+        assert_eq!(scene_item(&loaded, "beaker-water")["label"], "Water");
     }
 
     #[tokio::test]
@@ -2620,10 +2670,13 @@ mod tests {
 
     async fn persist_scene_without_beaker_h2o(state: &AppState, app: &Router, cookies: &str) {
         let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
-        let water_ml = scene_item(&scene, "beaker-water")["properties"]["composition"][0]
-            ["amount_ml"]
-            .as_f64()
-            .unwrap();
+        scene["items"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|item| item["id"] == "beaker-water")
+            .expect("beaker-water")["label"] = serde_json::json!("Water");
+        set_main_beaker_water(&mut scene, 200.0);
         scene["items"]
             .as_array_mut()
             .unwrap()
@@ -2633,17 +2686,7 @@ mod tests {
             .unwrap()
             .iter()
             .all(|item| item["id"] != "beaker-h2o"));
-        assert!((water_ml - 200.0).abs() < 1e-9);
-        let lab_id = scene["lab_id"].as_str().unwrap().to_string();
-        let version = scene["version"].as_u64().unwrap() as i64;
-        chemlab_db::save_lab_state(
-            state.pool(),
-            &lab_id,
-            &serde_json::to_vec(&scene).unwrap(),
-            version,
-        )
-        .await
-        .unwrap();
+        save_scene_blob(state, &scene).await;
     }
 
     #[tokio::test]
@@ -2665,6 +2708,7 @@ mod tests {
             scene_item(&loaded, "beaker-water")["properties"]["composition"][0]["amount_ml"],
             200.0
         );
+        assert_eq!(scene_item(&loaded, "beaker-water")["label"], "Water");
     }
 
     #[tokio::test]

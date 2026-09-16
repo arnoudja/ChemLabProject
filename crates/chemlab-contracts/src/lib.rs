@@ -259,35 +259,29 @@ mod tests {
         let raw = r#"{
   "id": "beaker-water",
   "kind": "beaker",
-  "label": "Water",
+  "label": "Beaker",
   "location": "bench",
   "properties": {
     "volume_ml": 250,
-    "fill_ml": 200,
+    "fill_ml": 0,
     "transparent": true,
     "colourless": true,
     "temperature_c": 20,
-    "composition": [
-      { "substance_id": "water", "phase": "liquid", "amount_ml": 200 }
-    ]
+    "composition": []
   }
 }"#;
         let item: Item = serde_json::from_str(raw).unwrap();
         assert_eq!(item.id, "beaker-water");
         assert_eq!(item.kind, "beaker");
-        assert_eq!(item.label, "Water");
+        assert_eq!(item.label, "Beaker");
         assert_eq!(item.location, "bench");
         assert_eq!(item.properties.volume_ml, Some(250.0));
-        assert_eq!(item.properties.fill_ml, Some(200.0));
+        assert_eq!(item.properties.fill_ml, Some(0.0));
         assert_eq!(item.properties.transparent, Some(true));
         assert_eq!(item.properties.colourless, Some(true));
         assert_eq!(item.properties.temperature_c, Some(20.0));
         assert!(item.properties.holding.is_empty());
-        assert_eq!(item.properties.composition.len(), 1);
-        assert_eq!(item.properties.composition[0].substance_id, "water");
-        assert_eq!(item.properties.composition[0].phase, "liquid");
-        assert_eq!(item.properties.composition[0].amount_ml, Some(200.0));
-        assert_eq!(item.properties.composition[0].amount_scoop, None);
+        assert!(item.properties.composition.is_empty());
 
         let scene = LabScene {
             lab_id: "lab-1".into(),
@@ -593,7 +587,7 @@ mod tests {
         let water = Item {
             id: "beaker-water".into(),
             kind: "beaker".into(),
-            label: "Water".into(),
+            label: "Beaker".into(),
             location: "held".into(),
             properties: ItemProperties {
                 volume_ml: Some(250.0),

@@ -129,17 +129,15 @@ function initialScene(): LabScene {
       {
         id: 'beaker-water',
         kind: 'beaker',
-        label: 'Water',
+        label: 'Beaker',
         location: 'bench',
         properties: {
           volume_ml: 250,
-          fill_ml: 200,
+          fill_ml: 0,
           transparent: true,
           colourless: true,
           temperature_c: 20,
-          composition: [
-            { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null, amount_g: null, amount_mol: null},
-          ],
+          composition: [],
           holding: [],
         },
       },
@@ -230,6 +228,27 @@ function initialScene(): LabScene {
 
 function cloneScene(scene: LabScene): LabScene {
   return structuredClone(scene)
+}
+
+function withFilledMainBeaker(scene: LabScene, amountMl = WATER_FULL_ML): LabScene {
+  const next = cloneScene(scene)
+  const water = next.items.find((item) => item.id === 'beaker-water')!
+  water.properties.fill_ml = amountMl
+  water.properties.composition = [
+    {
+      substance_id: 'water',
+      phase: 'liquid',
+      amount_ml: amountMl,
+      amount_scoop: null,
+      amount_g: null,
+      amount_mol: null,
+    },
+  ]
+  return next
+}
+
+function filledScene(): LabScene {
+  return withFilledMainBeaker(initialScene())
 }
 
 function withDryDishSolids(
@@ -795,7 +814,7 @@ function stubLabFetch(options?: {
   actionHandler?: (action: LabAction, scene: LabScene) => LabScene | { error: string; code: string; status: number }
   sceneError?: { error: string; code: string; status: number }
 }) {
-  let scene = cloneScene(options?.scene ?? initialScene())
+  let scene = cloneScene(options?.scene ?? withFilledMainBeaker(initialScene()))
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     if (url === '/api/auth/csrf') {
@@ -1021,7 +1040,7 @@ describe('LabBench', () => {
   })
 
   it('loads the server scene and does not call dissolve', async () => {
-    const fetchMock = stubLabFetch()
+    const fetchMock = stubLabFetch({ scene: initialScene() })
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
@@ -1035,7 +1054,8 @@ describe('LabBench', () => {
     expect(document.querySelector('[data-stock-solid="cacl2"]')).toBeNull()
     expect(document.querySelector('[data-stock-solid="nacl"]')).toBeNull()
     expect(document.querySelector('[data-stock-solid="sand"]')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Water beaker' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Beaker' })).toBeInTheDocument()
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.00')
     const waterLabel = document.querySelector('[data-stock-label="water"]')
     expect(waterLabel?.textContent).toContain('H2O')
     expect(waterLabel?.textContent).toContain('(Water)')
@@ -1250,7 +1270,7 @@ describe('LabBench', () => {
         {
           id: 'beaker-water',
           kind: 'beaker',
-          label: 'Water',
+          label: 'Beaker',
           location: 'bench',
           properties: {
             volume_ml: 250,
@@ -1275,7 +1295,7 @@ describe('LabBench', () => {
 
     expect(() => render(<LabBench />)).not.toThrow()
     expect(await screen.findByRole('button', { name: 'Pipette' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Water beaker' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Beaker' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -1301,24 +1321,25 @@ describe('LabBench', () => {
     await screen.findByRole('button', { name: 'Pipette' })
 
     clickStock('Sodium chloride (NaCl)')
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 
   it('idle water click shows beaker contents and temperature from the scene', async () => {
-    const fetchMock = stubLabFetch()
+    const fetchMock = stubLabFetch({ scene: initialScene() })
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
-    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
-    expect(panel).toHaveTextContent('H2O (l)')
-    expect(panel).toHaveTextContent('200.00 ml')
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Beaker' })
+    expect(panel).toHaveTextContent('Beaker')
+    expect(panel).toHaveTextContent('No composition reported by the server.')
+    expect(panel).not.toHaveTextContent('H2O (l)')
     expect(panel).toHaveTextContent('Temperature: 20.00°C')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
@@ -1353,17 +1374,17 @@ describe('LabBench', () => {
   })
 
   it('idle inspect after dissolve shows aqueous ions from the server composition', async () => {
-    const dissolved = afterNaclPour(withScoop(initialScene(), 'nacl'))
+    const dissolved = afterNaclPour(withScoop(filledScene(), 'nacl'))
     dissolved.items.find((item) => item.id === 'spoon-1')!.properties.holding = []
     const fetchMock = stubLabFetch({ scene: dissolved })
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
-    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Beaker' })
     expect(panel).toHaveTextContent('H2O (l)')
     expect(panel).toHaveTextContent('Na+ (aq)')
     expect(panel).toHaveTextContent('Cl− (aq)')
@@ -1374,17 +1395,17 @@ describe('LabBench', () => {
   })
 
   it('idle inspect after sand pour shows aggregated SiO2 mass not molarity', async () => {
-    const leftover = afterSandPour(withScoop(initialScene(), 'sand'))
+    const leftover = afterSandPour(withScoop(filledScene(), 'sand'))
     leftover.items.find((item) => item.id === 'spoon-1')!.properties.holding = []
     const fetchMock = stubLabFetch({ scene: leftover })
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
-    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Beaker' })
     expect(panel).toHaveTextContent('SiO2 (s)')
     expect(panel).toHaveTextContent(`${SPOON_SCOOP_MASS_G.toFixed(2)} g`)
     expect(panel.querySelector('sub')?.textContent).toBe('2')
@@ -1402,7 +1423,7 @@ describe('LabBench', () => {
     clickSpoon()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
@@ -1436,10 +1457,10 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
-    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Beaker' })
     expect(panel).toHaveTextContent('H2O (l)')
     expect(panel).toHaveTextContent('Temperature: 20.00°C')
     expect(panel).not.toHaveTextContent('Na+')
@@ -1449,11 +1470,11 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
     })
-    expect(screen.getByRole('dialog', { name: 'Contents of Water' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Contents of Beaker' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
-      const open = screen.getByRole('dialog', { name: 'Contents of Water' })
+      const open = screen.getByRole('dialog', { name: 'Contents of Beaker' })
       expect(open).toHaveTextContent('Na+ (aq)')
       expect(open).toHaveTextContent('Cl− (aq)')
       expect(open).toHaveTextContent('0.0171 M')
@@ -1600,7 +1621,7 @@ describe('LabBench', () => {
     // Scoop does not change water volume — fill stays full from server amount_ml.
     expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.50')
     })
@@ -1608,12 +1629,12 @@ describe('LabBench', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset lab' }))
     await waitFor(() => {
-      expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '1.00')
+      expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.00')
     })
   })
 
   it('renders half-full water when the initial scene reports half amount_ml', async () => {
-    const scene = initialScene()
+    const scene = filledScene()
     const water = scene.items.find((item) => item.id === 'beaker-water')!
     const liquid = optionalArray(water.properties.composition).find(
       (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
@@ -1622,7 +1643,7 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', stubLabFetch({ scene }))
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
 
     expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.50')
   })
@@ -1702,7 +1723,7 @@ describe('LabBench', () => {
       }),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent(NACL_EXPLANATION)
@@ -1747,7 +1768,7 @@ describe('LabBench', () => {
     })
     expect(document.querySelector('[data-stock-solid="cacl2"]')).toHaveAttribute('data-stock-fill', '0.90')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent(CACL2_EXPLANATION)
     })
@@ -1755,8 +1776,8 @@ describe('LabBench', () => {
     expect(document.querySelector('[data-water-aqueous="true"]')).toBeTruthy()
 
     clickSpoon()
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
-    const panel = await screen.findByRole('dialog', { name: 'Contents of Water' })
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Beaker' })
     expect(panel).toHaveTextContent('Ca')
     expect(panel).toHaveTextContent('2+')
     expect(panel).toHaveTextContent('(aq)')
@@ -1798,7 +1819,7 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'sand')
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent('Unexpected server sentence for sand.')
@@ -1809,7 +1830,7 @@ describe('LabBench', () => {
     )
     expect(screen.queryByText(SAND_EXPLANATION)).not.toBeInTheDocument()
     // No undissolved solid in the surprising payload → no leftover grains invented.
-    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelectorAll('circle')).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Beaker' }).querySelectorAll('circle')).toHaveLength(0)
   })
 
   it('sand pour shows the server did-not-dissolve sentence and leftover grains from the scene', async () => {
@@ -1825,7 +1846,7 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'sand')
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent(SAND_EXPLANATION)
@@ -1838,7 +1859,7 @@ describe('LabBench', () => {
     expect(document.querySelector('[data-water-aqueous="false"]')).toBeTruthy()
     // Leftover grains are SVG circles rendered only because the server put solid sand in water.
     expect(
-      screen.getByRole('button', { name: 'Water beaker' }).querySelectorAll('circle').length,
+      screen.getByRole('button', { name: 'Beaker' }).querySelectorAll('circle').length,
     ).toBeGreaterThan(0)
   })
 
@@ -1850,7 +1871,7 @@ describe('LabBench', () => {
     await screen.findByRole('button', { name: 'Pipette' })
 
     clickSpoon()
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -1934,7 +1955,7 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Login required')
     expect(screen.queryByText(/Server outcome:/)).not.toBeInTheDocument()
@@ -1967,7 +1988,7 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent(NACL_EXPLANATION)
     })
@@ -1975,7 +1996,7 @@ describe('LabBench', () => {
     // Put the spoon away so idle inspect works, then confirm ions are present.
     clickSpoon()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     expect(await screen.findByRole('dialog')).toHaveTextContent('Na+ (aq)')
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset lab' }))
@@ -1996,8 +2017,9 @@ describe('LabBench', () => {
     )
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
     // Reset refreshes inspect in place; it does not auto-dismiss.
-    const panel = screen.getByRole('dialog', { name: 'Contents of Water' })
-    expect(panel).toHaveTextContent('H2O (l)')
+    const panel = screen.getByRole('dialog', { name: 'Contents of Beaker' })
+    expect(panel).toHaveTextContent('No composition reported by the server.')
+    expect(panel).not.toHaveTextContent('H2O (l)')
     expect(panel).not.toHaveTextContent('Na+')
     expect(panel).not.toHaveTextContent('(aq)')
     expect(panel.querySelectorAll('sup')).toHaveLength(0)
@@ -2013,7 +2035,7 @@ describe('LabBench', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'pipette')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
@@ -2041,7 +2063,7 @@ describe('LabBench', () => {
         target_item_id: 'dish-1',
       })
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
         type: 'use_tool',
@@ -2060,7 +2082,7 @@ describe('LabBench', () => {
     await screen.findByRole('button', { name: 'Burner' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expect(JSON.parse(String(lastActionInit(fetchMock)?.body)).type).toBe('use_tool')
     })
@@ -2114,7 +2136,7 @@ describe('LabBench', () => {
 
   it('polls the lab scene while the burner is on', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-    const lit = initialScene()
+    const lit = filledScene()
     const dish = lit.items.find((item) => item.id === 'dish-1')!
     dish.properties.composition = [
       {
@@ -2148,7 +2170,7 @@ describe('LabBench', () => {
     render(<LabBench />)
     await screen.findByRole('button', { name: 'Pipette' })
     fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
@@ -2180,7 +2202,7 @@ describe('LabBench', () => {
     render(<LabBench />)
     await screen.findByRole('button', { name: 'Pipette' })
     fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Dish is full')
   })
@@ -2207,7 +2229,7 @@ describe('LabBench', () => {
 
   it('does not surface poll errors while the burner is on', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-    const lit = initialScene()
+    const lit = filledScene()
     const dish = lit.items.find((item) => item.id === 'dish-1')!
     dish.properties.composition = [
       {
@@ -2267,7 +2289,7 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', stubLabFetch())
 
     render(<LabBench />)
-    const water = await screen.findByRole('button', { name: 'Water beaker' })
+    const water = await screen.findByRole('button', { name: 'Beaker' })
     const paper = screen.getByRole('button', { name: 'Filter paper' })
     const filtrate = screen.getByRole('button', { name: 'Filtrate beaker' })
     const dish = screen.getByRole('button', { name: 'Evaporation dish' })
@@ -2353,11 +2375,11 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
     clickTongs()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'tongs')
 
-    const water = screen.getByRole('button', { name: 'Water beaker' })
+    const water = screen.getByRole('button', { name: 'Beaker' })
     fireEvent.mouseMove(screen.getByRole('region', { name: 'Lab bench' }), { clientX: 40, clientY: 40 })
     fireEvent.click(water)
     await waitFor(() => {
@@ -2383,7 +2405,7 @@ describe('LabBench', () => {
   })
 
   it('picks up the dish with tongs, turns the burner off, and pours back into water', async () => {
-    const lit = initialScene()
+    const lit = filledScene()
     const dish = lit.items.find((item) => item.id === 'dish-1')!
     dish.properties.composition = [
       {
@@ -2417,7 +2439,7 @@ describe('LabBench', () => {
     expect(screen.getByRole('button', { name: 'Evaporation dish' }).querySelector('[data-dish-fill]')).toBeNull()
     expect(document.querySelector('.lab-cursor-vessel [data-dish-fill]')).not.toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
@@ -2433,9 +2455,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
     clickTongs()
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
@@ -2443,16 +2465,16 @@ describe('LabBench', () => {
         target_item_id: 'beaker-water',
       })
     })
-    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Beaker' }).querySelector('[data-water-fill]')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'put_away',
         tool_item_id: 'tongs-1',
       })
     })
-    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Beaker' }).querySelector('[data-water-fill]')).not.toBeNull()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
   })
 
@@ -2500,9 +2522,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
     clickTongs()
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
@@ -2519,7 +2541,7 @@ describe('LabBench', () => {
       })
     })
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
-    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Beaker' }).querySelector('[data-water-fill]')).not.toBeNull()
   })
 
   it('selecting the pipette puts empty tongs away without a server call', async () => {
@@ -2564,10 +2586,10 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
     clickTongs()
     fireEvent.mouseMove(screen.getByRole('region', { name: 'Lab bench' }), { clientX: 40, clientY: 40 })
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
@@ -2575,7 +2597,7 @@ describe('LabBench', () => {
         target_item_id: 'beaker-water',
       })
     })
-    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Beaker' }).querySelector('[data-water-fill]')).toBeNull()
     expect(document.querySelector('.lab-cursor-vessel [data-water-fill]')).not.toBeNull()
   })
 
@@ -2595,9 +2617,9 @@ describe('LabBench', () => {
     )
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
     clickTongs()
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await screen.findByRole('status')
     fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Nothing to pour')
@@ -2646,7 +2668,7 @@ describe('LabBench', () => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'pour',
@@ -2729,7 +2751,7 @@ describe('LabBench', () => {
       expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'nacl')
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'pour',
@@ -2915,7 +2937,7 @@ describe('LabBench', () => {
     render(<LabBench />)
     await screen.findByRole('button', { name: 'Pipette' })
     fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
@@ -2936,7 +2958,7 @@ describe('LabBench', () => {
     })
 
     clickTongs()
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
@@ -2948,7 +2970,7 @@ describe('LabBench', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('Only pure water')
     })
-    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Beaker' }).querySelector('[data-water-fill]')).toBeNull()
     expect(document.querySelector('[data-h2o-fill]')).toHaveAttribute('data-h2o-fill', '1.00')
   })
 

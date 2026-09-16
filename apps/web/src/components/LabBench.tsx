@@ -1224,7 +1224,7 @@ export function LabBench() {
           <button
             type="button"
             className="lab-item"
-            aria-label="Water beaker"
+            aria-label={water?.label ?? 'Beaker'}
             disabled={busy}
             onClick={onWater}
           >
@@ -1239,7 +1239,7 @@ export function LabBench() {
                 dissolveCue={dissolveCue}
               />
             )}
-            <span className="lab-item-label">{water?.label ?? 'Water'}</span>
+            <span className="lab-item-label">{water?.label ?? 'Beaker'}</span>
           </button>
 
           <div className="lab-stock-carousel">

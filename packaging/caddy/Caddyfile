@@ -1,0 +1,14 @@
+# Reverse-proxy HTTPS to the ChemLab daemon on loopback.
+# Packaged default: CHEMLAB_BIND=127.0.0.1:3847, CHEMLAB_COOKIE_SECURE=true.
+#
+# Run from the repo:
+#   caddy run --config packaging/caddy/Caddyfile
+#
+# `:443` + `tls internal` serves HTTPS without a public hostname (Caddy local CA).
+# For a public DNS name, replace `:443` with that name and drop `tls internal`
+# so Caddy can obtain a Let's Encrypt certificate automatically.
+
+:443 {
+	reverse_proxy 127.0.0.1:3847
+	tls internal
+}

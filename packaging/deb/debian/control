@@ -8,4 +8,4 @@ Homepage: https://github.com/arnoudja/ChemLabProject
 Depends: adduser, libc6, systemd
 Description: ChemLab lab game server
  ChemLab is a web lab game. This package installs chemlab-server, the
- built web UI, and a systemd unit that listens on 0.0.0.0:3847.
+ built web UI, and a systemd unit that listens on 127.0.0.1:3847.

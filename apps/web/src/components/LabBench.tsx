@@ -17,6 +17,7 @@ import {
   DISTILLED_WATER_CAPACITY_ML,
   DISH_CAPACITY_ML,
   PIPETTE_VOLUME_ML,
+  FILTRATE_CAPACITY_ML,
 } from '../lib/benchAmounts'
 
 export {
@@ -27,6 +28,7 @@ export {
   DISTILLED_WATER_CAPACITY_ML,
   DISH_CAPACITY_ML,
   PIPETTE_VOLUME_ML,
+  FILTRATE_CAPACITY_ML,
 }
 
 const SPOON_ID = 'spoon-1'
@@ -34,6 +36,8 @@ const PIPETTE_ID = 'pipette-1'
 const TONGS_ID = 'tongs-1'
 const DISH_ID = 'dish-1'
 const BURNER_ID = 'burner-1'
+const FILTRATE_ID = 'beaker-filtrate'
+const PAPER_ID = 'filter-paper-1'
 const NACL_ID = 'beaker-nacl'
 const CACL2_ID = 'beaker-cacl2'
 const SAND_ID = 'beaker-sand'
@@ -398,6 +402,110 @@ function BurnerSvg({ on }: { on: boolean }) {
   )
 }
 
+/** Fill fraction 0..1 from server amount_ml relative to the filtrate beaker capacity. */
+export function filtrateFillRatio(amountMl: number | null | undefined): number {
+  if (amountMl == null || amountMl <= 0) return 0
+  return Math.min(1, amountMl / FILTRATE_CAPACITY_ML)
+}
+
+function FiltrateBeakerSvg({ amountMl, floating }: { amountMl?: number | null; floating?: boolean }) {
+  const fill = filtrateFillRatio(amountMl)
+  const floorY = 148
+  const fullHeight = 62
+  const topY = floorY - fullHeight * fill
+  const leftTop = 30 + 6 * fill
+  const rightTop = 90 - 6 * fill
+  return (
+    <svg
+      viewBox="0 0 120 168"
+      className={floating ? 'h-24 w-16' : 'h-32 w-20'}
+      aria-hidden
+      data-filtrate-fill={fill.toFixed(2)}
+    >
+      <path d="M28 18h64v10H28z" fill="#86A7DF" opacity="0.85" />
+      <path
+        d="M32 28h56l10 118c1 8-5 14-13 14H35c-8 0-14-6-13-14L32 28z"
+        fill="#3E4058"
+        fillOpacity="0.35"
+        stroke="#C4D2ED"
+        strokeWidth="2.4"
+      />
+      {fill > 0 ? (
+        <path
+          d={`M${leftTop} ${topY} H${rightTop} L90 ${floorY - 10} C90 ${floorY - 4} 86 ${floorY} 80 ${floorY} H40 C34 ${floorY} 30 ${floorY - 4} 30 ${floorY - 10} Z`}
+          fill="#7CF8F7"
+          fillOpacity="0.55"
+        />
+      ) : null}
+    </svg>
+  )
+}
+
+function FunnelPaperSvg({ residue }: { residue: boolean }) {
+  // Cone/quarter-fold lining the inner glass wall. Firefox: presentation
+  // attributes on paths only (no ellipse disk, clipPath, or CSS `d`).
+  const funnelRimY = 6
+  const funnelApexY = 52
+  const paperRimY = 11
+  const paperApexY = 50
+  const stemTopY = 52
+  return (
+    <svg
+      viewBox="0 0 120 88"
+      className="h-20 w-28"
+      aria-hidden
+      data-funnel
+      data-paper-residue={residue ? 'true' : 'false'}
+    >
+      <path
+        data-funnel-cone
+        data-rim-y={funnelRimY}
+        data-apex-y={funnelApexY}
+        d="M20 6h80L68 52H52L20 6z"
+        fill="#6A6E95"
+        fillOpacity="0.28"
+        stroke="#DDF7FF"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        data-paper-cone
+        data-rim-y={paperRimY}
+        data-apex-y={paperApexY}
+        d="M32 11h56L62 50H58L32 11z"
+        fill="#E8D9B8"
+        stroke="#C4B48A"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path d="M60 11h28L62 50l-2-3z" fill="#D4C194" fillOpacity="0.92" />
+      <path
+        d="M60 11L60 50"
+        fill="none"
+        stroke="#B8A574"
+        strokeWidth="1.15"
+        strokeLinecap="round"
+      />
+      <path
+        data-funnel-stem
+        data-top-y={stemTopY}
+        d="M54 52h12v24H54z"
+        fill="#6A6E95"
+        fillOpacity="0.45"
+        stroke="#C4D2ED"
+        strokeWidth="1.4"
+      />
+      {residue ? (
+        <g fill="#C9A36A" opacity="0.95">
+          <circle cx="56" cy="42" r="2.8" />
+          <circle cx="62" cy="44" r="2.2" />
+          <circle cx="59" cy="38" r="2.4" />
+        </g>
+      ) : null}
+    </svg>
+  )
+}
+
 
 function stockAmountG(scene: LabScene, itemId: string, substanceId: StockSolid): number | null {
   const item = findItem(scene, itemId)
@@ -448,6 +556,20 @@ function dishAmountMl(scene: LabScene): number | null {
   return entry?.amount_ml ?? null
 }
 
+function filtrateAmountMl(scene: LabScene): number | null {
+  const item = findItem(scene, FILTRATE_ID)
+  const entry = optionalArray(item?.properties.composition).find(
+    (c) => c.substance_id === 'water' && c.phase === 'liquid',
+  )
+  return entry?.amount_ml ?? item?.properties.fill_ml ?? null
+}
+
+function paperHasResidue(scene: LabScene): boolean {
+  return optionalArray(findItem(scene, PAPER_ID)?.properties.composition).some(
+    (entry) => entry.phase === 'solid' && (entry.amount_g ?? 0) > 0,
+  )
+}
+
 function pipetteIsFilled(scene: LabScene): boolean {
   const pipette = findItem(scene, PIPETTE_ID)
   return optionalArray(pipette?.properties.holding).some(
@@ -461,9 +583,9 @@ function burnerIsOn(scene: LabScene): boolean {
 
 function tongsHeldVesselId(
   scene: LabScene,
-): typeof WATER_ID | typeof DISH_ID | typeof H2O_ID | null {
+): typeof WATER_ID | typeof DISH_ID | typeof H2O_ID | typeof FILTRATE_ID | null {
   const held = findItem(scene, TONGS_ID)?.properties.source_item_id
-  if (held === WATER_ID || held === DISH_ID || held === H2O_ID) return held
+  if (held === WATER_ID || held === DISH_ID || held === H2O_ID || held === FILTRATE_ID) return held
   return null
 }
 
@@ -873,6 +995,52 @@ export function LabBench() {
     }
   }
 
+  async function onFilterPaper(event: MouseEvent<HTMLButtonElement>) {
+    trackPointer(event)
+    if (!scene) return
+    if (selectedToolItemId === TONGS_ID) {
+      if (tongsHeldVesselId(scene) === FILTRATE_ID) {
+        return
+      }
+      await applyTongsTo(PAPER_ID)
+      return
+    }
+    if (selectedToolItemId === PIPETTE_ID) {
+      return
+    }
+    if (selectedToolItemId === SPOON_ID) {
+      await applySpoonTo(PAPER_ID)
+      return
+    }
+    if (selectedToolItemId === null) {
+      setInspectItemId(PAPER_ID)
+    }
+  }
+
+  async function onFiltrate(event: MouseEvent<HTMLButtonElement>) {
+    trackPointer(event)
+    if (!scene) return
+    if (selectedToolItemId === TONGS_ID) {
+      if (tongsHeldVesselId(scene) === FILTRATE_ID) {
+        await putTongsAway()
+        return
+      }
+      await applyTongsTo(FILTRATE_ID)
+      return
+    }
+    if (selectedToolItemId === PIPETTE_ID) {
+      if (pipetteIsFilled(scene)) return
+      await applyPipetteTo(FILTRATE_ID)
+      return
+    }
+    if (selectedToolItemId === SPOON_ID) {
+      return
+    }
+    if (selectedToolItemId === null) {
+      setInspectItemId(FILTRATE_ID)
+    }
+  }
+
   async function onBurner(event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
     if (selectedToolItemId !== null) return
@@ -931,9 +1099,12 @@ export function LabBench() {
   const tongs = scene ? findItem(scene, TONGS_ID) : undefined
   const dish = scene ? findItem(scene, DISH_ID) : undefined
   const burner = scene ? findItem(scene, BURNER_ID) : undefined
+  const filtrate = scene ? findItem(scene, FILTRATE_ID) : undefined
+  const paper = scene ? findItem(scene, PAPER_ID) : undefined
   const waterHeld = water?.location === 'held'
   const dishHeld = dish?.location === 'held'
   const h2oHeld = scene ? findItem(scene, H2O_ID)?.location === 'held' : false
+  const filtrateHeld = filtrate?.location === 'held'
   const lastEvents = scene ? optionalArray(scene.last_events) : []
   const dissolveCue = dissolveCueFromEvents(lastEvents)
   const hasAqueous = scene ? waterHasAqueous(scene) : false
@@ -989,6 +1160,33 @@ export function LabBench() {
 
       {scene ? (
         <div className="lab-bench-surface flex flex-wrap items-end justify-center gap-6 rounded-xl px-4 pb-4 pt-8 sm:gap-10">
+          <div className="lab-filter-stack">
+            <button
+              type="button"
+              className="lab-item"
+              aria-label="Filter paper"
+              disabled={busy}
+              onClick={onFilterPaper}
+            >
+              <FunnelPaperSvg residue={scene ? paperHasResidue(scene) : false} />
+              <span className="lab-item-label">{paper?.label ?? 'Filter paper'}</span>
+            </button>
+            <button
+              type="button"
+              className="lab-item"
+              aria-label="Filtrate beaker"
+              disabled={busy}
+              onClick={onFiltrate}
+            >
+              {filtrateHeld ? (
+                <svg viewBox="0 0 120 168" className="h-32 w-20" aria-hidden />
+              ) : (
+                <FiltrateBeakerSvg amountMl={scene ? filtrateAmountMl(scene) : null} />
+              )}
+              <span className="lab-item-label">{filtrate?.label ?? 'Filtrate'}</span>
+            </button>
+          </div>
+
           {dish || burner ? (
             <div className="lab-evap-stack">
               {dish ? (
@@ -1185,6 +1383,8 @@ export function LabBench() {
               <DistilledWaterBeakerSvg amountMl={distilledWaterAmountMl(scene)} floating />
             ) : heldVesselId === DISH_ID && scene ? (
               <EvaporationDishSvg amountMl={dishAmountMl(scene)} floating />
+            ) : heldVesselId === FILTRATE_ID && scene ? (
+              <FiltrateBeakerSvg amountMl={filtrateAmountMl(scene)} floating />
             ) : (
               <TongsSvg floating />
             )

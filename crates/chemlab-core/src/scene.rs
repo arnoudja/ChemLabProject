@@ -22,6 +22,9 @@ pub const DISH_CAPACITY_ML: f64 = 25.00;
 /// Water beaker liquid capacity (ml).
 pub const WATER_CAPACITY_ML: f64 = 250.00;
 
+/// Distilled-water stock beaker liquid capacity (ml).
+pub const DISTILLED_WATER_CAPACITY_ML: f64 = 100.00;
+
 /// Burner heating rate while on and the dish is below boiling (°C/s).
 pub const HEAT_K_PER_S: f64 = 10.0;
 
@@ -160,6 +163,29 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                 label: "Spoon".into(),
                 location: "bench".into(),
                 properties: ItemProperties::default(),
+            },
+            SceneItem {
+                id: "beaker-h2o".into(),
+                kind: "beaker".into(),
+                label: "Distilled water".into(),
+                location: "bench".into(),
+                properties: ItemProperties {
+                    volume_ml: Some(DISTILLED_WATER_CAPACITY_ML),
+                    fill_ml: Some(DISTILLED_WATER_CAPACITY_ML),
+                    transparent: Some(true),
+                    colourless: Some(true),
+                    temperature_c: Some(20.0),
+                    composition: vec![CompositionEntry {
+                        substance_id: "water".into(),
+                        phase: "liquid".into(),
+                        amount_ml: Some(DISTILLED_WATER_CAPACITY_ML),
+                        amount_scoop: None,
+                        amount_g: None,
+                        amount_mol: None,
+                    }],
+                    holding: Vec::new(),
+                    ..ItemProperties::default()
+                },
             },
             SceneItem {
                 id: "beaker-nacl".into(),
@@ -680,6 +706,10 @@ fn apply_pour(
         return apply_pipette_empty(scene, source_idx, target_idx);
     }
 
+    if is_distilled_water_stock(&scene.items[target_idx]) {
+        return Err(SceneError::InvalidAction);
+    }
+
     if scene.items[source_idx].properties.holding.is_empty() {
         return Err(SceneError::EmptyHolding);
     }
@@ -866,8 +896,35 @@ fn add_or_increase_solid(
     });
 }
 
+fn is_distilled_water_stock(item: &SceneItem) -> bool {
+    item.id == "beaker-h2o"
+}
+
+fn entry_has_amount(entry: &CompositionEntry) -> bool {
+    entry.amount_ml.unwrap_or(0.0) > AMOUNT_EPS
+        || entry.amount_g.unwrap_or(0.0) > AMOUNT_EPS
+        || entry.amount_mol.unwrap_or(0.0) > AMOUNT_EPS
+        || entry.amount_scoop.unwrap_or(0) > 0
+}
+
+/// Pure H2O: liquid water only, no ions or solids.
+fn composition_is_pure_h2o(entries: &[CompositionEntry]) -> bool {
+    let mut has_water = false;
+    for entry in entries {
+        if !entry_has_amount(entry) {
+            continue;
+        }
+        if entry.substance_id == "water" && entry.phase == "liquid" {
+            has_water = true;
+            continue;
+        }
+        return false;
+    }
+    has_water
+}
+
 fn is_liquid_vessel(item: &SceneItem) -> bool {
-    item.id == "beaker-water" || item.kind == "evaporation_dish"
+    item.id == "beaker-water" || is_distilled_water_stock(item) || item.kind == "evaporation_dish"
 }
 
 fn pipette_holding_liquid_ml(pipette: &SceneItem) -> f64 {
@@ -1029,6 +1086,19 @@ fn apply_pipette_empty(
             return Err(SceneError::InvalidAction);
         }
     }
+    if is_distilled_water_stock(&scene.items[target_idx]) {
+        if !composition_is_pure_h2o(&scene.items[tool_idx].properties.holding) {
+            return Err(SceneError::InvalidAction);
+        }
+        let current = crate::solubility::liquid_water_ml(&scene.items[target_idx]);
+        let cap = scene.items[target_idx]
+            .properties
+            .volume_ml
+            .unwrap_or(DISTILLED_WATER_CAPACITY_ML);
+        if current + PIPETTE_VOLUME_ML > cap + AMOUNT_EPS {
+            return Err(SceneError::InvalidAction);
+        }
+    }
     let aliquot = scene.items[tool_idx].properties.holding.clone();
     let aliquot_t = scene.items[tool_idx]
         .properties
@@ -1065,7 +1135,7 @@ fn apply_pipette_put_away(scene: &mut Scene, tool_idx: usize) -> Result<(), Scen
 }
 
 fn is_tongs_vessel(item: &SceneItem) -> bool {
-    item.id == "beaker-water" || item.kind == "evaporation_dish"
+    item.id == "beaker-water" || is_distilled_water_stock(item) || item.kind == "evaporation_dish"
 }
 
 fn vessel_liquid_capacity_ml(item: &SceneItem) -> Option<f64> {
@@ -1140,6 +1210,15 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
     let dest_liquid = crate::solubility::liquid_water_ml(&scene.items[dest_idx]);
     let dest_room = (dest_cap - dest_liquid).max(0.0);
     let has_solids = composition_has_solids(&scene.items[source_idx]);
+
+    if is_distilled_water_stock(&scene.items[dest_idx]) {
+        if dest_room <= AMOUNT_EPS {
+            return Err(SceneError::InvalidAction);
+        }
+        if !composition_is_pure_h2o(&scene.items[source_idx].properties.composition) {
+            return Err(SceneError::InvalidAction);
+        }
+    }
 
     if source_liquid <= AMOUNT_EPS {
         if !has_solids {
@@ -1449,17 +1528,18 @@ mod tests {
     }
 
     #[test]
-    fn initial_bench_scene_has_nine_items_with_water_and_evaporation_bench() {
+    fn initial_bench_scene_has_ten_items_with_water_and_evaporation_bench() {
         let scene = initial_bench_scene("lab-test");
         assert_eq!(scene.lab_id, "lab-test");
         assert_eq!(scene.temperature_c, 20.0);
         assert_eq!(scene.version, 0);
         assert!(scene.last_events.is_empty());
         assert_eq!(scene.last_applied_unix_ms, None);
-        assert_eq!(scene.items.len(), 9);
+        assert_eq!(scene.items.len(), 10);
 
         let ids: Vec<_> = scene.items.iter().map(|i| i.id.as_str()).collect();
         assert!(ids.contains(&"spoon-1"));
+        assert!(ids.contains(&"beaker-h2o"));
         assert!(ids.contains(&"beaker-nacl"));
         assert!(ids.contains(&"beaker-cacl2"));
         assert!(ids.contains(&"beaker-sand"));
@@ -1468,6 +1548,20 @@ mod tests {
         assert!(ids.contains(&"dish-1"));
         assert!(ids.contains(&"burner-1"));
         assert!(ids.contains(&"tongs-1"));
+
+        let distilled = item(&scene, "beaker-h2o");
+        assert_eq!(distilled.kind, "beaker");
+        assert_eq!(distilled.label, "Distilled water");
+        assert_eq!(distilled.location, "bench");
+        assert_eq!(distilled.properties.volume_ml, Some(100.0));
+        assert_eq!(distilled.properties.fill_ml, Some(100.0));
+        assert_eq!(distilled.properties.transparent, Some(true));
+        assert_eq!(distilled.properties.colourless, Some(true));
+        assert_eq!(distilled.properties.temperature_c, Some(20.0));
+        assert_eq!(distilled.properties.composition.len(), 1);
+        assert_eq!(distilled.properties.composition[0].substance_id, "water");
+        assert_eq!(distilled.properties.composition[0].phase, "liquid");
+        assert_eq!(distilled.properties.composition[0].amount_ml, Some(100.0));
 
         let water = item(&scene, "beaker-water");
         assert_eq!(water.kind, "beaker");
@@ -1532,6 +1626,36 @@ mod tests {
         assert_eq!(tongs.location, "bench");
         assert_eq!(tongs.properties.source_item_id, None);
         assert!(tongs.properties.holding.is_empty());
+    }
+
+    #[test]
+    fn ensure_default_bench_items_restores_beaker_h2o_without_resetting_vessels() {
+        let mut scene = initial_bench_scene("lab-test");
+        scene
+            .items
+            .iter_mut()
+            .find(|item| item.id == "beaker-water")
+            .unwrap()
+            .properties
+            .fill_ml = Some(150.0);
+        scene.items.retain(|item| item.id != "beaker-h2o");
+
+        ensure_default_bench_items(&mut scene);
+
+        let distilled = item(&scene, "beaker-h2o");
+        assert_eq!(distilled.kind, "beaker");
+        assert_eq!(distilled.location, "bench");
+        assert_eq!(distilled.properties.volume_ml, Some(100.0));
+        assert_eq!(water_ml(distilled), 100.0);
+        assert_eq!(item(&scene, "beaker-water").properties.fill_ml, Some(150.0));
+        assert_eq!(
+            scene
+                .items
+                .iter()
+                .filter(|item| item.id == "beaker-h2o")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -3818,5 +3942,292 @@ mod tests {
         assert!((solid_g(item(&scene, "dish-1"), "nacl") - 0.5).abs() < 1e-12);
         assert!((solid_g(item(&scene, "beaker-nacl"), "nacl") - 1.8).abs() < 1e-12);
         assert!(!scene.last_events.iter().any(|e| e.kind == "returned"));
+    }
+
+    #[test]
+    fn tongs_pick_up_beaker_h2o_and_pour_into_dish_and_water() {
+        let mut scene = initial_bench_scene("lab-test");
+        use_tongs(&mut scene, "beaker-h2o").unwrap();
+        assert_eq!(item(&scene, "beaker-h2o").location, "held");
+        assert_eq!(
+            item(&scene, "tongs-1").properties.source_item_id.as_deref(),
+            Some("beaker-h2o")
+        );
+
+        use_tongs(&mut scene, "dish-1").unwrap();
+        assert_eq!(item(&scene, "beaker-h2o").location, "held");
+        assert!((water_ml(item(&scene, "dish-1")) - DISH_CAPACITY_ML).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 75.0).abs() < 1e-9);
+
+        use_tongs(&mut scene, "beaker-water").unwrap();
+        assert!((water_ml(item(&scene, "beaker-water")) - 250.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 25.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn tongs_put_away_returns_beaker_h2o_home() {
+        let mut scene = initial_bench_scene("lab-test");
+        use_tongs(&mut scene, "beaker-h2o").unwrap();
+        put_tongs_away(&mut scene).unwrap();
+        assert_eq!(item(&scene, "beaker-h2o").location, "bench");
+        assert_eq!(item(&scene, "tongs-1").location, "bench");
+        assert_eq!(item(&scene, "tongs-1").properties.source_item_id, None);
+    }
+
+    #[test]
+    fn pipette_extracts_one_ml_from_beaker_h2o_and_dumps_into_water() {
+        let mut scene = initial_bench_scene("lab-test");
+        fill_pipette_from(&mut scene, "beaker-h2o");
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 99.0).abs() < 1e-9);
+        let pipette = item(&scene, "pipette-1");
+        assert!((pipette_holding_liquid_ml(pipette) - PIPETTE_VOLUME_ML).abs() < 1e-12);
+        assert!(pipette
+            .properties
+            .holding
+            .iter()
+            .all(|c| { c.substance_id == "water" && c.phase == "liquid" }));
+        assert_eq!(
+            pipette.properties.source_item_id.as_deref(),
+            Some("beaker-h2o")
+        );
+
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "pipette-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+        assert!((water_ml(item(&scene, "beaker-water")) - 201.0).abs() < 1e-9);
+        assert!(item(&scene, "pipette-1").properties.holding.is_empty());
+    }
+
+    #[test]
+    fn pipette_put_back_pure_water_into_beaker_h2o_up_to_capacity() {
+        let mut scene = initial_bench_scene("lab-test");
+        fill_pipette_from(&mut scene, "beaker-h2o");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "pipette-1".into(),
+                target_item_id: "beaker-h2o".into(),
+            },
+        )
+        .unwrap();
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 100.0).abs() < 1e-9);
+        assert!(item(&scene, "pipette-1").properties.holding.is_empty());
+    }
+
+    #[test]
+    fn tongs_pour_pure_water_into_beaker_h2o_stops_at_capacity() {
+        let mut scene = initial_bench_scene("lab-test");
+        fill_pipette_from(&mut scene, "beaker-h2o");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "pipette-1".into(),
+                target_item_id: "dish-1".into(),
+            },
+        )
+        .unwrap();
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 99.0).abs() < 1e-9);
+
+        use_tongs(&mut scene, "beaker-water").unwrap();
+        use_tongs(&mut scene, "beaker-h2o").unwrap();
+
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 100.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-water")) - 199.0).abs() < 1e-9);
+        assert_eq!(item(&scene, "beaker-water").location, "held");
+    }
+
+    #[test]
+    fn pipette_and_tongs_reject_put_back_when_beaker_h2o_is_full() {
+        let mut scene = initial_bench_scene("lab-test");
+        fill_pipette_from(&mut scene, "beaker-water");
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "pipette-1".into(),
+                target_item_id: "beaker-h2o".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        assert!((pipette_holding_liquid_ml(item(&scene, "pipette-1")) - 1.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 100.0).abs() < 1e-9);
+
+        apply_action(
+            &mut scene,
+            Action::PutAway {
+                tool_item_id: "pipette-1".into(),
+            },
+        )
+        .unwrap();
+
+        use_tongs(&mut scene, "beaker-water").unwrap();
+        let before_water = water_ml(item(&scene, "beaker-water"));
+        let err = use_tongs(&mut scene, "beaker-h2o").unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 100.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-water")) - before_water).abs() < 1e-9);
+        assert_eq!(item(&scene, "beaker-water").location, "held");
+    }
+
+    #[test]
+    fn pipette_and_tongs_reject_impure_put_back_into_beaker_h2o() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+        fill_pipette_from(&mut scene, "beaker-h2o");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "pipette-1".into(),
+                target_item_id: "dish-1".into(),
+            },
+        )
+        .unwrap();
+
+        fill_pipette_from(&mut scene, "beaker-water");
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "pipette-1".into(),
+                target_item_id: "beaker-h2o".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        assert!(pipette_holding_liquid_ml(item(&scene, "pipette-1")) > AMOUNT_EPS);
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 99.0).abs() < 1e-9);
+
+        apply_action(
+            &mut scene,
+            Action::PutAway {
+                tool_item_id: "pipette-1".into(),
+            },
+        )
+        .unwrap();
+
+        use_tongs(&mut scene, "beaker-water").unwrap();
+        let err = use_tongs(&mut scene, "beaker-h2o").unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 99.0).abs() < 1e-9);
+        assert_eq!(item(&scene, "beaker-water").location, "held");
+        assert!(aqueous_mol(item(&scene, "beaker-water"), "na+") > AMOUNT_EPS);
+    }
+
+    #[test]
+    fn tongs_reject_solids_only_dump_into_beaker_h2o() {
+        let mut scene = initial_bench_scene("lab-test");
+        let water = scene
+            .items
+            .iter_mut()
+            .find(|i| i.id == "beaker-water")
+            .unwrap();
+        water.properties.composition = vec![solid("sand", 0.4)];
+        crate::solubility::sync_fill_ml(water);
+
+        use_tongs(&mut scene, "beaker-water").unwrap();
+        let err = use_tongs(&mut scene, "beaker-h2o").unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        assert!((solid_g(item(&scene, "beaker-water"), "sand") - 0.4).abs() < 1e-12);
+        assert_eq!(solid_g(item(&scene, "beaker-h2o"), "sand"), 0.0);
+        assert_eq!(item(&scene, "beaker-water").location, "held");
+    }
+
+    #[test]
+    fn use_tool_spoon_on_beaker_h2o_is_invalid() {
+        let mut scene = initial_bench_scene("lab-test");
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-h2o".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        assert!(item(&scene, "spoon-1").properties.holding.is_empty());
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn pour_held_nacl_into_beaker_h2o_is_invalid() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+
+        let err = apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-h2o".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+
+        let spoon = item(&scene, "spoon-1");
+        assert_eq!(spoon.location, "hand");
+        assert!((holding_g(spoon, "nacl") - SPOON_SCOOP_MASS_G).abs() < 1e-12);
+
+        let h2o = item(&scene, "beaker-h2o");
+        assert!((water_ml(h2o) - DISTILLED_WATER_CAPACITY_ML).abs() < 1e-9);
+        assert!(h2o
+            .properties
+            .composition
+            .iter()
+            .all(|c| c.substance_id == "water" && c.phase == "liquid"));
+        assert_eq!(aqueous_mol(h2o, "na+"), 0.0);
+        assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 1.8);
+    }
+
+    #[test]
+    fn use_tool_holding_spoon_on_beaker_h2o_is_invalid() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        let before = scene.clone();
+
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-h2o".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        assert_eq!(scene.items, before.items);
+        assert_eq!(scene.temperature_c, before.temperature_c);
+        assert_eq!(scene.version, before.version);
     }
 }

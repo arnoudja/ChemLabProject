@@ -2394,4 +2394,208 @@ mod tests {
             "beaker-water"
         );
     }
+
+    async fn persist_dry_dish_solids(state: &AppState, app: &Router, cookies: &str) {
+        let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
+        let dish = scene["items"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|item| item["id"] == "dish-1")
+            .expect("dish-1");
+        dish["properties"]["composition"] = serde_json::json!([
+            {
+                "substance_id": "nacl",
+                "phase": "solid",
+                "amount_g": 0.6
+            },
+            {
+                "substance_id": "cacl2",
+                "phase": "solid",
+                "amount_g": 0.4
+            }
+        ]);
+        dish["properties"]["fill_ml"] = serde_json::json!(0.0);
+        let lab_id = scene["lab_id"].as_str().unwrap().to_string();
+        let version = scene["version"].as_u64().unwrap() as i64;
+        chemlab_db::save_lab_state(
+            state.pool(),
+            &lab_id,
+            &serde_json::to_vec(&scene).unwrap(),
+            version,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn dish_spoon_use_tool_without_csrf_is_forbidden() {
+        let app = test_app().await;
+        let (_csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "dish-spoon-csrf-use@chemlab.local").await;
+        let response = post_action(
+            &app,
+            &format!("{session_cookie}; {csrf_cookie}"),
+            None,
+            serde_json::json!({
+                "type": "use_tool",
+                "tool_item_id": "spoon-1",
+                "target_item_id": "dish-1"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(body_json(response).await["code"], "csrf");
+    }
+
+    #[tokio::test]
+    async fn dish_spoon_use_tool_without_session_is_unauthorized() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie) = issue_csrf(&app).await;
+        let response = post_action(
+            &app,
+            &csrf_cookie,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "use_tool",
+                "tool_item_id": "spoon-1",
+                "target_item_id": "dish-1"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(body_json(response).await["code"], "unauthenticated");
+    }
+
+    #[tokio::test]
+    async fn dish_spoon_put_away_without_csrf_is_forbidden() {
+        let app = test_app().await;
+        let (_csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "dish-spoon-csrf-putaway@chemlab.local").await;
+        let response = post_action(
+            &app,
+            &format!("{session_cookie}; {csrf_cookie}"),
+            None,
+            serde_json::json!({
+                "type": "put_away",
+                "tool_item_id": "spoon-1"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(body_json(response).await["code"], "csrf");
+    }
+
+    #[tokio::test]
+    async fn dish_spoon_put_away_without_session_is_unauthorized() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie) = issue_csrf(&app).await;
+        let response = post_action(
+            &app,
+            &csrf_cookie,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "put_away",
+                "tool_item_id": "spoon-1"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(body_json(response).await["code"], "unauthenticated");
+    }
+
+    #[tokio::test]
+    async fn dish_spoon_use_tool_and_put_away_with_csrf_and_session_scoop_and_restore() {
+        let (app, state) = test_app_state().await;
+        let (csrf_token, csrf_cookie, session_cookie) =
+            register_user(&app, "dish-spoon-ok@chemlab.local").await;
+        let cookies = format!("{session_cookie}; {csrf_cookie}");
+        persist_dry_dish_solids(&state, &app, &cookies).await;
+
+        let scoop = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "use_tool",
+                "tool_item_id": "spoon-1",
+                "target_item_id": "dish-1"
+            }),
+        )
+        .await;
+        assert_eq!(scoop.status(), StatusCode::OK);
+        let scooped = body_json(scoop).await["scene"].clone();
+        let spoon = scene_item(&scooped, "spoon-1");
+        assert_eq!(spoon["location"], "hand");
+        assert_eq!(spoon["properties"]["source_item_id"], "dish-1");
+        let holding = spoon["properties"]["holding"].as_array().unwrap();
+        assert_eq!(holding.len(), 2);
+        let nacl_g = holding
+            .iter()
+            .find(|entry| entry["substance_id"] == "nacl")
+            .unwrap()["amount_g"]
+            .as_f64()
+            .unwrap();
+        let cacl2_g = holding
+            .iter()
+            .find(|entry| entry["substance_id"] == "cacl2")
+            .unwrap()["amount_g"]
+            .as_f64()
+            .unwrap();
+        assert!((nacl_g - 0.12).abs() < 1e-9);
+        assert!((cacl2_g - 0.08).abs() < 1e-9);
+
+        let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
+        assert_eq!(
+            scene_item(&persisted, "spoon-1")["properties"]["source_item_id"],
+            "dish-1"
+        );
+
+        let put_away = post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "put_away",
+                "tool_item_id": "spoon-1"
+            }),
+        )
+        .await;
+        assert_eq!(put_away.status(), StatusCode::OK);
+        let restored = body_json(put_away).await["scene"].clone();
+        let spoon = scene_item(&restored, "spoon-1");
+        assert_eq!(spoon["location"], "bench");
+        assert!(
+            spoon["properties"].get("source_item_id").is_none()
+                || spoon["properties"]["source_item_id"].is_null()
+        );
+        assert!(
+            spoon["properties"].get("holding").is_none()
+                || spoon["properties"]["holding"]
+                    .as_array()
+                    .is_some_and(|holding| holding.is_empty())
+        );
+        let dish_nacl = scene_item(&restored, "dish-1")["properties"]["composition"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["substance_id"] == "nacl" && entry["phase"] == "solid")
+            .unwrap()["amount_g"]
+            .as_f64()
+            .unwrap();
+        let dish_cacl2 = scene_item(&restored, "dish-1")["properties"]["composition"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["substance_id"] == "cacl2" && entry["phase"] == "solid")
+            .unwrap()["amount_g"]
+            .as_f64()
+            .unwrap();
+        assert!((dish_nacl - 0.6).abs() < 1e-9);
+        assert!((dish_cacl2 - 0.4).abs() < 1e-9);
+        assert_eq!(
+            scene_item(&restored, "beaker-nacl")["properties"]["composition"][0]["amount_g"],
+            2.0
+        );
+    }
 }

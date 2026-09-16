@@ -188,5 +188,13 @@ describe('StockSubstanceLabel', () => {
     expect(sand.container.textContent).toContain('(Silicon dioxide)')
     expect(sand.container.textContent).toContain('(Sand)')
     expect(stockSubstanceAriaLabel('sand')).toBe('Sand')
+
+    cleanup()
+    const water = render(<StockSubstanceLabel substanceId="water" />)
+    expect(water.container.querySelector('sub')?.textContent).toBe('2')
+    expect(water.container.textContent).toContain('H2O')
+    expect(water.container.textContent).toContain('(Water)')
+    expect(water.container.textContent).toContain('(distilled water)')
+    expect(stockSubstanceAriaLabel('water')).toBe('Distilled water (H2O)')
   })
 })

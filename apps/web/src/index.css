@@ -251,13 +251,22 @@ body::before {
 }
 
 /* Spoon and tongs SVGs are w-32 (8rem); item padding is 0.2rem each side. Pipette is narrower. */
-.lab-tool-carousel-slot {
+.lab-tool-carousel-slot,
+.lab-stock-carousel-slot {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
   flex: 0 0 auto;
+}
+
+.lab-tool-carousel-slot {
   min-width: calc(8rem + 0.4rem);
+}
+
+/* Widest ingredient is the stacked label (max-width 7.5rem) plus item padding. */
+.lab-stock-carousel-slot {
+  min-width: calc(7.5rem + 0.4rem);
 }
 
 .lab-water-busy {

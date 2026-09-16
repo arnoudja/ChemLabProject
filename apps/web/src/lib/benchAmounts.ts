@@ -10,6 +10,9 @@ export const STOCK_FULL_MASS_G = STOCK_FULL_SCOOPS * SPOON_SCOOP_MASS_G
 /** Initial liquid water volume on the server bench (ml). */
 export const WATER_FULL_ML = 200
 
+/** Distilled-water stock beaker capacity (ml). */
+export const DISTILLED_WATER_CAPACITY_ML = 100
+
 /** Pipette aliquot volume (ml). */
 export const PIPETTE_VOLUME_ML = 1
 

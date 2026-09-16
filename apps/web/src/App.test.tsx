@@ -42,6 +42,23 @@ const EMPTY_LAB_SCENE = {
       },
     },
     {
+      id: 'beaker-h2o',
+      kind: 'beaker',
+      label: 'Distilled water',
+      location: 'bench',
+      properties: {
+        volume_ml: 100,
+        fill_ml: 100,
+        transparent: true,
+        colourless: true,
+        temperature_c: 20,
+        composition: [
+          { substance_id: 'water', phase: 'liquid', amount_ml: 100, amount_scoop: null, amount_g: null, amount_mol: null},
+        ],
+        holding: [],
+      },
+    },
+    {
       id: 'beaker-nacl',
       kind: 'beaker',
       label: 'Sodium chloride',

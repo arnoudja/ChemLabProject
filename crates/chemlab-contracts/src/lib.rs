@@ -533,6 +533,45 @@ mod tests {
     }
 
     #[test]
+    fn distilled_water_beaker_item_round_trips() {
+        let item = Item {
+            id: "beaker-h2o".into(),
+            kind: "beaker".into(),
+            label: "Distilled water".into(),
+            location: "bench".into(),
+            properties: ItemProperties {
+                volume_ml: Some(100.0),
+                fill_ml: Some(100.0),
+                transparent: Some(true),
+                colourless: Some(true),
+                temperature_c: Some(20.0),
+                composition: vec![CompositionEntry {
+                    substance_id: "water".into(),
+                    phase: "liquid".into(),
+                    amount_ml: Some(100.0),
+                    amount_scoop: None,
+                    amount_g: None,
+                    amount_mol: None,
+                }],
+                holding: vec![],
+                on: None,
+                source_item_id: None,
+            },
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(json.contains(r#""id":"beaker-h2o""#));
+        assert!(json.contains(r#""kind":"beaker""#));
+        assert!(json.contains(r#""label":"Distilled water""#));
+        assert!(json.contains(r#""amount_ml":100.0"#) || json.contains(r#""amount_ml":100"#));
+        let back: Item = serde_json::from_str(&json).unwrap();
+        assert_eq!(item, back);
+        assert_eq!(back.properties.volume_ml, Some(100.0));
+        assert_eq!(back.properties.composition[0].substance_id, "water");
+        assert_eq!(back.properties.composition[0].phase, "liquid");
+        assert_eq!(back.properties.composition[0].amount_ml, Some(100.0));
+    }
+
+    #[test]
     fn tongs_item_round_trips_held_vessel() {
         let tongs = Item {
             id: "tongs-1".into(),

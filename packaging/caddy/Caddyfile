@@ -9,6 +9,13 @@
 # so Caddy can obtain a Let's Encrypt certificate automatically.
 
 :443 {
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	# HSTS belongs on a public hostname, not tls internal / localhost.
 	reverse_proxy 127.0.0.1:3847
 	tls internal
 }

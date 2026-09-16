@@ -200,7 +200,8 @@ body::before {
   transform: translate(-32px, -48px);
 }
 
-.lab-evap-stack {
+.lab-evap-stack,
+.lab-filter-stack {
   display: flex;
   flex-direction: column;
   align-items: center;

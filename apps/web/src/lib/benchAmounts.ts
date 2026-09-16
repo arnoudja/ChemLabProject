@@ -18,3 +18,6 @@ export const PIPETTE_VOLUME_ML = 1
 
 /** Evaporation dish capacity (ml). */
 export const DISH_CAPACITY_ML = 25
+
+/** Filtrate beaker liquid capacity (ml). */
+export const FILTRATE_CAPACITY_ML = 250

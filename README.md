@@ -20,6 +20,7 @@ scripts/
   generate-types.sh        # regenerate FE types from contracts
   build-deb.sh             # Ubuntu amd64 .deb (binary + web UI + systemd)
 packaging/deb/             # systemd unit, env file, maintainer scripts
+packaging/caddy/           # Caddyfile (HTTPS reverse proxy to loopback)
 ```
 
 ## Prerequisites (Ubuntu / Omarchy)
@@ -95,8 +96,8 @@ CHEMLAB_STATIC_DIR=apps/web/dist cargo run -p chemlab-server
 ## Install on Ubuntu (.deb)
 
 The package installs `chemlab-server`, the built web UI, and a systemd unit that
-starts on boot and listens on **`0.0.0.0:3847`**. `cargo run` defaults stay
-`127.0.0.1:3847`.
+starts on boot and binds **`127.0.0.1:3847`**. Put Caddy in front for HTTPS
+(see below). `cargo run` defaults stay `127.0.0.1:3847`.
 
 Build on Ubuntu amd64 (needs Rust, Node 22+, `dpkg-deb`):
 
@@ -105,7 +106,8 @@ Build on Ubuntu amd64 (needs Rust, Node 22+, `dpkg-deb`):
 sudo apt install ./dist/chemlab_*.deb
 ```
 
-Then open `http://<host>:3847/`. Health: `http://<host>:3847/api/health`.
+With Caddy in front, open `https://<host>/`. The daemon itself is not on the LAN
+port. Direct health check on the host: `http://127.0.0.1:3847/api/health`.
 
 | Path | Role |
 | --- | --- |
@@ -115,9 +117,9 @@ Then open `http://<host>:3847/`. Health: `http://<host>:3847/api/health`.
 | `/lib/systemd/system/chemlab.service` | systemd unit (`User=chemlab`) |
 | `/var/lib/chemlab/` | SQLite data dir |
 
-The unit env is `CHEMLAB_BIND=0.0.0.0:3847`, `CHEMLAB_STATIC_DIR=/usr/share/chemlab/www`,
+The unit env is `CHEMLAB_BIND=127.0.0.1:3847`, `CHEMLAB_STATIC_DIR=/usr/share/chemlab/www`,
 `CHEMLAB_DATABASE_URL=sqlite:///var/lib/chemlab/chemlab.db`, and
-`CHEMLAB_COOKIE_SECURE=false` (HTTP on the LAN). `postinst` enables and starts
+`CHEMLAB_COOKIE_SECURE=true` (HTTPS via Caddy). `postinst` enables and starts
 the service; `prerm` stops and disables it on remove.
 
 ```bash
@@ -125,8 +127,24 @@ sudo systemctl status chemlab
 sudo journalctl -u chemlab -e
 ```
 
-CI uploads the `.deb` as the `chemlab-deb` artifact. Caddy / HTTPS / loopback
-bind are later changes.
+### Caddy (HTTPS)
+
+`packaging/caddy/Caddyfile` reverse-proxies HTTPS (`:443`) to the loopback
+daemon. Install [Caddy](https://caddyserver.com/docs/install), then:
+
+```bash
+caddy run --config packaging/caddy/Caddyfile
+```
+
+On a packaged host you can copy that file over `/etc/caddy/Caddyfile` and run
+`sudo systemctl reload caddy` instead. Caddy is not bundled in the `.deb`.
+
+With Caddy in front, ChemLab is not exposed on LAN port 3847. To serve HTTP on
+the LAN without Caddy, set `CHEMLAB_BIND=0.0.0.0:3847` and
+`CHEMLAB_COOKIE_SECURE=false` in `/etc/chemlab/chemlab.env` (or the repo
+`packaging/deb/chemlab.env` before you build) and restart `chemlab`.
+
+CI uploads the `.deb` as the `chemlab-deb` artifact.
 
 ## Auth stub (accounts from day one)
 

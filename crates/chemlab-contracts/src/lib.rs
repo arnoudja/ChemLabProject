@@ -147,7 +147,7 @@ pub struct ItemProperties {
 #[ts(export, export_to = "../../../apps/web/src/generated/")]
 pub struct Item {
     pub id: String,
-    /// `"beaker"` | `"spoon"` | `"pipette"` | `"tongs"` | `"evaporation_dish"` | `"burner"` | …
+    /// `"beaker"` | `"spoon"` | `"pipette"` | `"tongs"` | `"evaporation_dish"` | `"burner"` | `"filter_paper"` | …
     pub kind: String,
     pub label: String,
     /// `"bench"` | `"hand"` | `"held"` | …
@@ -669,5 +669,72 @@ mod tests {
         assert_eq!(spoon, back);
         assert_eq!(back.properties.holding.len(), 2);
         assert_eq!(back.properties.source_item_id.as_deref(), Some("dish-1"));
+    }
+
+    #[test]
+    fn filtrate_beaker_item_round_trips() {
+        let item = Item {
+            id: "beaker-filtrate".into(),
+            kind: "beaker".into(),
+            label: "Filtrate".into(),
+            location: "bench".into(),
+            properties: ItemProperties {
+                volume_ml: Some(250.0),
+                fill_ml: Some(0.0),
+                transparent: Some(true),
+                colourless: Some(true),
+                temperature_c: Some(20.0),
+                composition: vec![],
+                holding: vec![],
+                on: None,
+                source_item_id: None,
+            },
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(json.contains(r#""id":"beaker-filtrate""#));
+        assert!(json.contains(r#""kind":"beaker""#));
+        assert!(json.contains(r#""label":"Filtrate""#));
+        let back: Item = serde_json::from_str(&json).unwrap();
+        assert_eq!(item, back);
+        assert_eq!(back.properties.volume_ml, Some(250.0));
+        assert!(back.properties.composition.is_empty());
+    }
+
+    #[test]
+    fn filter_paper_item_round_trips_solids() {
+        let item = Item {
+            id: "filter-paper-1".into(),
+            kind: "filter_paper".into(),
+            label: "Filter paper".into(),
+            location: "bench".into(),
+            properties: ItemProperties {
+                volume_ml: None,
+                fill_ml: None,
+                transparent: None,
+                colourless: None,
+                temperature_c: None,
+                composition: vec![CompositionEntry {
+                    substance_id: "sand".into(),
+                    phase: "solid".into(),
+                    amount_ml: None,
+                    amount_scoop: None,
+                    amount_g: Some(0.2),
+                    amount_mol: None,
+                }],
+                holding: vec![],
+                on: None,
+                source_item_id: None,
+            },
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(json.contains(r#""id":"filter-paper-1""#));
+        assert!(json.contains(r#""kind":"filter_paper""#));
+        assert!(json.contains(r#""label":"Filter paper""#));
+        assert!(json.contains(r#""amount_g":0.2"#) || json.contains(r#""amount_g":0.20"#));
+        let back: Item = serde_json::from_str(&json).unwrap();
+        assert_eq!(item, back);
+        assert_eq!(back.kind, "filter_paper");
+        assert_eq!(back.properties.composition[0].substance_id, "sand");
+        assert_eq!(back.properties.composition[0].amount_g, Some(0.2));
     }
 }

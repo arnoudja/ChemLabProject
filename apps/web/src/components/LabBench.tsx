@@ -446,7 +446,7 @@ function FunnelPaperSvg({ residue }: { residue: boolean }) {
   // attributes on paths only (no ellipse disk, clipPath, or CSS `d`).
   const funnelRimY = 6
   const funnelApexY = 52
-  const paperRimY = 11
+  const paperRimY = 8
   const paperApexY = 50
   const stemTopY = 52
   return (
@@ -472,15 +472,15 @@ function FunnelPaperSvg({ residue }: { residue: boolean }) {
         data-paper-cone
         data-rim-y={paperRimY}
         data-apex-y={paperApexY}
-        d="M32 11h56L62 50H58L32 11z"
+        d="M24 8h72L64 50H56L24 8z"
         fill="#E8D9B8"
         stroke="#C4B48A"
         strokeWidth="1.4"
         strokeLinejoin="round"
       />
-      <path d="M60 11h28L62 50l-2-3z" fill="#D4C194" fillOpacity="0.92" />
+      <path d="M60 8h36L64 50l-4-2z" fill="#D4C194" fillOpacity="0.92" />
       <path
-        d="M60 11L60 50"
+        d="M60 8L60 50"
         fill="none"
         stroke="#B8A574"
         strokeWidth="1.15"

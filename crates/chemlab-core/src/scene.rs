@@ -4139,7 +4139,7 @@ mod tests {
 
     #[test]
     fn returning_0_25g_nacl_to_empty_stock_is_scoopable() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         empty_nacl_stock(&mut scene);
         set_dry_dish_solids(&mut scene, vec![solid("nacl", 0.25)]);
 
@@ -4523,6 +4523,7 @@ mod tests {
     }
 
     fn set_slurry_in_water(scene: &mut Scene) {
+        fill_main_beaker(scene, FILLED_MAIN_BEAKER_ML);
         apply_action(
             scene,
             Action::UseTool {
@@ -4849,7 +4850,7 @@ mod tests {
 
         use_tongs(&mut scene, "beaker-water").unwrap();
         assert!((water_ml(item(&scene, "beaker-filtrate")) - 0.0).abs() < 1e-9);
-        assert!((water_ml(item(&scene, "beaker-water")) - 205.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-water")) - 5.0).abs() < 1e-9);
 
         put_tongs_away(&mut scene).unwrap();
         let filtrate = scene
@@ -4925,7 +4926,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert!((water_ml(item(&scene, "beaker-water")) - 201.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-water")) - 1.0).abs() < 1e-9);
         assert!(item(&scene, "pipette-1").properties.holding.is_empty());
     }
 

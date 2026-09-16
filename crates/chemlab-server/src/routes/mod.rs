@@ -2950,10 +2950,13 @@ mod tests {
 
     async fn persist_scene_without_filtration(state: &AppState, app: &Router, cookies: &str) {
         let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
-        let water_ml = scene_item(&scene, "beaker-water")["properties"]["composition"][0]
-            ["amount_ml"]
-            .as_f64()
-            .unwrap();
+        scene["items"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|item| item["id"] == "beaker-water")
+            .expect("beaker-water")["label"] = serde_json::json!("Water");
+        set_main_beaker_water(&mut scene, 200.0);
         scene["items"]
             .as_array_mut()
             .unwrap()
@@ -2963,17 +2966,7 @@ mod tests {
             .unwrap()
             .iter()
             .all(|item| { item["id"] != "beaker-filtrate" && item["id"] != "filter-paper-1" }));
-        assert!((water_ml - 200.0).abs() < 1e-9);
-        let lab_id = scene["lab_id"].as_str().unwrap().to_string();
-        let version = scene["version"].as_u64().unwrap() as i64;
-        chemlab_db::save_lab_state(
-            state.pool(),
-            &lab_id,
-            &serde_json::to_vec(&scene).unwrap(),
-            version,
-        )
-        .await
-        .unwrap();
+        save_scene_blob(state, &scene).await;
     }
 
     #[tokio::test]
@@ -3205,10 +3198,11 @@ mod tests {
 
     #[tokio::test]
     async fn filtration_use_tool_with_csrf_and_session_filter_pours_and_pipettes() {
-        let app = test_app().await;
+        let (app, state) = test_app_state().await;
         let (csrf_token, csrf_cookie, session_cookie) =
             register_user(&app, "filter-pour-ok@chemlab.local").await;
         let cookies = format!("{session_cookie}; {csrf_cookie}");
+        persist_filled_main_beaker(&state, &app, &cookies).await;
 
         let scoop = post_action(
             &app,

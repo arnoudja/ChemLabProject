@@ -3011,9 +3011,9 @@ describe('LabBench', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Water beaker' })
+    await screen.findByRole('button', { name: 'Beaker' })
     clickTongs()
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'use_tool',
@@ -3030,7 +3030,7 @@ describe('LabBench', () => {
       })
     })
     expect(document.querySelector('[data-filtrate-fill]')).toHaveAttribute('data-filtrate-fill', '0.80')
-    expect(screen.getByRole('button', { name: 'Water beaker' }).querySelector('[data-water-fill]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Beaker' }).querySelector('[data-water-fill]')).toBeNull()
   })
 
   it('scoops paper solids with the spoon and put-away returns them to the paper', async () => {
@@ -3195,7 +3195,7 @@ describe('LabBench', () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/action')).toHaveLength(
       actionsAfterPickup,
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Water beaker' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
         type: 'use_tool',

@@ -35,17 +35,15 @@ const initialScene = {
     {
       id: 'beaker-water',
       kind: 'beaker',
-      label: 'Water',
+      label: 'Beaker',
       location: 'bench',
       properties: {
         volume_ml: 250,
-        fill_ml: 200,
+        fill_ml: 0,
         transparent: true,
         colourless: true,
         temperature_c: 20,
-        composition: [
-          { substance_id: 'water', phase: 'liquid', amount_ml: 200, amount_scoop: null, amount_g: null, amount_mol: null},
-        ],
+        composition: [],
         holding: [],
       },
     },

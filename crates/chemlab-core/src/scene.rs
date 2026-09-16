@@ -259,23 +259,14 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
             SceneItem {
                 id: "beaker-water".into(),
                 kind: "beaker".into(),
-                label: "Water".into(),
+                label: "Beaker".into(),
                 location: "bench".into(),
                 properties: ItemProperties {
                     volume_ml: Some(WATER_CAPACITY_ML),
-                    fill_ml: Some(200.0),
+                    fill_ml: Some(0.0),
                     transparent: Some(true),
                     colourless: Some(true),
                     temperature_c: Some(20.0),
-                    composition: vec![CompositionEntry {
-                        substance_id: "water".into(),
-                        phase: "liquid".into(),
-                        amount_ml: Some(200.0),
-                        amount_scoop: None,
-                        amount_g: None,
-                        amount_mol: None,
-                    }],
-                    holding: Vec::new(),
                     ..ItemProperties::default()
                 },
             },
@@ -1527,6 +1518,32 @@ mod tests {
             .unwrap_or_else(|| panic!("missing item {id}"))
     }
 
+    /// Tests that pour, pipette, or dissolve into the main beaker start from a filled vessel.
+    const FILLED_MAIN_BEAKER_ML: f64 = 200.0;
+
+    fn fill_main_beaker(scene: &mut Scene, amount_ml: f64) {
+        let water = scene
+            .items
+            .iter_mut()
+            .find(|item| item.id == "beaker-water")
+            .expect("beaker-water");
+        water.properties.fill_ml = Some(amount_ml);
+        water.properties.composition = vec![CompositionEntry {
+            substance_id: "water".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(amount_ml),
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: None,
+        }];
+    }
+
+    fn bench_with_water(lab_id: &str) -> Scene {
+        let mut scene = initial_bench_scene(lab_id);
+        fill_main_beaker(&mut scene, FILLED_MAIN_BEAKER_ML);
+        scene
+    }
+
     #[test]
     fn initial_bench_scene_has_ten_items_with_water_and_evaporation_bench() {
         let scene = initial_bench_scene("lab-test");
@@ -1565,17 +1582,14 @@ mod tests {
 
         let water = item(&scene, "beaker-water");
         assert_eq!(water.kind, "beaker");
-        assert_eq!(water.label, "Water");
+        assert_eq!(water.label, "Beaker");
         assert_eq!(water.location, "bench");
         assert_eq!(water.properties.volume_ml, Some(WATER_CAPACITY_ML));
-        assert_eq!(water.properties.fill_ml, Some(200.0));
+        assert_eq!(water.properties.fill_ml, Some(0.0));
         assert_eq!(water.properties.transparent, Some(true));
         assert_eq!(water.properties.colourless, Some(true));
         assert_eq!(water.properties.temperature_c, Some(20.0));
-        assert_eq!(water.properties.composition.len(), 1);
-        assert_eq!(water.properties.composition[0].substance_id, "water");
-        assert_eq!(water.properties.composition[0].phase, "liquid");
-        assert_eq!(water.properties.composition[0].amount_ml, Some(200.0));
+        assert!(water.properties.composition.is_empty());
 
         let nacl = item(&scene, "beaker-nacl");
         assert!(nacl
@@ -1631,13 +1645,23 @@ mod tests {
     #[test]
     fn ensure_default_bench_items_restores_beaker_h2o_without_resetting_vessels() {
         let mut scene = initial_bench_scene("lab-test");
-        scene
-            .items
-            .iter_mut()
-            .find(|item| item.id == "beaker-water")
-            .unwrap()
-            .properties
-            .fill_ml = Some(150.0);
+        {
+            let water = scene
+                .items
+                .iter_mut()
+                .find(|item| item.id == "beaker-water")
+                .unwrap();
+            water.label = "Water".into();
+            water.properties.fill_ml = Some(150.0);
+            water.properties.composition = vec![CompositionEntry {
+                substance_id: "water".into(),
+                phase: "liquid".into(),
+                amount_ml: Some(150.0),
+                amount_scoop: None,
+                amount_g: None,
+                amount_mol: None,
+            }];
+        }
         scene.items.retain(|item| item.id != "beaker-h2o");
 
         ensure_default_bench_items(&mut scene);
@@ -1647,7 +1671,10 @@ mod tests {
         assert_eq!(distilled.location, "bench");
         assert_eq!(distilled.properties.volume_ml, Some(100.0));
         assert_eq!(water_ml(distilled), 100.0);
-        assert_eq!(item(&scene, "beaker-water").properties.fill_ml, Some(150.0));
+        let water = item(&scene, "beaker-water");
+        assert_eq!(water.label, "Water");
+        assert_eq!(water.properties.fill_ml, Some(150.0));
+        assert!((water_ml(water) - 150.0).abs() < 1e-9);
         assert_eq!(
             scene
                 .items
@@ -1693,13 +1720,9 @@ mod tests {
         assert_eq!(stock.amount_g, Some(9.0 * SPOON_SCOOP_MASS_G));
 
         assert!(scene.last_events.iter().any(|e| e.kind == "scooped"));
-        // Dissolve must not run yet — water still only water.
+        // Scoop does not pour — the empty main beaker stays empty.
         let water = item(&scene, "beaker-water");
-        assert!(water
-            .properties
-            .composition
-            .iter()
-            .all(|c| c.substance_id == "water"));
+        assert!(water.properties.composition.is_empty());
     }
 
     #[test]
@@ -1734,7 +1757,7 @@ mod tests {
 
     #[test]
     fn scooping_stock_empty_leaves_zero_grams() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         for _ in 0..10 {
             apply_action(
                 &mut scene,
@@ -1846,7 +1869,7 @@ mod tests {
 
     #[test]
     fn pour_nacl_into_water_dissolves_without_leftover_grains() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {
@@ -1906,7 +1929,7 @@ mod tests {
 
     #[test]
     fn pour_nacl_into_water_cools_solution_endothermically() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {
@@ -1947,7 +1970,7 @@ mod tests {
 
     #[test]
     fn pour_cacl2_into_water_dissolves_with_ions_and_heats_exothermically() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {
@@ -2050,7 +2073,7 @@ mod tests {
 
     #[test]
     fn pour_sand_into_water_does_not_change_temperature() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {
@@ -2074,7 +2097,7 @@ mod tests {
 
     #[test]
     fn second_nacl_pour_updates_existing_ion_moles_without_duplicate_lines() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         for _ in 0..2 {
             apply_action(
                 &mut scene,
@@ -2121,7 +2144,7 @@ mod tests {
 
     #[test]
     fn second_sand_pour_aggregates_solid_mass_on_one_line() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         for _ in 0..2 {
             apply_action(
                 &mut scene,
@@ -2155,7 +2178,7 @@ mod tests {
 
     #[test]
     fn pour_sand_into_water_leaves_undissolved_solid() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {
@@ -2195,8 +2218,8 @@ mod tests {
     }
 
     #[test]
-    fn reset_restores_pure_water_and_clears_holding_after_pour() {
-        let mut scene = initial_bench_scene("lab-test");
+    fn reset_restores_empty_beaker_and_clears_holding_after_pour() {
+        let mut scene = bench_with_water("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {
@@ -2226,10 +2249,9 @@ mod tests {
         assert!(spoon.properties.holding.is_empty());
 
         let water = item(&scene, "beaker-water");
-        assert_eq!(water.properties.composition.len(), 1);
-        assert_eq!(water.properties.composition[0].substance_id, "water");
-        assert_eq!(water.properties.composition[0].phase, "liquid");
-        assert_eq!(water.properties.composition[0].amount_ml, Some(200.0));
+        assert_eq!(water.label, "Beaker");
+        assert_eq!(water.properties.fill_ml, Some(0.0));
+        assert!(water.properties.composition.is_empty());
     }
 
     #[test]
@@ -2297,7 +2319,7 @@ mod tests {
 
     #[test]
     fn pour_sand_at_non_bench_temperature_leaves_undissolved_solid() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {
@@ -2345,7 +2367,7 @@ mod tests {
 
     #[test]
     fn pour_sand_succeeds_after_cacl2_exothermic_heating() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
 
         // One scoop only raises T by ~0.175 °C (still rounds to 20). Pour until the
         // dissolve lookup sees a non-bench integer °C — the real warm-water bug path.
@@ -2415,7 +2437,7 @@ mod tests {
 
     #[test]
     fn pour_second_cacl2_scoop_succeeds_after_exothermic_heating() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
 
         apply_action(
             &mut scene,
@@ -2487,7 +2509,7 @@ mod tests {
 
     #[test]
     fn pour_nacl_succeeds_after_mild_heating_above_bench() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         let water = scene
             .items
             .iter_mut()
@@ -2681,7 +2703,7 @@ mod tests {
 
     #[test]
     fn pipette_extracts_one_ml_from_water_scaling_aqueous_and_leaving_sand() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {
@@ -2772,7 +2794,7 @@ mod tests {
 
     #[test]
     fn pipette_fill_from_dish_and_pour_back_to_water_is_consistent() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         fill_pipette_from(&mut scene, "beaker-water");
         apply_action(
             &mut scene,
@@ -2807,7 +2829,7 @@ mod tests {
 
     #[test]
     fn dish_rejects_over_capacity_and_fill_requires_one_ml() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
         dish.properties.composition.push(CompositionEntry {
             substance_id: "water".into(),
@@ -3091,7 +3113,7 @@ mod tests {
 
     #[test]
     fn pipette_in_redissolves_solid_salt_up_to_solubility() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
         dish.properties.composition = vec![CompositionEntry {
             substance_id: "nacl".into(),
@@ -3143,7 +3165,7 @@ mod tests {
 
     #[test]
     fn pipette_put_away_returns_aliquot_to_last_source() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         fill_pipette_from(&mut scene, "beaker-water");
         apply_action(
             &mut scene,
@@ -3160,7 +3182,7 @@ mod tests {
 
     #[test]
     fn reset_clears_dish_burner_and_pipette() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         fill_pipette_from(&mut scene, "beaker-water");
         apply_action(
             &mut scene,
@@ -3186,12 +3208,12 @@ mod tests {
         assert_eq!(item(&scene, "burner-1").properties.on, Some(false));
         assert!(item(&scene, "pipette-1").properties.holding.is_empty());
         assert_eq!(item(&scene, "pipette-1").location, "bench");
-        assert!((water_ml(item(&scene, "beaker-water")) - 200.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-water")) - 0.0).abs() < 1e-9);
     }
 
     #[test]
     fn use_tool_full_pipette_empties_into_dish() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         fill_pipette_from(&mut scene, "beaker-water");
         apply_action(
             &mut scene,
@@ -3306,7 +3328,7 @@ mod tests {
 
     #[test]
     fn tongs_pick_up_dish_turns_burner_off() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         fill_pipette_from(&mut scene, "beaker-water");
         apply_action(
             &mut scene,
@@ -3337,7 +3359,7 @@ mod tests {
 
     #[test]
     fn tongs_pour_water_into_dish_fills_to_capacity_and_scales_ions_and_solids() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {
@@ -3400,7 +3422,7 @@ mod tests {
 
     #[test]
     fn tongs_pour_dish_into_water_moves_contents_and_keeps_holding() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         fill_pipette_from(&mut scene, "beaker-water");
         apply_action(
             &mut scene,
@@ -3426,7 +3448,7 @@ mod tests {
 
     #[test]
     fn tongs_pour_stops_when_destination_is_full() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         use_tongs(&mut scene, "beaker-water").unwrap();
         use_tongs(&mut scene, "dish-1").unwrap();
         assert!((water_ml(item(&scene, "dish-1")) - DISH_CAPACITY_ML).abs() < 1e-9);
@@ -3591,7 +3613,7 @@ mod tests {
 
     #[test]
     fn tongs_pour_uses_volume_weighted_destination_temperature() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
         dish.properties.temperature_c = Some(80.0);
         dish.properties.composition = vec![CompositionEntry {
@@ -3695,7 +3717,7 @@ mod tests {
 
     #[test]
     fn pour_dumps_mixed_dish_scoop_into_water_and_clears_spoon() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         set_dry_dish_solids(&mut scene, vec![solid("nacl", 0.6), solid("cacl2", 0.4)]);
         scoop_dish(&mut scene).unwrap();
         apply_action(
@@ -3721,7 +3743,7 @@ mod tests {
 
     #[test]
     fn use_tool_dumps_dish_scoop_into_water() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         set_dry_dish_solids(&mut scene, vec![solid("nacl", 0.5)]);
         scoop_dish(&mut scene).unwrap();
         apply_action(
@@ -3960,8 +3982,8 @@ mod tests {
         assert!((water_ml(item(&scene, "beaker-h2o")) - 75.0).abs() < 1e-9);
 
         use_tongs(&mut scene, "beaker-water").unwrap();
-        assert!((water_ml(item(&scene, "beaker-water")) - 250.0).abs() < 1e-9);
-        assert!((water_ml(item(&scene, "beaker-h2o")) - 25.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-water")) - 75.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-h2o")) - 0.0).abs() < 1e-9);
     }
 
     #[test]
@@ -3999,7 +4021,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert!((water_ml(item(&scene, "beaker-water")) - 201.0).abs() < 1e-9);
+        assert!((water_ml(item(&scene, "beaker-water")) - 1.0).abs() < 1e-9);
         assert!(item(&scene, "pipette-1").properties.holding.is_empty());
     }
 
@@ -4021,7 +4043,7 @@ mod tests {
 
     #[test]
     fn tongs_pour_pure_water_into_beaker_h2o_stops_at_capacity() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         fill_pipette_from(&mut scene, "beaker-h2o");
         apply_action(
             &mut scene,
@@ -4043,7 +4065,7 @@ mod tests {
 
     #[test]
     fn pipette_and_tongs_reject_put_back_when_beaker_h2o_is_full() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         fill_pipette_from(&mut scene, "beaker-water");
         let err = apply_action(
             &mut scene,
@@ -4076,7 +4098,7 @@ mod tests {
 
     #[test]
     fn pipette_and_tongs_reject_impure_put_back_into_beaker_h2o() {
-        let mut scene = initial_bench_scene("lab-test");
+        let mut scene = bench_with_water("lab-test");
         apply_action(
             &mut scene,
             Action::UseTool {

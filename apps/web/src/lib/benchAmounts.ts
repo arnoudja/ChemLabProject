@@ -7,7 +7,7 @@ export const STOCK_FULL_SCOOPS = 10
 /** Initial salt/sand stock mass on the server bench. */
 export const STOCK_FULL_MASS_G = STOCK_FULL_SCOOPS * SPOON_SCOOP_MASS_G
 
-/** Initial liquid water volume on the server bench (ml). */
+/** Main bench beaker fill-height scale (ml). Capacity is 250 ml; 200 ml reads as full. */
 export const WATER_FULL_ML = 200
 
 /** Distilled-water stock beaker capacity (ml). */

@@ -137,8 +137,8 @@ export function CompositionInspectLine({
   )
 }
 
-/** Stock jar captions under salt / sand beakers (display only). */
-export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand'
+/** Stock jar captions under salt / sand / distilled-water beakers (display only). */
+export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand' | 'water'
 
 const STOCK_SUBSTANCE_LABELS: Record<
   StockSubstanceId,
@@ -158,6 +158,11 @@ const STOCK_SUBSTANCE_LABELS: Record<
     chemicalName: 'Silicon dioxide',
     commonName: 'Sand',
     ariaName: 'Sand',
+  },
+  water: {
+    chemicalName: 'Water',
+    commonName: 'distilled water',
+    ariaName: 'Distilled water (H2O)',
   },
 }
 

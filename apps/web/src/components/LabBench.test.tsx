@@ -2285,6 +2285,33 @@ describe('LabBench', () => {
     expect(precedesInDocument(evapStack as HTMLElement, water)).toBe(true)
   })
 
+  it('folds the filter paper as a cone lining the inner funnel wall, not a disk underneath', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    const svg = (await screen.findByRole('button', { name: 'Filter paper' })).querySelector('[data-funnel]')
+    expect(svg).not.toBeNull()
+
+    const paper = svg!.querySelector('[data-paper-cone]')
+    const funnelCone = svg!.querySelector('[data-funnel-cone]')
+    const stem = svg!.querySelector('[data-funnel-stem]')
+    expect(paper).not.toBeNull()
+    expect(funnelCone).not.toBeNull()
+    expect(stem).not.toBeNull()
+    expect(svg!.querySelector('ellipse')).toBeNull()
+
+    const paperRimY = Number(paper!.getAttribute('data-rim-y'))
+    const paperApexY = Number(paper!.getAttribute('data-apex-y'))
+    const funnelRimY = Number(funnelCone!.getAttribute('data-rim-y'))
+    const funnelApexY = Number(funnelCone!.getAttribute('data-apex-y'))
+    const stemTopY = Number(stem!.getAttribute('data-top-y'))
+
+    expect(paperApexY).toBeGreaterThan(paperRimY)
+    expect(paperRimY).toBeGreaterThanOrEqual(funnelRimY)
+    expect(paperApexY).toBeLessThanOrEqual(funnelApexY)
+    expect(paperApexY).toBeLessThanOrEqual(stemTopY)
+  })
+
   it('places the tool carousel after the stock slot with flanking arrows', async () => {
     vi.stubGlobal('fetch', stubLabFetch())
 
@@ -3001,7 +3028,15 @@ describe('LabBench', () => {
 
     render(<LabBench />)
     await screen.findByRole('button', { name: 'Filter paper' })
-    expect(document.querySelector('[data-paper-residue="true"]')).not.toBeNull()
+    const paperSvg = document.querySelector('[data-paper-residue="true"]')
+    expect(paperSvg).not.toBeNull()
+    const apexY = Number(paperSvg!.querySelector('[data-paper-cone]')?.getAttribute('data-apex-y'))
+    const stemTopY = Number(paperSvg!.querySelector('[data-funnel-stem]')?.getAttribute('data-top-y'))
+    for (const dot of paperSvg!.querySelectorAll('circle')) {
+      const cy = Number(dot.getAttribute('cy'))
+      expect(cy).toBeLessThanOrEqual(apexY)
+      expect(cy).toBeLessThanOrEqual(stemTopY)
+    }
     clickSpoon()
     fireEvent.click(screen.getByRole('button', { name: 'Filtrate beaker' }))
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/action')).toHaveLength(0)

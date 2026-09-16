@@ -442,6 +442,13 @@ function FiltrateBeakerSvg({ amountMl, floating }: { amountMl?: number | null; f
 }
 
 function FunnelPaperSvg({ residue }: { residue: boolean }) {
+  // Cone/quarter-fold lining the inner glass wall. Firefox: presentation
+  // attributes on paths only (no ellipse disk, clipPath, or CSS `d`).
+  const funnelRimY = 6
+  const funnelApexY = 52
+  const paperRimY = 11
+  const paperApexY = 50
+  const stemTopY = 52
   return (
     <svg
       viewBox="0 0 120 88"
@@ -450,14 +457,49 @@ function FunnelPaperSvg({ residue }: { residue: boolean }) {
       data-funnel
       data-paper-residue={residue ? 'true' : 'false'}
     >
-      <path d="M28 8h64l-22 36H50L28 8z" fill="#6A6E95" stroke="#DDF7FF" strokeWidth="1.8" />
-      <path d="M54 44h12v18H54z" fill="#6A6E95" stroke="#C4D2ED" strokeWidth="1.4" />
-      <ellipse cx="60" cy="70" rx="28" ry="12" fill="#E8D9B8" stroke="#C4B48A" strokeWidth="1.6" />
+      <path
+        data-funnel-cone
+        data-rim-y={funnelRimY}
+        data-apex-y={funnelApexY}
+        d="M20 6h80L68 52H52L20 6z"
+        fill="#6A6E95"
+        fillOpacity="0.28"
+        stroke="#DDF7FF"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        data-paper-cone
+        data-rim-y={paperRimY}
+        data-apex-y={paperApexY}
+        d="M32 11h56L62 50H58L32 11z"
+        fill="#E8D9B8"
+        stroke="#C4B48A"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path d="M60 11h28L62 50l-2-3z" fill="#D4C194" fillOpacity="0.92" />
+      <path
+        d="M60 11L60 50"
+        fill="none"
+        stroke="#B8A574"
+        strokeWidth="1.15"
+        strokeLinecap="round"
+      />
+      <path
+        data-funnel-stem
+        data-top-y={stemTopY}
+        d="M54 52h12v24H54z"
+        fill="#6A6E95"
+        fillOpacity="0.45"
+        stroke="#C4D2ED"
+        strokeWidth="1.4"
+      />
       {residue ? (
         <g fill="#C9A36A" opacity="0.95">
-          <circle cx="50" cy="70" r="3" />
-          <circle cx="62" cy="68" r="2.4" />
-          <circle cx="72" cy="72" r="2.8" />
+          <circle cx="56" cy="42" r="2.8" />
+          <circle cx="62" cy="44" r="2.2" />
+          <circle cx="59" cy="38" r="2.4" />
         </g>
       ) : null}
     </svg>

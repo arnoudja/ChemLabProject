@@ -706,6 +706,10 @@ fn apply_pour(
         return apply_pipette_empty(scene, source_idx, target_idx);
     }
 
+    if is_distilled_water_stock(&scene.items[target_idx]) {
+        return Err(SceneError::InvalidAction);
+    }
+
     if scene.items[source_idx].properties.holding.is_empty() {
         return Err(SceneError::EmptyHolding);
     }
@@ -4161,5 +4165,69 @@ mod tests {
         assert_eq!(err, SceneError::InvalidAction);
         assert!(item(&scene, "spoon-1").properties.holding.is_empty());
         assert!((water_ml(item(&scene, "beaker-h2o")) - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn pour_held_nacl_into_beaker_h2o_is_invalid() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+
+        let err = apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-h2o".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+
+        let spoon = item(&scene, "spoon-1");
+        assert_eq!(spoon.location, "hand");
+        assert!((holding_g(spoon, "nacl") - SPOON_SCOOP_MASS_G).abs() < 1e-12);
+
+        let h2o = item(&scene, "beaker-h2o");
+        assert!((water_ml(h2o) - DISTILLED_WATER_CAPACITY_ML).abs() < 1e-9);
+        assert!(h2o
+            .properties
+            .composition
+            .iter()
+            .all(|c| c.substance_id == "water" && c.phase == "liquid"));
+        assert_eq!(aqueous_mol(h2o, "na+"), 0.0);
+        assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 1.8);
+    }
+
+    #[test]
+    fn use_tool_holding_spoon_on_beaker_h2o_is_invalid() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        let before = scene.clone();
+
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-h2o".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::InvalidAction);
+        assert_eq!(scene.items, before.items);
+        assert_eq!(scene.temperature_c, before.temperature_c);
+        assert_eq!(scene.version, before.version);
     }
 }

@@ -60,12 +60,7 @@ fn rightmost_x_forwarded_for(parts: &Parts) -> Option<String> {
         .headers
         .get("x-forwarded-for")
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| {
-            value
-                .split(',')
-                .map(str::trim)
-                .rfind(|ip| !ip.is_empty())
-        })
+        .and_then(|value| value.split(',').map(str::trim).rfind(|ip| !ip.is_empty()))
         .map(str::to_string)
 }
 

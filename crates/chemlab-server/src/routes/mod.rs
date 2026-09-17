@@ -22,16 +22,20 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    async fn test_app_state() -> (Router, AppState) {
-        test_app_state_with(Config {
+    fn test_config() -> Config {
+        Config {
             bind_addr: "127.0.0.1:0".into(),
             database_url: "sqlite::memory:?cache=shared".into(),
             static_dir: None,
             vite_dev_proxy: None,
             cookie_secure: false,
+            signup_enabled: true,
             session_ttl_hours: 24,
-        })
-        .await
+        }
+    }
+
+    async fn test_app_state() -> (Router, AppState) {
+        test_app_state_with(test_config()).await
     }
 
     async fn test_app_state_with(config: Config) -> (Router, AppState) {
@@ -126,6 +130,29 @@ mod tests {
         let json = body_json(response).await;
         assert_eq!(json["status"], "ok");
         assert_eq!(json["service"], "chemlab-server");
+        assert_eq!(json["signup_enabled"], true);
+    }
+
+    #[tokio::test]
+    async fn health_reports_signup_enabled_false_when_disabled() {
+        let (app, _state) = test_app_state_with(Config {
+            signup_enabled: false,
+            ..test_config()
+        })
+        .await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = body_json(response).await;
+        assert_eq!(json["signup_enabled"], false);
     }
 
     #[tokio::test]
@@ -180,12 +207,8 @@ mod tests {
     #[tokio::test]
     async fn cookie_secure_true_sets_secure_on_csrf_session_and_clear() {
         let (app, _state) = test_app_state_with(Config {
-            bind_addr: "127.0.0.1:0".into(),
-            database_url: "sqlite::memory:?cache=shared".into(),
-            static_dir: None,
-            vite_dev_proxy: None,
             cookie_secure: true,
-            session_ttl_hours: 24,
+            ..test_config()
         })
         .await;
 
@@ -300,12 +323,8 @@ mod tests {
         std::fs::write(&asset_path, "asset-ok").unwrap();
 
         let (app, _state) = test_app_state_with(Config {
-            bind_addr: "127.0.0.1:0".into(),
-            database_url: "sqlite::memory:?cache=shared".into(),
             static_dir: Some(dir.path().to_path_buf()),
-            vite_dev_proxy: None,
-            cookie_secure: false,
-            session_ttl_hours: 24,
+            ..test_config()
         })
         .await;
 
@@ -352,12 +371,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         // Directory exists but has no index.html (misconfigured install).
         let (app, _state) = test_app_state_with(Config {
-            bind_addr: "127.0.0.1:0".into(),
-            database_url: "sqlite::memory:?cache=shared".into(),
             static_dir: Some(dir.path().to_path_buf()),
-            vite_dev_proxy: None,
-            cookie_secure: false,
-            session_ttl_hours: 24,
+            ..test_config()
         })
         .await;
 
@@ -715,6 +730,56 @@ mod tests {
         assert_eq!(login.status(), StatusCode::OK);
         let login_json = body_json(login).await;
         assert_eq!(login_json["email"], "ada@chemlab.local");
+    }
+
+    #[tokio::test]
+    async fn register_disabled_returns_forbidden_and_does_not_insert_user() {
+        let (app, state) = test_app_state_with(Config {
+            signup_enabled: false,
+            ..test_config()
+        })
+        .await;
+        let (csrf_token, csrf_cookie) = issue_csrf(&app).await;
+
+        let response =
+            post_register(&app, &csrf_token, &csrf_cookie, "blocked@chemlab.local").await;
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let json = body_json(response).await;
+        assert_eq!(json["code"], "signup_disabled");
+
+        let found = chemlab_db::find_user_by_email(state.pool(), "blocked@chemlab.local").await;
+        assert!(
+            matches!(found, Err(chemlab_db::DbError::UserNotFound)),
+            "disabled register must not insert a user: {found:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn register_disabled_still_requires_csrf() {
+        let (app, _state) = test_app_state_with(Config {
+            signup_enabled: false,
+            ..test_config()
+        })
+        .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"email":"ada@chemlab.local","password":"secret123","display_name":"Ada"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let json = body_json(response).await;
+        assert_eq!(json["code"], "csrf");
     }
 
     #[tokio::test]

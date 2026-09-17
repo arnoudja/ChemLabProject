@@ -17,6 +17,7 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [sessionLoading, setSessionLoading] = useState(true)
+  const signupEnabled = health?.signup_enabled !== false
 
   useEffect(() => {
     let cancelled = false
@@ -26,6 +27,9 @@ export default function App() {
         if (cancelled) return
         setHealth(h)
         setUser(me.user)
+        if (!h.signup_enabled) {
+          setMode('login')
+        }
       } catch (err) {
         if (cancelled) return
         setHealthError(err instanceof Error ? err.message : 'API unreachable')
@@ -44,7 +48,7 @@ export default function App() {
     setBusy(true)
     try {
       const next =
-        mode === 'register'
+        mode === 'register' && signupEnabled
           ? await register({
               email,
               password,
@@ -131,20 +135,22 @@ export default function App() {
             ) : (
               <form className="space-y-4" onSubmit={onSubmit}>
                 <div className="flex gap-2 text-sm">
-                  <button
-                    type="button"
-                    className={`rounded-md px-3 py-1.5 font-medium ${
-                      mode === 'register'
-                        ? 'bg-[var(--ink)] text-[var(--glass)]'
-                        : 'text-[var(--ink-soft)] hover:bg-[var(--surface-hover)]'
-                    }`}
-                    onClick={() => {
-                      setMode('register')
-                      setAuthError(null)
-                    }}
-                  >
-                    Create account
-                  </button>
+                  {signupEnabled && (
+                    <button
+                      type="button"
+                      className={`rounded-md px-3 py-1.5 font-medium ${
+                        mode === 'register'
+                          ? 'bg-[var(--ink)] text-[var(--glass)]'
+                          : 'text-[var(--ink-soft)] hover:bg-[var(--surface-hover)]'
+                      }`}
+                      onClick={() => {
+                        setMode('register')
+                        setAuthError(null)
+                      }}
+                    >
+                      Create account
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={`rounded-md px-3 py-1.5 font-medium ${

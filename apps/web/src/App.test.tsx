@@ -123,6 +123,7 @@ const EMPTY_LAB_SCENE = {
 
 function stubAppFetch(options?: {
   authenticated?: boolean
+  signupEnabled?: boolean
   healthNetworkError?: Error
   registerBody?: unknown
   registerStatus?: number
@@ -142,6 +143,7 @@ function stubAppFetch(options?: {
         status: 'ok',
         version: '0.1.0',
         service: 'chemlab-server',
+        signup_enabled: options?.signupEnabled ?? true,
       })
     }
     if (url === '/api/auth/me') {
@@ -226,6 +228,36 @@ describe('App', () => {
     expect(await screen.findByText(/lab bench below/i)).toBeInTheDocument()
     expect(screen.queryByText(/benches unlock/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/pick a solid/i)).not.toBeInTheDocument()
+  })
+
+  it('hides Create account when health says signup is disabled', async () => {
+    const fetchMock = stubAppFetch({ authenticated: false, signupEnabled: false })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Create account' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Email').closest('form')?.querySelector('button[type="submit"]')).toHaveTextContent(
+      'Sign in',
+    )
+
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'ada@chemlab.local' },
+    })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } })
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!)
+
+    expect(await screen.findByText('Welcome back, Ada')).toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/auth/register',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/auth/login',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
   it('creates an account and then shows the lab bench', async () => {

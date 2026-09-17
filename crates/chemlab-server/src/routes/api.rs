@@ -54,8 +54,11 @@ async fn csrf(State(state): State<AppState>, jar: CookieJar) -> (CookieJar, Json
     (jar, Json(CsrfResponse { csrf_token: token }))
 }
 
-async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse::ok(env!("CARGO_PKG_VERSION")))
+async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
+    Json(HealthResponse::ok(
+        env!("CARGO_PKG_VERSION"),
+        state.inner.signup_enabled,
+    ))
 }
 
 async fn register(
@@ -64,6 +67,12 @@ async fn register(
     ClientIp(ip): ClientIp,
     Json(body): Json<RegisterRequest>,
 ) -> Result<(StatusCode, CookieJar, Json<AuthUserResponse>), ApiError> {
+    if !state.inner.signup_enabled {
+        return Err(ApiError::forbidden(
+            "signup_disabled",
+            "Account registration is disabled",
+        ));
+    }
     check_auth_attempt(&state.inner.auth_rate_limiter, "register", &ip, &body.email)?;
     validate_credentials(&body.email, &body.password, Some(&body.display_name))
         .map_err(|m| ApiError::bad_request("validation", m))?;

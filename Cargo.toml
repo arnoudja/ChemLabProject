@@ -36,6 +36,7 @@ ts-rs = { version = "11", features = ["chrono-impl", "serde-compat"] }
 argon2 = "0.5"
 rand = "0.8"
 sha2 = "0.10"
+subtle = "2"
 hex = "0.4"
 axum-extra = { version = "0.10", features = ["cookie"] }
 cookie = "0.18"

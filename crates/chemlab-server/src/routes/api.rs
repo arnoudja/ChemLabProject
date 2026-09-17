@@ -1,7 +1,7 @@
 use crate::auth::{
-    clear_session_cookie, csrf_cookie, csrf_token_from_jar, generate_session_token, hash_password,
-    hash_token, require_csrf, session_cookie, token_from_jar, validate_credentials,
-    verify_password,
+    clear_csrf_cookie, clear_session_cookie, csrf_cookie, csrf_token_from_jar,
+    generate_session_token, hash_password, hash_token, require_csrf, session_cookie,
+    token_from_jar, validate_credentials, verify_password,
 };
 use crate::error::ApiError;
 use crate::rate_limit::{check_auth_attempt, ClientIp};
@@ -116,7 +116,9 @@ async fn logout(
         let token_hash = hash_token(&token);
         let _ = delete_session_by_token_hash(state.pool(), &token_hash).await;
     }
-    let jar = jar.add(clear_session_cookie(state.inner.cookie_secure));
+    let jar = jar
+        .add(clear_session_cookie(state.inner.cookie_secure))
+        .add(clear_csrf_cookie(state.inner.cookie_secure));
     Ok((StatusCode::NO_CONTENT, jar))
 }
 
@@ -187,7 +189,10 @@ async fn issue_session(
     let token_hash = hash_token(&token);
     let ttl = Duration::hours(state.inner.session_ttl_hours);
     create_session(state.pool(), &user.id, &token_hash, ttl).await?;
-    let jar = jar.add(session_cookie(&token, state.inner.cookie_secure, ttl));
+    let csrf_token = generate_session_token();
+    let jar = jar
+        .add(session_cookie(&token, state.inner.cookie_secure, ttl))
+        .add(csrf_cookie(&csrf_token, state.inner.cookie_secure, ttl));
     Ok((jar, to_auth_user(user)))
 }
 

@@ -29,6 +29,7 @@ tracing-subscriber.workspace = true
 argon2.workspace = true
 rand.workspace = true
 sha2.workspace = true
+subtle.workspace = true
 hex.workspace = true
 anyhow.workspace = true
 dotenvy.workspace = true

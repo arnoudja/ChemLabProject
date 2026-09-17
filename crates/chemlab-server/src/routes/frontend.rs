@@ -9,11 +9,21 @@
 use crate::state::AppState;
 use axum::body::Body;
 use axum::extract::State;
-use axum::http::{Request, StatusCode};
+use axum::http::header::{
+    CONTENT_SECURITY_POLICY, REFERRER_POLICY, X_CONTENT_TYPE_OPTIONS, X_FRAME_OPTIONS,
+};
+use axum::http::{HeaderValue, Request, StatusCode};
+use axum::middleware::map_response;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
+
+/// Locked CSP (no `unsafe-inline` / `unsafe-eval`). Keep in sync with `packaging/caddy/Caddyfile`.
+pub(crate) const CONTENT_SECURITY_POLICY_VALUE: &str =
+    "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; \
+     font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; \
+     frame-ancestors 'self'; base-uri 'self'; form-action 'self'";
 
 pub fn router(state: AppState) -> Router<AppState> {
     // Always serve the favicon so opening /api/health (or the embedded welcome)
@@ -40,7 +50,42 @@ pub fn router(state: AppState) -> Router<AppState> {
         router = router.fallback(missing_frontend);
     }
 
-    router
+    router.layer(map_response(apply_html_security_headers_middleware))
+}
+
+async fn apply_html_security_headers_middleware<B>(mut response: Response<B>) -> Response<B> {
+    if !response_is_html(&response) {
+        return response;
+    }
+    let headers = response.headers_mut();
+    headers.insert(
+        CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CONTENT_SECURITY_POLICY_VALUE),
+    );
+    headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    headers.insert(X_FRAME_OPTIONS, HeaderValue::from_static("SAMEORIGIN"));
+    headers.insert(
+        REFERRER_POLICY,
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    response
+}
+
+fn response_is_html<B>(response: &Response<B>) -> bool {
+    response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|ct| {
+            let ct = ct
+                .split(';')
+                .next()
+                .unwrap_or(ct)
+                .trim()
+                .to_ascii_lowercase();
+            ct == "text/html" || ct == "application/xhtml+xml"
+        })
+        .unwrap_or(false)
 }
 
 async fn favicon_svg() -> Response {
@@ -128,7 +173,7 @@ fn missing_frontend_message() -> (StatusCode, Html<&'static str>) {
     (
         StatusCode::NOT_FOUND,
         Html(
-            "<!doctype html><html><body style='font-family:sans-serif;padding:2rem'>\
+            "<!doctype html><html><body>\
              <h1>ChemLab frontend not configured</h1>\
              <p>Set <code>CHEMLAB_VITE_PROXY</code> (dev) or <code>CHEMLAB_STATIC_DIR</code> to a built SPA\
              that contains <code>index.html</code>. If <code>CHEMLAB_STATIC_DIR</code> is set but the path\
@@ -147,25 +192,79 @@ fn embedded_welcome_html() -> String {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>ChemLab</title>
-  <style>
-    :root { color-scheme: dark; --ink:#ddf7ff; --ink-soft:#86a7df; --accent:#82fb9c; }
-    body { margin:0; min-height:100vh; font-family: Georgia, "Times New Roman", serif;
-      background: radial-gradient(1000px 560px at 10% 0%, rgba(130,251,156,0.1) 0%, transparent 55%),
-                  linear-gradient(168deg, #0b0c16 0%, #12131f 48%, #0b0c16 100%);
-      color: var(--ink); display:grid; place-items:center; }
-    main { max-width: 36rem; padding: 2rem; text-align: left; }
-    .brand { font-size: clamp(2.8rem, 8vw, 4.5rem); letter-spacing: -0.03em; margin:0; font-weight:700; }
-    p { font-size: 1.15rem; line-height: 1.5; color: var(--ink-soft); }
-    a { color: var(--accent); }
-  </style>
 </head>
 <body>
   <main>
-    <p class="brand">ChemLab</p>
+    <p>ChemLab</p>
     <p>ChemLab is warming up. Start the Vite app for the full welcome page, or hit the API.</p>
     <p><a href="/api/health">API health</a></p>
   </main>
 </body>
 </html>"#
-    .to_string()
+        .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+
+    fn assert_html_security_headers(response: &Response) {
+        assert_eq!(
+            response
+                .headers()
+                .get(CONTENT_SECURITY_POLICY)
+                .and_then(|v| v.to_str().ok()),
+            Some(CONTENT_SECURITY_POLICY_VALUE)
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(X_CONTENT_TYPE_OPTIONS)
+                .and_then(|v| v.to_str().ok()),
+            Some("nosniff")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(X_FRAME_OPTIONS)
+                .and_then(|v| v.to_str().ok()),
+            Some("SAMEORIGIN")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(REFERRER_POLICY)
+                .and_then(|v| v.to_str().ok()),
+            Some("strict-origin-when-cross-origin")
+        );
+        assert!(
+            response
+                .headers()
+                .get("strict-transport-security")
+                .is_none(),
+            "HSTS must not be set on Axum HTML"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_headers_only_for_html_content_type() {
+        let html = apply_html_security_headers_middleware(
+            Response::builder()
+                .header("content-type", "text/html; charset=utf-8")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_html_security_headers(&html);
+
+        let json = apply_html_security_headers_middleware(
+            Response::builder()
+                .header("content-type", "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert!(json.headers().get(CONTENT_SECURITY_POLICY).is_none());
+    }
 }

@@ -68,6 +68,46 @@ mod tests {
             .any(|part| part.trim().eq_ignore_ascii_case("secure"))
     }
 
+    fn assert_html_security_headers(response: &axum::response::Response) {
+        use axum::http::header::{
+            CONTENT_SECURITY_POLICY, REFERRER_POLICY, X_CONTENT_TYPE_OPTIONS, X_FRAME_OPTIONS,
+        };
+        use frontend::CONTENT_SECURITY_POLICY_VALUE;
+
+        assert_eq!(
+            response
+                .headers()
+                .get(CONTENT_SECURITY_POLICY)
+                .and_then(|v| v.to_str().ok()),
+            Some(CONTENT_SECURITY_POLICY_VALUE)
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(X_CONTENT_TYPE_OPTIONS)
+                .and_then(|v| v.to_str().ok()),
+            Some("nosniff")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(X_FRAME_OPTIONS)
+                .and_then(|v| v.to_str().ok()),
+            Some("SAMEORIGIN")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(REFERRER_POLICY)
+                .and_then(|v| v.to_str().ok()),
+            Some("strict-origin-when-cross-origin")
+        );
+        assert!(response
+            .headers()
+            .get("strict-transport-security")
+            .is_none());
+    }
+
     #[tokio::test]
     async fn health_returns_ok() {
         let app = test_app().await;
@@ -82,6 +122,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("content-security-policy").is_none());
         let json = body_json(response).await;
         assert_eq!(json["status"], "ok");
         assert_eq!(json["service"], "chemlab-server");
@@ -119,9 +160,21 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_html_security_headers(&response);
         let body = body_text(response).await;
         assert!(body.contains("ChemLab frontend not configured"));
         assert!(body.contains("CHEMLAB_STATIC_DIR"));
+    }
+
+    #[tokio::test]
+    async fn embedded_welcome_includes_html_security_headers() {
+        let app = test_app().await;
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_html_security_headers(&response);
     }
 
     #[tokio::test]
@@ -255,6 +308,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(root.status(), StatusCode::OK);
+        assert_html_security_headers(&root);
         assert!(body_text(root).await.contains("ChemLab SPA"));
 
         let asset = app
@@ -268,6 +322,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(asset.status(), StatusCode::OK);
+        assert!(asset.headers().get("content-security-policy").is_none());
         assert_eq!(body_text(asset).await, "asset-ok");
 
         // Unknown SPA path falls back to index.html for client routing.
@@ -281,6 +336,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(spa.status(), StatusCode::OK);
+        assert_html_security_headers(&spa);
         assert!(body_text(spa).await.contains("ChemLab SPA"));
     }
 
@@ -304,6 +360,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(root.status(), StatusCode::NOT_FOUND);
+        assert_html_security_headers(&root);
         let root_body = body_text(root).await;
         assert!(root_body.contains("ChemLab frontend not configured"));
         assert!(root_body.contains("index.html"));
@@ -318,6 +375,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert_html_security_headers(&missing);
         assert!(body_text(missing).await.contains("CHEMLAB_STATIC_DIR"));
     }
 

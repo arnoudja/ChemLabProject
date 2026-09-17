@@ -148,6 +148,10 @@ describe('api client', () => {
       password: 'secret123',
       display_name: 'Ada',
     })
+    const csrfCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url]) => String(url) === '/api/auth/csrf')
+    expect(csrfCalls).toHaveLength(2)
     expect(fetch).toHaveBeenCalledWith('/api/auth/csrf', {
       credentials: 'include',
     })
@@ -166,13 +170,13 @@ describe('api client', () => {
     })
   })
 
-  it('login and logout reuse the cached CSRF token', async () => {
+  it('login refetches CSRF after success and logout clears the cache', async () => {
     await login({ email: 'ada@chemlab.local', password: 'secret123' })
     await logout()
     const csrfCalls = vi
       .mocked(fetch)
       .mock.calls.filter(([url]) => String(url) === '/api/auth/csrf')
-    expect(csrfCalls).toHaveLength(1)
+    expect(csrfCalls).toHaveLength(2)
     expect(fetch).toHaveBeenCalledWith(
       '/api/auth/login',
       expect.objectContaining({
@@ -187,6 +191,12 @@ describe('api client', () => {
         headers: expect.objectContaining({ 'X-CSRF-Token': 'tok-123' }),
       }),
     )
+
+    await login({ email: 'ada@chemlab.local', password: 'secret123' })
+    const csrfCallsAfterRelogin = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url]) => String(url) === '/api/auth/csrf')
+    expect(csrfCallsAfterRelogin).toHaveLength(4)
   })
 
   it('fetchMe includes the session cookie', async () => {

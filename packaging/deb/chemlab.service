@@ -10,6 +10,13 @@ EnvironmentFile=/etc/chemlab/chemlab.env
 ExecStart=/usr/bin/chemlab-server
 WorkingDirectory=/var/lib/chemlab
 Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/chemlab
+ProtectKernelTunables=true
+LockPersonality=true
 
 [Install]
 WantedBy=multi-user.target

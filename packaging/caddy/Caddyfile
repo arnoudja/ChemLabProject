@@ -5,8 +5,8 @@
 #   caddy run --config packaging/caddy/Caddyfile
 #
 # `:443` + `tls internal` serves HTTPS without a public hostname (Caddy local CA).
-# For a public DNS name, replace `:443` with that name and drop `tls internal`
-# so Caddy can obtain a Let's Encrypt certificate automatically.
+# For a public DNS name, use packaging/caddy/Caddyfile.internet-facing instead
+# (Let's Encrypt; do not run both files at once).
 
 :443 {
 	header {

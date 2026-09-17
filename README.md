@@ -20,7 +20,7 @@ scripts/
   generate-types.sh        # regenerate FE types from contracts
   build-deb.sh             # Ubuntu amd64 .deb (binary + web UI + systemd)
 packaging/deb/             # systemd unit, env file, maintainer scripts
-packaging/caddy/           # Caddyfile (HTTPS reverse proxy to loopback)
+packaging/caddy/           # Caddyfile (local/LAN HTTPS) + Caddyfile.internet-facing
 ```
 
 ## Prerequisites (Ubuntu / Omarchy)
@@ -131,16 +131,24 @@ sudo journalctl -u chemlab -e
 
 ### Caddy (HTTPS)
 
-`packaging/caddy/Caddyfile` reverse-proxies HTTPS (`:443`) to the loopback
-daemon and sets HSTS (`Strict-Transport-Security: max-age=31536000; includeSubDomains`,
-no `preload`) on that HTTPS site only — not on Axum HTML, so LAN HTTP is not
-HSTS-locked. Install [Caddy](https://caddyserver.com/docs/install), then:
+`packaging/caddy/Caddyfile` is the local/LAN HTTPS example: it reverse-proxies
+`:443` (`tls internal`) to the loopback daemon and sets HSTS
+(`Strict-Transport-Security: max-age=31536000; includeSubDomains`, no `preload`)
+on that HTTPS site only — not on Axum HTML, so LAN HTTP is not HSTS-locked.
+
+For a public hostname, use `packaging/caddy/Caddyfile.internet-facing` (Let's
+Encrypt automatic HTTPS; replace `chemlab.example.com` with the real DNS name).
+Do not run both Caddyfiles at once.
+
+Install [Caddy](https://caddyserver.com/docs/install), then:
 
 ```bash
 caddy run --config packaging/caddy/Caddyfile
+# public hostname:
+# caddy run --config packaging/caddy/Caddyfile.internet-facing
 ```
 
-On a packaged host you can copy that file over `/etc/caddy/Caddyfile` and run
+On a packaged host you can copy the chosen file over `/etc/caddy/Caddyfile` and run
 `sudo systemctl reload caddy` instead. Caddy is not bundled in the `.deb`.
 
 With Caddy in front, ChemLab is not exposed on LAN port 3847. To serve HTTP on

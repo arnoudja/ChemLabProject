@@ -1,0 +1,26 @@
+# Example public-hostname Caddyfile (Let's Encrypt automatic HTTPS).
+# Replace chemlab.example.com with the real DNS name.
+#
+# One Caddy process: do not run this file and packaging/caddy/Caddyfile at the
+# same time (both want :443).
+#
+# Packaged env stays CHEMLAB_BIND=127.0.0.1:3847 and CHEMLAB_COOKIE_SECURE=true.
+# Optional: set CHEMLAB_SIGNUP_ENABLED=false after the first account.
+#
+# No `tls internal` -- Caddy obtains a Let's Encrypt certificate automatically.
+# reverse_proxy does not set header_up and does not overwrite X-Forwarded-For
+# or X-Forwarded-Proto (Caddy already sets those).
+#
+# email you@example.com
+
+chemlab.example.com {
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:3847
+}

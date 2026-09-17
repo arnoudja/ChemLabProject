@@ -64,8 +64,7 @@ fn rightmost_x_forwarded_for(parts: &Parts) -> Option<String> {
             value
                 .split(',')
                 .map(str::trim)
-                .filter(|ip| !ip.is_empty())
-                .last()
+                .rfind(|ip| !ip.is_empty())
         })
         .map(str::to_string)
 }

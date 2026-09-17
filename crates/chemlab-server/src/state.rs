@@ -11,6 +11,7 @@ pub struct AppState {
 pub struct AppStateInner {
     pub pool: DbPool,
     pub cookie_secure: bool,
+    pub signup_enabled: bool,
     pub session_ttl_hours: i64,
     pub static_dir: Option<std::path::PathBuf>,
     pub vite_dev_proxy: Option<String>,
@@ -24,6 +25,7 @@ impl AppState {
             inner: Arc::new(AppStateInner {
                 pool,
                 cookie_secure: config.cookie_secure,
+                signup_enabled: config.signup_enabled,
                 session_ttl_hours: config.session_ttl_hours,
                 static_dir: config.static_dir.clone(),
                 vite_dev_proxy: config.vite_dev_proxy.clone(),

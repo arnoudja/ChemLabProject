@@ -3,4 +3,4 @@
 /**
  * Liveness / readiness payload for `GET /api/health`.
  */
-export type HealthResponse = { status: string, version: string, service: string, };
+export type HealthResponse = { status: string, version: string, service: string, signup_enabled: boolean, };

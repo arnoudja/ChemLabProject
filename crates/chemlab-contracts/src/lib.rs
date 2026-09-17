@@ -11,14 +11,16 @@ pub struct HealthResponse {
     pub status: String,
     pub version: String,
     pub service: String,
+    pub signup_enabled: bool,
 }
 
 impl HealthResponse {
-    pub fn ok(version: impl Into<String>) -> Self {
+    pub fn ok(version: impl Into<String>, signup_enabled: bool) -> Self {
         Self {
             status: "ok".into(),
             version: version.into(),
             service: "chemlab-server".into(),
+            signup_enabled,
         }
     }
 }
@@ -216,11 +218,17 @@ mod tests {
 
     #[test]
     fn health_response_round_trips() {
-        let health = HealthResponse::ok("0.1.0");
+        let health = HealthResponse::ok("0.1.0", true);
         let json = serde_json::to_string(&health).unwrap();
         let back: HealthResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(health, back);
         assert_eq!(back.status, "ok");
+        assert!(back.signup_enabled);
+
+        let disabled = HealthResponse::ok("0.1.0", false);
+        assert!(!disabled.signup_enabled);
+        let json = serde_json::to_string(&disabled).unwrap();
+        assert!(json.contains("\"signup_enabled\":false"));
     }
 
     #[test]

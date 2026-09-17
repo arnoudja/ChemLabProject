@@ -60,6 +60,7 @@ Useful env vars (also in `.env.example`):
 - `CHEMLAB_DATABASE_URL` — default `sqlite://chemlab.db`
 - `CHEMLAB_VITE_PROXY` — e.g. `http://127.0.0.1:5179` so Axum serves `/` by proxying Vite
 - `CHEMLAB_COOKIE_SECURE` — `true` behind HTTPS (sets `Secure` on session, CSRF, and clear-session cookies)
+- `CHEMLAB_SIGNUP_ENABLED` — `true` / `1` (case-insensitive) enables `POST /api/auth/register`; unset defaults to enabled. `false` returns 403 `{ code: "signup_disabled" }`
 - `CHEMLAB_STATIC_DIR` — directory with built SPA `index.html` (e.g. `apps/web/dist`); missing/incomplete dir returns a 404 HTML page
 
 Health check: [http://127.0.0.1:3847/api/health](http://127.0.0.1:3847/api/health)
@@ -118,8 +119,9 @@ port. Direct health check on the host: `http://127.0.0.1:3847/api/health`.
 | `/var/lib/chemlab/` | SQLite data dir |
 
 The unit env is `CHEMLAB_BIND=127.0.0.1:3847`, `CHEMLAB_STATIC_DIR=/usr/share/chemlab/www`,
-`CHEMLAB_DATABASE_URL=sqlite:///var/lib/chemlab/chemlab.db`, and
-`CHEMLAB_COOKIE_SECURE=true` (HTTPS via Caddy). `postinst` enables and starts
+`CHEMLAB_DATABASE_URL=sqlite:///var/lib/chemlab/chemlab.db`,
+`CHEMLAB_COOKIE_SECURE=true` (HTTPS via Caddy), and `CHEMLAB_SIGNUP_ENABLED=true`.
+`postinst` enables and starts
 the service; `prerm` stops and disables it on remove.
 
 ```bash
@@ -130,7 +132,9 @@ sudo journalctl -u chemlab -e
 ### Caddy (HTTPS)
 
 `packaging/caddy/Caddyfile` reverse-proxies HTTPS (`:443`) to the loopback
-daemon. Install [Caddy](https://caddyserver.com/docs/install), then:
+daemon and sets HSTS (`Strict-Transport-Security: max-age=31536000; includeSubDomains`,
+no `preload`) on that HTTPS site only — not on Axum HTML, so LAN HTTP is not
+HSTS-locked. Install [Caddy](https://caddyserver.com/docs/install), then:
 
 ```bash
 caddy run --config packaging/caddy/Caddyfile
@@ -153,7 +157,7 @@ Working thin stub (not a fake button):
 | Method | Path | Notes |
 | --- | --- | --- |
 | `GET`  | `/api/auth/csrf` | issues HttpOnly `chemlab_csrf` cookie + `{ csrf_token }` |
-| `POST` | `/api/auth/register` | email, password (≥8), display_name → sets session cookie; requires CSRF; rate-limited |
+| `POST` | `/api/auth/register` | email, password (≥8), display_name → sets session cookie; requires CSRF; rate-limited; 403 `{ code: "signup_disabled" }` when `CHEMLAB_SIGNUP_ENABLED` is false |
 | `POST` | `/api/auth/login` | email, password → rotates session (invalidates previous, sets new cookie); requires CSRF; rate-limited |
 | `POST` | `/api/auth/logout` | clears cookie + deletes server session; requires CSRF |
 | `GET`  | `/api/auth/me` | `{ authenticated, user }` |

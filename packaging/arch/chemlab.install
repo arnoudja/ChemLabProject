@@ -1,0 +1,51 @@
+#!/bin/sh
+
+post_install() {
+    if ! getent group chemlab >/dev/null 2>&1; then
+        groupadd -r chemlab
+    fi
+    if ! getent passwd chemlab >/dev/null 2>&1; then
+        useradd -r -g chemlab -d /var/lib/chemlab -s /usr/bin/nologin \
+            -c "ChemLab server" chemlab
+    fi
+
+    install -d -o chemlab -g chemlab -m 0750 /var/lib/chemlab
+
+    if [ -f /etc/chemlab/chemlab.env ]; then
+        chown root:chemlab /etc/chemlab/chemlab.env
+        chmod 0640 /etc/chemlab/chemlab.env
+    fi
+
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl enable --now chemlab.service
+    fi
+}
+
+post_upgrade() {
+    if ! getent group chemlab >/dev/null 2>&1; then
+        groupadd -r chemlab
+    fi
+    if ! getent passwd chemlab >/dev/null 2>&1; then
+        useradd -r -g chemlab -d /var/lib/chemlab -s /usr/bin/nologin \
+            -c "ChemLab server" chemlab
+    fi
+
+    install -d -o chemlab -g chemlab -m 0750 /var/lib/chemlab
+
+    if [ -f /etc/chemlab/chemlab.env ]; then
+        chown root:chemlab /etc/chemlab/chemlab.env
+        chmod 0640 /etc/chemlab/chemlab.env
+    fi
+
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl try-restart chemlab.service || systemctl enable --now chemlab.service
+    fi
+}
+
+pre_remove() {
+    if [ -d /run/systemd/system ]; then
+        systemctl disable --now chemlab.service || true
+    fi
+}

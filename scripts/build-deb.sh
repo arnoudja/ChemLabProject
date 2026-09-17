@@ -16,39 +16,8 @@ if [ "$ARCH" != "amd64" ]; then
     exit 1
 fi
 
-VERSION="$(
-    awk '
-        $0 == "[workspace.package]" { in_pkg = 1; next }
-        in_pkg && $1 == "version" {
-            gsub(/"/, "", $3)
-            print $3
-            exit
-        }
-    ' Cargo.toml
-)"
-if [ -z "${VERSION:-}" ]; then
-    echo "failed to read workspace.package version from Cargo.toml" >&2
-    exit 1
-fi
-
-echo "==> cargo build --release -p chemlab-server"
-cargo build --release -p chemlab-server
-
-echo "==> npm ci && npm run build (apps/web)"
-(
-    cd apps/web
-    npm ci
-    npm run build
-)
-
-if [ ! -x target/release/chemlab-server ]; then
-    echo "missing target/release/chemlab-server" >&2
-    exit 1
-fi
-if [ ! -f apps/web/dist/index.html ]; then
-    echo "missing apps/web/dist/index.html (web build failed?)" >&2
-    exit 1
-fi
+VERSION="$("$ROOT/scripts/build-release.sh" --print-version)"
+"$ROOT/scripts/build-release.sh"
 
 STAGE="$(mktemp -d)"
 chmod 0755 "$STAGE"
@@ -65,8 +34,8 @@ mkdir -p \
 install -m 0755 target/release/chemlab-server "$STAGE/usr/bin/chemlab-server"
 cp -a apps/web/dist/. "$STAGE/usr/share/chemlab/www/"
 # Not world-writable; postinst also forces root:chemlab 0640.
-install -m 0640 packaging/deb/chemlab.env "$STAGE/etc/chemlab/chemlab.env"
-install -m 0644 packaging/deb/chemlab.service "$STAGE/lib/systemd/system/chemlab.service"
+install -m 0640 packaging/common/chemlab.env "$STAGE/etc/chemlab/chemlab.env"
+install -m 0644 packaging/common/chemlab.service "$STAGE/lib/systemd/system/chemlab.service"
 
 SIZE_KB="$(du -sk --exclude=DEBIAN "$STAGE" | awk '{print $1}')"
 sed "s/@VERSION@/${VERSION}/g" packaging/deb/debian/control |

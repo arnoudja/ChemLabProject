@@ -1,0 +1,26 @@
+pkgname=chemlab
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='ChemLab lab game server'
+url='https://github.com/arnoudja/ChemLabProject'
+arch=('x86_64')
+license=('MIT')
+depends=('gcc-libs' 'systemd')
+install=chemlab.install
+backup=('etc/chemlab/chemlab.env')
+options=('!strip' '!debug')
+# Artifacts are built by scripts/build-release.sh before makepkg runs.
+source=()
+sha256sums=()
+
+package() {
+  local root="@ROOT@"
+
+  install -Dm755 "$root/target/release/chemlab-server" "$pkgdir/usr/bin/chemlab-server"
+  install -d "$pkgdir/usr/share/chemlab/www"
+  cp -a "$root/apps/web/dist/." "$pkgdir/usr/share/chemlab/www/"
+  install -Dm640 "$root/packaging/common/chemlab.env" "$pkgdir/etc/chemlab/chemlab.env"
+  install -Dm644 "$root/packaging/common/chemlab.service" \
+    "$pkgdir/usr/lib/systemd/system/chemlab.service"
+  install -d "$pkgdir/var/lib/chemlab"
+}

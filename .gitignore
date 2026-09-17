@@ -32,3 +32,4 @@ lcov.info
 # Packaging output
 /dist/
 *.deb
+*.pkg.tar.*

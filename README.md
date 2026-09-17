@@ -18,23 +18,36 @@ apps/
   web/                     # Vite + React + TypeScript + Tailwind
 scripts/
   generate-types.sh        # regenerate FE types from contracts
+  build-release.sh         # cargo --release + Vite dist (used by packagers)
   build-deb.sh             # Ubuntu amd64 .deb (binary + web UI + systemd)
-packaging/deb/             # systemd unit, env file, maintainer scripts
+  build-arch.sh            # Omarchy/Arch x86_64 .pkg.tar.zst
+packaging/common/          # systemd unit + env (shared)
+packaging/deb/             # Debian control + maintainer scripts
+packaging/arch/            # PKGBUILD + install script
 packaging/caddy/           # Caddyfile (local/LAN HTTPS) + Caddyfile.internet-facing
 ```
 
 ## Prerequisites (Ubuntu / Omarchy)
 
+Rust is pinned in `rust-toolchain.toml`. Node 22+ is required for the Vite app (`node -v`).
+
+**Ubuntu / Debian**
+
 ```bash
-# Rust (pinned in rust-toolchain.toml)
 curl https://sh.rustup.rs -sSf | sh
 rustup show
-
-# Node 22+ (for the Vite app)
 sudo apt update
 sudo apt install -y build-essential pkg-config libssl-dev sqlite3
 # Install Node via nvm, nodesource, or your distro package — need npm.
-node -v   # expect v22+
+```
+
+**Omarchy / Arch**
+
+```bash
+curl https://sh.rustup.rs -sSf | sh
+rustup show
+sudo pacman -S --needed base-devel
+# Node 22+ via mise (Omarchy default) or: sudo pacman -S --needed nodejs npm
 ```
 
 ## Run locally (two processes)
@@ -94,17 +107,27 @@ cd ../..
 CHEMLAB_STATIC_DIR=apps/web/dist cargo run -p chemlab-server
 ```
 
-## Install on Ubuntu (.deb)
+## Install on Ubuntu (.deb) or Omarchy (.pkg.tar.zst)
 
 The package installs `chemlab-server`, the built web UI, and a systemd unit that
 starts on boot and binds **`127.0.0.1:3847`**. Put Caddy in front for HTTPS
 (see below). `cargo run` defaults stay `127.0.0.1:3847`.
 
-Build on Ubuntu amd64 (needs Rust, Node 22+, `dpkg-deb`):
+Build on the target distro (needs Rust, Node 22+, and the packager below).
+`./update.sh` detects Ubuntu vs Omarchy and rebuilds + reinstalls.
+
+**Ubuntu amd64** (needs `dpkg-deb`):
 
 ```bash
 ./scripts/build-deb.sh
 sudo apt install ./dist/chemlab_*.deb
+```
+
+**Omarchy / Arch x86_64** (needs `makepkg` from `base-devel`):
+
+```bash
+./scripts/build-arch.sh
+sudo pacman -U ./dist/chemlab-*.pkg.tar.zst
 ```
 
 With Caddy in front, open `https://<host>/`. The daemon itself is not on the LAN
@@ -115,14 +138,14 @@ port. Direct health check on the host: `http://127.0.0.1:3847/api/health`.
 | `/usr/bin/chemlab-server` | release binary |
 | `/usr/share/chemlab/www/` | production web UI (`apps/web` `dist/`) |
 | `/etc/chemlab/chemlab.env` | daemon env (not world-writable) |
-| `/lib/systemd/system/chemlab.service` | systemd unit (`User=chemlab`) |
+| systemd unit (`User=chemlab`) | `/lib/systemd/system/chemlab.service` on Ubuntu; `/usr/lib/systemd/system/chemlab.service` on Omarchy |
 | `/var/lib/chemlab/` | SQLite data dir |
 
 The unit env is `CHEMLAB_BIND=127.0.0.1:3847`, `CHEMLAB_STATIC_DIR=/usr/share/chemlab/www`,
 `CHEMLAB_DATABASE_URL=sqlite:///var/lib/chemlab/chemlab.db`,
 `CHEMLAB_COOKIE_SECURE=true` (HTTPS via Caddy), and `CHEMLAB_SIGNUP_ENABLED=true`.
-`postinst` enables and starts
-the service; `prerm` stops and disables it on remove.
+Debian `postinst` / Arch `post_install` enables and starts
+the service; `prerm` / `pre_remove` stops and disables it on remove.
 
 ```bash
 sudo systemctl status chemlab
@@ -140,7 +163,8 @@ For a public hostname, use `packaging/caddy/Caddyfile.internet-facing` (Let's
 Encrypt automatic HTTPS; replace `chemlab.example.com` with the real DNS name).
 Do not run both Caddyfiles at once.
 
-Install [Caddy](https://caddyserver.com/docs/install), then:
+Install [Caddy](https://caddyserver.com/docs/install) (Ubuntu package, or on Omarchy
+`omarchy pkg add caddy` / `sudo pacman -S caddy`), then:
 
 ```bash
 caddy run --config packaging/caddy/Caddyfile
@@ -149,14 +173,15 @@ caddy run --config packaging/caddy/Caddyfile
 ```
 
 On a packaged host you can copy the chosen file over `/etc/caddy/Caddyfile` and run
-`sudo systemctl reload caddy` instead. Caddy is not bundled in the `.deb`.
+`sudo systemctl reload caddy` instead. Caddy is not bundled in the `.deb` or
+`.pkg.tar.zst`.
 
 With Caddy in front, ChemLab is not exposed on LAN port 3847. To serve HTTP on
 the LAN without Caddy, set `CHEMLAB_BIND=0.0.0.0:3847` and
 `CHEMLAB_COOKIE_SECURE=false` in `/etc/chemlab/chemlab.env` (or the repo
-`packaging/deb/chemlab.env` before you build) and restart `chemlab`.
+`packaging/common/chemlab.env` before you build) and restart `chemlab`.
 
-CI uploads the `.deb` as the `chemlab-deb` artifact.
+CI uploads the `.deb` as `chemlab-deb` and the Arch package as `chemlab-arch`.
 
 ## Auth stub (accounts from day one)
 
@@ -190,7 +215,7 @@ cd apps/web && npm test
 ```
 
 CI runs `cargo test --workspace`, `cargo fmt --check`, `cargo clippy`, a frontend
-build, and an amd64 `.deb` package job.
+build, an amd64 `.deb` package job, and an x86_64 Arch package job.
 
 ## Generate shared TS types
 

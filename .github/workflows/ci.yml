@@ -86,3 +86,25 @@ jobs:
         with:
           name: chemlab-deb
           path: dist/chemlab_*.deb
+
+  arch:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git rustup nodejs npm
+      - uses: actions/checkout@v4
+      - name: Build Arch package
+        run: |
+          useradd --create-home --shell /bin/bash builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- bash -c "cd '$GITHUB_WORKSPACE' && rustup default 1.98.1 && ./scripts/build-arch.sh"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chemlab-arch
+          path: dist/chemlab-*.pkg.tar.zst

@@ -102,12 +102,10 @@ mod tests {
                 .and_then(|v| v.to_str().ok()),
             Some("strict-origin-when-cross-origin")
         );
-        assert!(
-            response
-                .headers()
-                .get("strict-transport-security")
-                .is_none()
-        );
+        assert!(response
+            .headers()
+            .get("strict-transport-security")
+            .is_none());
     }
 
     #[tokio::test]

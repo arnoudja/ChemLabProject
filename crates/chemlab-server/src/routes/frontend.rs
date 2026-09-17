@@ -13,8 +13,8 @@ use axum::http::header::{
     CONTENT_SECURITY_POLICY, REFERRER_POLICY, X_CONTENT_TYPE_OPTIONS, X_FRAME_OPTIONS,
 };
 use axum::http::{HeaderValue, Request, StatusCode};
-use axum::response::{Html, IntoResponse, Response};
 use axum::middleware::map_response;
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
@@ -62,10 +62,7 @@ async fn apply_html_security_headers_middleware<B>(mut response: Response<B>) ->
         CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(CONTENT_SECURITY_POLICY_VALUE),
     );
-    headers.insert(
-        X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
+    headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
     headers.insert(X_FRAME_OPTIONS, HeaderValue::from_static("SAMEORIGIN"));
     headers.insert(
         REFERRER_POLICY,
@@ -80,7 +77,12 @@ fn response_is_html<B>(response: &Response<B>) -> bool {
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .map(|ct| {
-            let ct = ct.split(';').next().unwrap_or(ct).trim().to_ascii_lowercase();
+            let ct = ct
+                .split(';')
+                .next()
+                .unwrap_or(ct)
+                .trim()
+                .to_ascii_lowercase();
             ct == "text/html" || ct == "application/xhtml+xml"
         })
         .unwrap_or(false)
@@ -265,5 +267,4 @@ mod tests {
         .await;
         assert!(json.headers().get(CONTENT_SECURITY_POLICY).is_none());
     }
-
 }

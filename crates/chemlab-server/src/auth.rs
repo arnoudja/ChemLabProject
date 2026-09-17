@@ -14,6 +14,7 @@ use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::Duration;
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 
 pub const SESSION_COOKIE: &str = "chemlab_session";
 pub const CSRF_COOKIE: &str = "chemlab_csrf";
@@ -72,6 +73,19 @@ pub fn clear_session_cookie(secure: bool) -> Cookie<'static> {
     cookie
 }
 
+pub fn clear_csrf_cookie(secure: bool) -> Cookie<'static> {
+    let mut cookie = Cookie::build((CSRF_COOKIE, ""))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .path("/")
+        .max_age(cookie::time::Duration::seconds(0))
+        .build();
+    if secure {
+        cookie.set_secure(true);
+    }
+    cookie
+}
+
 pub fn token_from_jar(jar: &CookieJar) -> Option<String> {
     jar.get(SESSION_COOKIE).map(|c| c.value().to_string())
 }
@@ -99,7 +113,10 @@ pub fn csrf_tokens_match(header: &str, cookie: &str) -> bool {
     if header.is_empty() || cookie.is_empty() {
         return false;
     }
-    hash_token(header) == hash_token(cookie)
+    if header.len() != cookie.len() {
+        return false;
+    }
+    header.as_bytes().ct_eq(cookie.as_bytes()).into()
 }
 
 /// Double-submit CSRF check for mutating routes (auth today, lab POSTs later).
@@ -166,6 +183,7 @@ mod tests {
     fn csrf_tokens_match_rejects_empty_or_mismatch() {
         assert!(csrf_tokens_match("same-token", "same-token"));
         assert!(!csrf_tokens_match("same-token", "other-token"));
+        assert!(!csrf_tokens_match("same-token", "same-token-longer"));
         assert!(!csrf_tokens_match("", "same-token"));
         assert!(!csrf_tokens_match("same-token", ""));
         assert!(!csrf_tokens_match("", ""));
@@ -180,6 +198,8 @@ mod tests {
         assert_eq!(csrf.secure(), Some(true));
         let clear = clear_session_cookie(true);
         assert_eq!(clear.secure(), Some(true));
+        let clear_csrf = clear_csrf_cookie(true);
+        assert_eq!(clear_csrf.secure(), Some(true));
 
         assert_ne!(
             session_cookie("session-tok", false, ttl).secure(),
@@ -187,5 +207,6 @@ mod tests {
         );
         assert_ne!(csrf_cookie("csrf-tok", false, ttl).secure(), Some(true));
         assert_ne!(clear_session_cookie(false).secure(), Some(true));
+        assert_ne!(clear_csrf_cookie(false).secure(), Some(true));
     }
 }

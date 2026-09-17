@@ -233,6 +233,7 @@ mod tests {
             "session Set-Cookie should include Secure: {register_cookies:?}"
         );
         let session_cookie = session_cookie_pair(&register);
+        let (csrf_token, csrf_cookie) = csrf_pair_from_response(&register);
 
         let logout = app
             .oneshot(
@@ -254,6 +255,12 @@ mod tests {
                 .iter()
                 .any(|c| c.contains("chemlab_session=") && cookie_has_secure(c)),
             "clear session Set-Cookie should include Secure: {clear_cookies:?}"
+        );
+        assert!(
+            clear_cookies
+                .iter()
+                .any(|c| set_cookie_clears_cookie(c, "chemlab_csrf") && cookie_has_secure(c)),
+            "clear csrf Set-Cookie should include Secure: {clear_cookies:?}"
         );
     }
 
@@ -399,6 +406,25 @@ mod tests {
 
     fn cookie_pair(set_cookie: &str) -> String {
         set_cookie.split(';').next().unwrap().to_string()
+    }
+
+    fn csrf_pair_from_response(response: &axum::response::Response) -> (String, String) {
+        let set_cookie = set_cookie_headers(response)
+            .into_iter()
+            .find(|value| value.contains("chemlab_csrf="))
+            .expect("chemlab_csrf set-cookie");
+        let cookie = cookie_pair(&set_cookie);
+        let token = cookie
+            .split_once('=')
+            .expect("csrf cookie value")
+            .1
+            .to_string();
+        (token, cookie)
+    }
+
+    fn set_cookie_clears_cookie(set_cookie: &str, name: &str) -> bool {
+        set_cookie.starts_with(&format!("{name}="))
+            && set_cookie.to_ascii_lowercase().contains("max-age=0")
     }
 
     fn session_cookie_pair(response: &axum::response::Response) -> String {
@@ -629,8 +655,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(register.status(), StatusCode::CREATED);
-        let session_cookie = cookie_pair(&first_set_cookie(&register));
+        let session_cookie = session_cookie_pair(&register);
         assert!(session_cookie.contains("chemlab_session="));
+        let (csrf_token, csrf_cookie) = csrf_pair_from_response(&register);
 
         let me = app
             .clone()
@@ -662,6 +689,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(logout.status(), StatusCode::NO_CONTENT);
+        let logout_cookies = set_cookie_headers(&logout);
+        assert!(
+            logout_cookies
+                .iter()
+                .any(|c| set_cookie_clears_cookie(c, "chemlab_csrf")),
+            "logout should clear chemlab_csrf: {logout_cookies:?}"
+        );
 
         let login = app
             .oneshot(
@@ -708,6 +742,56 @@ mod tests {
         let me_new = get_me(&app, &new_session).await;
         assert_eq!(me_new["authenticated"], true);
         assert_eq!(me_new["user"]["email"], "ada@chemlab.local");
+    }
+
+    #[tokio::test]
+    async fn login_rotates_csrf_old_token_rejected_new_token_works() {
+        let app = test_app().await;
+        let (csrf_token, csrf_cookie, _session_cookie) =
+            register_user(&app, "csrf-rotate@chemlab.local").await;
+
+        let login = post_login(
+            &app,
+            &csrf_token,
+            &csrf_cookie,
+            "csrf-rotate@chemlab.local",
+            "secret123",
+            None,
+        )
+        .await;
+        assert_eq!(login.status(), StatusCode::OK);
+        let (new_csrf_token, new_csrf_cookie) = csrf_pair_from_response(&login);
+        assert_ne!(new_csrf_token, csrf_token);
+        let new_session = session_cookie_pair(&login);
+
+        let logout_old_csrf = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/logout")
+                    .header("cookie", format!("{new_session}; {new_csrf_cookie}"))
+                    .header("x-csrf-token", &csrf_token)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(logout_old_csrf.status(), StatusCode::FORBIDDEN);
+
+        let logout_new_csrf = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/logout")
+                    .header("cookie", format!("{new_session}; {new_csrf_cookie}"))
+                    .header("x-csrf-token", &new_csrf_token)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(logout_new_csrf.status(), StatusCode::NO_CONTENT);
     }
 
     #[tokio::test]
@@ -874,7 +958,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(register.status(), StatusCode::CREATED);
-        let session_cookie = cookie_pair(&first_set_cookie(&register));
+        let session_cookie = session_cookie_pair(&register);
+        let (csrf_token, csrf_cookie) = csrf_pair_from_response(&register);
         (csrf_token, csrf_cookie, session_cookie)
     }
 

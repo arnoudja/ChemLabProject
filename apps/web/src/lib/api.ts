@@ -67,7 +67,10 @@ export async function register(body: RegisterRequest): Promise<AuthUserResponse>
     headers: await mutateHeaders(true),
     body: JSON.stringify(body),
   })
-  return parseJson<AuthUserResponse>(response)
+  const user = await parseJson<AuthUserResponse>(response)
+  clearCsrfTokenCache()
+  await fetchCsrfToken()
+  return user
 }
 
 export async function login(body: LoginRequest): Promise<AuthUserResponse> {
@@ -77,7 +80,10 @@ export async function login(body: LoginRequest): Promise<AuthUserResponse> {
     headers: await mutateHeaders(true),
     body: JSON.stringify(body),
   })
-  return parseJson<AuthUserResponse>(response)
+  const user = await parseJson<AuthUserResponse>(response)
+  clearCsrfTokenCache()
+  await fetchCsrfToken()
+  return user
 }
 
 export async function logout(): Promise<void> {
@@ -89,6 +95,7 @@ export async function logout(): Promise<void> {
   if (!response.ok && response.status !== 204) {
     throw new Error('Could not log out')
   }
+  clearCsrfTokenCache()
 }
 
 export async function fetchLabScene(): Promise<LabScene> {

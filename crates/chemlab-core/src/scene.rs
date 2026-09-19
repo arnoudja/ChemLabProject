@@ -787,12 +787,13 @@ fn apply_pour(
     }
 
     let target = &scene.items[target_idx];
+    let dest_is_main_beaker = target.id == "beaker-water";
     let has_water = target
         .properties
         .composition
         .iter()
         .any(|c| c.substance_id == "water" && c.phase == "liquid");
-    if !has_water {
+    if !has_water && !dest_is_main_beaker {
         return Err(SceneError::InvalidAction);
     }
 
@@ -808,6 +809,21 @@ fn apply_pour(
         kind: "poured".into(),
         message: format!("Poured {poured_label} into the target."),
     });
+
+    if dest_is_main_beaker && !has_water {
+        for held in held_all {
+            let scoops = held.amount_scoop.or(Some(1));
+            let mass_g = held.amount_g.or(Some(SPOON_SCOOP_MASS_G));
+            add_or_increase_solid(
+                &mut scene.items[target_idx],
+                &held.substance_id,
+                scoops,
+                mass_g,
+            );
+        }
+        crate::solubility::enforce_saturation(&mut scene.items[target_idx]);
+        return Ok(());
+    }
 
     for held in held_all {
         let temperature_c = scene.items[target_idx]
@@ -1224,8 +1240,19 @@ fn apply_pipette_put_away(scene: &mut Scene, tool_idx: usize) -> Result<(), Scen
     Ok(())
 }
 
+fn is_solid_stock_beaker(item: &SceneItem) -> bool {
+    matches!(
+        item.id.as_str(),
+        "beaker-nacl" | "beaker-cacl2" | "beaker-sand"
+    )
+}
+
 fn is_tongs_vessel(item: &SceneItem) -> bool {
     item.id == "beaker-water" || is_distilled_water_stock(item) || item.kind == "evaporation_dish"
+}
+
+fn is_tongs_pickup_target(item: &SceneItem) -> bool {
+    is_tongs_vessel(item) || is_solid_stock_beaker(item)
 }
 
 fn vessel_liquid_capacity_ml(item: &SceneItem) -> Option<f64> {
@@ -1252,7 +1279,7 @@ fn apply_tongs_use(
     if is_filter_unit_target(&scene.items[target_idx]) {
         return apply_tongs_filter_unit(scene, tool_idx);
     }
-    if !is_tongs_vessel(&scene.items[target_idx]) {
+    if !is_tongs_pickup_target(&scene.items[target_idx]) {
         return Err(SceneError::InvalidAction);
     }
     match scene.items[tool_idx].properties.source_item_id.clone() {
@@ -1365,7 +1392,11 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
     if source_idx == dest_idx {
         return Err(SceneError::InvalidAction);
     }
-    if !is_tongs_vessel(&scene.items[dest_idx]) {
+    if is_solid_stock_beaker(&scene.items[source_idx]) {
+        if scene.items[dest_idx].id != "beaker-water" {
+            return Err(SceneError::InvalidAction);
+        }
+    } else if !is_tongs_vessel(&scene.items[dest_idx]) {
         return Err(SceneError::InvalidAction);
     }
 
@@ -3755,12 +3786,124 @@ mod tests {
     }
 
     #[test]
-    fn tongs_reject_stocks_burner_and_already_held_vessel() {
+    fn tongs_pick_up_and_put_away_each_solid_stock() {
+        for stock_id in ["beaker-nacl", "beaker-cacl2", "beaker-sand"] {
+            let mut scene = initial_bench_scene("lab-test");
+            use_tongs(&mut scene, stock_id).unwrap();
+            assert_eq!(item(&scene, stock_id).location, "held");
+            assert_eq!(item(&scene, "tongs-1").location, "hand");
+            assert_eq!(
+                item(&scene, "tongs-1").properties.source_item_id.as_deref(),
+                Some(stock_id)
+            );
+
+            put_tongs_away(&mut scene).unwrap();
+            assert_eq!(item(&scene, stock_id).location, "bench");
+            assert_eq!(item(&scene, "tongs-1").location, "bench");
+            assert_eq!(item(&scene, "tongs-1").properties.source_item_id, None);
+        }
+    }
+
+    #[test]
+    fn tongs_dump_all_nacl_into_empty_beaker() {
         let mut scene = initial_bench_scene("lab-test");
+        let stock_g = solid_g(item(&scene, "beaker-nacl"), "nacl");
+        assert!(stock_g > 0.0);
+
+        use_tongs(&mut scene, "beaker-nacl").unwrap();
+        use_tongs(&mut scene, "beaker-water").unwrap();
+
+        assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 0.0);
+        assert!((solid_g(item(&scene, "beaker-water"), "nacl") - stock_g).abs() < 1e-12);
+        assert_eq!(aqueous_mol(item(&scene, "beaker-water"), "na+"), 0.0);
+        assert_eq!(item(&scene, "beaker-nacl").location, "held");
+        assert_eq!(
+            item(&scene, "tongs-1").properties.source_item_id.as_deref(),
+            Some("beaker-nacl")
+        );
+        assert!(scene.last_events.iter().any(|e| e.kind == "poured"));
+        assert!(!scene.last_events.iter().any(|e| e.kind == "dissolved"));
+    }
+
+    #[test]
+    fn tongs_dump_nacl_into_solids_only_beaker() {
+        let mut scene = initial_bench_scene("lab-test");
+        use_tongs(&mut scene, "beaker-sand").unwrap();
+        use_tongs(&mut scene, "beaker-water").unwrap();
+        put_tongs_away(&mut scene).unwrap();
+
+        let sand_g = solid_g(item(&scene, "beaker-water"), "sand");
+        let nacl_g = solid_g(item(&scene, "beaker-nacl"), "nacl");
+        use_tongs(&mut scene, "beaker-nacl").unwrap();
+        use_tongs(&mut scene, "beaker-water").unwrap();
+
+        assert!((solid_g(item(&scene, "beaker-water"), "sand") - sand_g).abs() < 1e-12);
+        assert!((solid_g(item(&scene, "beaker-water"), "nacl") - nacl_g).abs() < 1e-12);
+        assert_eq!(aqueous_mol(item(&scene, "beaker-water"), "na+"), 0.0);
+        assert_eq!(water_ml(item(&scene, "beaker-water")), 0.0);
+        assert_eq!(item(&scene, "beaker-nacl").location, "held");
+    }
+
+    #[test]
+    fn tongs_dump_nacl_into_filled_beaker_enforces_saturation() {
+        let mut scene = bench_with_water("lab-test");
+        let nacl_g = solid_g(item(&scene, "beaker-nacl"), "nacl");
+
+        use_tongs(&mut scene, "beaker-nacl").unwrap();
+        use_tongs(&mut scene, "beaker-water").unwrap();
+
+        let expected = nacl_g / NACL_MOLAR_MASS_G_PER_MOL;
+        assert!((aqueous_mol(item(&scene, "beaker-water"), "na+") - expected).abs() < 1e-9);
+        assert!((aqueous_mol(item(&scene, "beaker-water"), "cl-") - expected).abs() < 1e-9);
+        assert_eq!(solid_g(item(&scene, "beaker-water"), "nacl"), 0.0);
+        assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 0.0);
+        assert_eq!(item(&scene, "beaker-nacl").location, "held");
+    }
+
+    #[test]
+    fn tongs_empty_stock_pour_is_empty_holding() {
+        let mut scene = initial_bench_scene("lab-test");
+        use_tongs(&mut scene, "beaker-nacl").unwrap();
+        use_tongs(&mut scene, "beaker-water").unwrap();
+        let err = use_tongs(&mut scene, "beaker-water").unwrap_err();
+        assert_eq!(err, SceneError::EmptyHolding);
+        assert_eq!(item(&scene, "beaker-nacl").location, "held");
+        assert_eq!(
+            item(&scene, "tongs-1").properties.source_item_id.as_deref(),
+            Some("beaker-nacl")
+        );
+    }
+
+    #[test]
+    fn tongs_reject_held_solid_stock_into_dish_h2o_and_other_stock() {
+        let mut scene = initial_bench_scene("lab-test");
+        use_tongs(&mut scene, "beaker-nacl").unwrap();
+        let stock_g = solid_g(item(&scene, "beaker-nacl"), "nacl");
+        for dest in ["dish-1", "beaker-h2o", "beaker-cacl2", "burner-1"] {
+            assert_eq!(
+                use_tongs(&mut scene, dest).unwrap_err(),
+                SceneError::InvalidAction
+            );
+        }
+        assert_eq!(item(&scene, "beaker-nacl").location, "held");
+        assert!((solid_g(item(&scene, "beaker-nacl"), "nacl") - stock_g).abs() < 1e-12);
+    }
+
+    #[test]
+    fn tongs_reject_pouring_into_sitting_solid_stock() {
+        let mut scene = bench_with_water("lab-test");
+        use_tongs(&mut scene, "beaker-water").unwrap();
         assert_eq!(
             use_tongs(&mut scene, "beaker-nacl").unwrap_err(),
             SceneError::InvalidAction
         );
+        assert_eq!(item(&scene, "beaker-water").location, "held");
+        assert!(solid_g(item(&scene, "beaker-nacl"), "nacl") > 0.0);
+    }
+
+    #[test]
+    fn tongs_reject_burner_and_already_held_vessel() {
+        let mut scene = initial_bench_scene("lab-test");
         assert_eq!(
             use_tongs(&mut scene, "burner-1").unwrap_err(),
             SceneError::InvalidAction
@@ -3772,6 +3915,33 @@ mod tests {
             SceneError::InvalidAction
         );
         assert_eq!(item(&scene, "beaker-water").location, "held");
+    }
+
+    #[test]
+    fn pour_scoop_into_empty_beaker_adds_undissolved_solid() {
+        let mut scene = initial_bench_scene("lab-test");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+
+        assert!(item(&scene, "spoon-1").properties.holding.is_empty());
+        assert!((solid_g(item(&scene, "beaker-water"), "nacl") - SPOON_SCOOP_MASS_G).abs() < 1e-12);
+        assert_eq!(aqueous_mol(item(&scene, "beaker-water"), "na+"), 0.0);
+        assert!(scene.last_events.iter().any(|e| e.kind == "poured"));
+        assert!(!scene.last_events.iter().any(|e| e.kind == "dissolved"));
     }
 
     #[test]

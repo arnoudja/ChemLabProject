@@ -202,9 +202,11 @@ export function stockFillRatio(amountG: number | null | undefined): number {
 function SolidBeakerSvg({
   solid,
   amountG,
+  floating,
 }: {
   solid: StockSolid
   amountG?: number | null
+  floating?: boolean
 }) {
   const pile = solid === 'sand' ? '#C9A36A' : solid === 'cacl2' ? '#EEF4FF' : '#F4FBFF'
   const speck = solid === 'sand' ? '#8C6A3A' : solid === 'cacl2' ? '#C4D2ED' : '#DDF7FF'
@@ -216,7 +218,7 @@ function SolidBeakerSvg({
   return (
     <svg
       viewBox="0 0 80 118"
-      className="h-28 w-20"
+      className={floating ? 'h-16 w-12' : 'h-28 w-20'}
       aria-hidden
       data-stock-solid={solid}
       data-stock-fill={fill.toFixed(2)}
@@ -583,9 +585,34 @@ function burnerIsOn(scene: LabScene): boolean {
 
 function tongsHeldVesselId(
   scene: LabScene,
-): typeof WATER_ID | typeof DISH_ID | typeof H2O_ID | typeof FILTRATE_ID | null {
+):
+  | typeof WATER_ID
+  | typeof DISH_ID
+  | typeof H2O_ID
+  | typeof FILTRATE_ID
+  | typeof NACL_ID
+  | typeof CACL2_ID
+  | typeof SAND_ID
+  | null {
   const held = findItem(scene, TONGS_ID)?.properties.source_item_id
-  if (held === WATER_ID || held === DISH_ID || held === H2O_ID || held === FILTRATE_ID) return held
+  if (
+    held === WATER_ID ||
+    held === DISH_ID ||
+    held === H2O_ID ||
+    held === FILTRATE_ID ||
+    held === NACL_ID ||
+    held === CACL2_ID ||
+    held === SAND_ID
+  ) {
+    return held
+  }
+  return null
+}
+
+function solidStockKind(itemId: string): StockSolid | null {
+  if (itemId === NACL_ID) return 'nacl'
+  if (itemId === CACL2_ID) return 'cacl2'
+  if (itemId === SAND_ID) return 'sand'
   return null
 }
 
@@ -861,11 +888,17 @@ export function LabBench() {
 
   async function onSolid(targetItemId: string, event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
+    if (!scene) return
     if (selectedToolItemId === TONGS_ID) {
+      if (tongsHeldVesselId(scene) === targetItemId) {
+        await putTongsAway()
+        return
+      }
+      await applyTongsTo(targetItemId)
       return
     }
     if (selectedToolItemId === SPOON_ID) {
-      if (scene && spoonHoldingSpecies(scene).length > 1) return
+      if (spoonHoldingSpecies(scene).length > 1) return
       await applySpoonTo(targetItemId)
       return
     }
@@ -1086,6 +1119,7 @@ export function LabBench() {
   const spoonFill = scene ? spoonHoldingSubstance(scene) : null
   const leftoverSolid = scene ? undissolvedSolidInWater(scene) : null
   const heldVesselId = scene ? tongsHeldVesselId(scene) : null
+  const heldSolid = heldVesselId ? solidStockKind(heldVesselId) : null
   const toolUi: ToolUi = pipetteSelected
     ? 'pipette'
     : tongsSelected
@@ -1140,8 +1174,8 @@ export function LabBench() {
       <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-sm text-[var(--ink-soft)]">
           Pick up the spoon to scoop solids, the pipette to move {PIPETTE_VOLUME_ML.toFixed(2)} ml
-          of solution, or the tongs to lift the water beaker or dish and pour. With no tool
-          selected, click a vessel to inspect it, or the burner to heat the dish.
+          of solution, or the tongs to lift the water beaker, dish, or solid ingredients and pour.
+          With no tool selected, click a vessel to inspect it, or the burner to heat the dish.
         </p>
         <button
           type="button"
@@ -1275,10 +1309,14 @@ export function LabBench() {
                   disabled={busy}
                   onClick={(event) => onSolid(visibleIngredient.itemId, event)}
                 >
-                  <SolidBeakerSvg
-                    solid={visibleIngredient.kind}
-                    amountG={stockAmountG(scene, visibleIngredient.itemId, visibleIngredient.kind)}
-                  />
+                  {heldVesselId === visibleIngredient.itemId ? (
+                    <svg viewBox="0 0 80 118" className="h-28 w-20" aria-hidden />
+                  ) : (
+                    <SolidBeakerSvg
+                      solid={visibleIngredient.kind}
+                      amountG={stockAmountG(scene, visibleIngredient.itemId, visibleIngredient.kind)}
+                    />
+                  )}
                   <StockSubstanceLabel substanceId={visibleIngredient.kind} />
                 </button>
               )}
@@ -1381,6 +1419,12 @@ export function LabBench() {
               />
             ) : heldVesselId === H2O_ID && scene ? (
               <DistilledWaterBeakerSvg amountMl={distilledWaterAmountMl(scene)} floating />
+            ) : heldSolid && heldVesselId && scene ? (
+              <SolidBeakerSvg
+                solid={heldSolid}
+                amountG={stockAmountG(scene, heldVesselId, heldSolid)}
+                floating
+              />
             ) : heldVesselId === DISH_ID && scene ? (
               <EvaporationDishSvg amountMl={dishAmountMl(scene)} floating />
             ) : heldVesselId === FILTRATE_ID && scene ? (

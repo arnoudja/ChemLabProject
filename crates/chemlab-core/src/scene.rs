@@ -1276,6 +1276,15 @@ fn apply_tongs_use(
     tool_idx: usize,
     target_idx: usize,
 ) -> Result<(), SceneError> {
+    if let Some(held_id) = scene.items[tool_idx].properties.source_item_id.as_deref() {
+        if let Ok(source_idx) = find_item_index(scene, held_id) {
+            if is_solid_stock_beaker(&scene.items[source_idx])
+                && scene.items[target_idx].id != "beaker-water"
+            {
+                return Err(SceneError::InvalidAction);
+            }
+        }
+    }
     if is_filter_unit_target(&scene.items[target_idx]) {
         return apply_tongs_filter_unit(scene, tool_idx);
     }
@@ -3879,7 +3888,14 @@ mod tests {
         let mut scene = initial_bench_scene("lab-test");
         use_tongs(&mut scene, "beaker-nacl").unwrap();
         let stock_g = solid_g(item(&scene, "beaker-nacl"), "nacl");
-        for dest in ["dish-1", "beaker-h2o", "beaker-cacl2", "burner-1"] {
+        for dest in [
+            "dish-1",
+            "beaker-h2o",
+            "beaker-cacl2",
+            "burner-1",
+            "beaker-filtrate",
+            "filter-paper-1",
+        ] {
             assert_eq!(
                 use_tongs(&mut scene, dest).unwrap_err(),
                 SceneError::InvalidAction
@@ -3887,6 +3903,16 @@ mod tests {
         }
         assert_eq!(item(&scene, "beaker-nacl").location, "held");
         assert!((solid_g(item(&scene, "beaker-nacl"), "nacl") - stock_g).abs() < 1e-12);
+
+        use_tongs(&mut scene, "beaker-water").unwrap();
+        for dest in ["beaker-filtrate", "filter-paper-1"] {
+            assert_eq!(
+                use_tongs(&mut scene, dest).unwrap_err(),
+                SceneError::InvalidAction
+            );
+        }
+        assert_eq!(item(&scene, "beaker-nacl").location, "held");
+        assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 0.0);
     }
 
     #[test]

@@ -734,141 +734,78 @@ export function LabBench() {
     setPointer({ x: event.clientX - rect.left, y: event.clientY - rect.top })
   }
 
-  async function onSpoon(event: MouseEvent<HTMLButtonElement>) {
+  type BenchToolId = typeof SPOON_ID | typeof PIPETTE_ID | typeof TONGS_ID
+
+  function isBenchToolId(id: string | null): id is BenchToolId {
+    return id === SPOON_ID || id === PIPETTE_ID || id === TONGS_ID
+  }
+
+  /** True when put-away must hit the server (tool is carrying something). */
+  function toolNeedsServerPutAway(toolId: BenchToolId): boolean {
+    if (!scene) return false
+    switch (toolId) {
+      case SPOON_ID:
+        return spoonHoldingSubstance(scene) != null
+      case PIPETTE_ID:
+        return pipetteIsFilled(scene)
+      case TONGS_ID:
+        return tongsHeldVesselId(scene) != null
+    }
+  }
+
+  async function putToolAway(toolId: BenchToolId): Promise<boolean> {
+    if (!scene) {
+      setSelectedToolItemId(null)
+      return true
+    }
+    // Empty tool put-away is a client no-op (no server round-trip).
+    if (!toolNeedsServerPutAway(toolId)) {
+      setSelectedToolItemId(null)
+      return true
+    }
+    if (busy) return false
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await postLabAction({
+        type: 'put_away',
+        tool_item_id: toolId,
+      })
+      setScene(response.scene)
+      setSelectedToolItemId(null)
+      return true
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed')
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function selectTool(toolId: BenchToolId, event: MouseEvent<HTMLButtonElement>) {
     trackPointer(event)
     // Keep inspect open across tool pick-up / put-away; only Close dismisses it.
-    if (selectedToolItemId === SPOON_ID) {
-      await putSpoonAway()
+    if (selectedToolItemId === toolId) {
+      await putToolAway(toolId)
       return
     }
-    if (selectedToolItemId === PIPETTE_ID) {
-      const putAway = await putPipetteAway()
+    if (isBenchToolId(selectedToolItemId)) {
+      const putAway = await putToolAway(selectedToolItemId)
       if (!putAway) return
     }
-    if (selectedToolItemId === TONGS_ID) {
-      const putAway = await putTongsAway()
-      if (!putAway) return
-    }
-    setSelectedToolItemId(SPOON_ID)
+    setSelectedToolItemId(toolId)
   }
 
-  async function onPipette(event: MouseEvent<HTMLButtonElement>) {
-    trackPointer(event)
-    if (selectedToolItemId === PIPETTE_ID) {
-      await putPipetteAway()
-      return
-    }
-    if (selectedToolItemId === SPOON_ID) {
-      const putAway = await putSpoonAway()
-      if (!putAway) return
-    }
-    if (selectedToolItemId === TONGS_ID) {
-      const putAway = await putTongsAway()
-      if (!putAway) return
-    }
-    setSelectedToolItemId(PIPETTE_ID)
+  function onSpoon(event: MouseEvent<HTMLButtonElement>) {
+    return selectTool(SPOON_ID, event)
   }
 
-  async function onTongs(event: MouseEvent<HTMLButtonElement>) {
-    trackPointer(event)
-    if (selectedToolItemId === TONGS_ID) {
-      await putTongsAway()
-      return
-    }
-    if (selectedToolItemId === SPOON_ID) {
-      const putAway = await putSpoonAway()
-      if (!putAway) return
-    }
-    if (selectedToolItemId === PIPETTE_ID) {
-      const putAway = await putPipetteAway()
-      if (!putAway) return
-    }
-    setSelectedToolItemId(TONGS_ID)
+  function onPipette(event: MouseEvent<HTMLButtonElement>) {
+    return selectTool(PIPETTE_ID, event)
   }
 
-  async function putSpoonAway(): Promise<boolean> {
-    if (!scene) {
-      setSelectedToolItemId(null)
-      return true
-    }
-    // Empty spoon put-away is a client no-op (no server round-trip).
-    if (!spoonHoldingSubstance(scene)) {
-      setSelectedToolItemId(null)
-      return true
-    }
-    if (busy) return false
-    setError(null)
-    setBusy(true)
-    try {
-      const response = await postLabAction({
-        type: 'put_away',
-        tool_item_id: SPOON_ID,
-      })
-      setScene(response.scene)
-      setSelectedToolItemId(null)
-      return true
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed')
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function putPipetteAway(): Promise<boolean> {
-    if (!scene) {
-      setSelectedToolItemId(null)
-      return true
-    }
-    if (!pipetteIsFilled(scene)) {
-      setSelectedToolItemId(null)
-      return true
-    }
-    if (busy) return false
-    setError(null)
-    setBusy(true)
-    try {
-      const response = await postLabAction({
-        type: 'put_away',
-        tool_item_id: PIPETTE_ID,
-      })
-      setScene(response.scene)
-      setSelectedToolItemId(null)
-      return true
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed')
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function putTongsAway(): Promise<boolean> {
-    if (!scene) {
-      setSelectedToolItemId(null)
-      return true
-    }
-    if (!tongsHeldVesselId(scene)) {
-      setSelectedToolItemId(null)
-      return true
-    }
-    if (busy) return false
-    setError(null)
-    setBusy(true)
-    try {
-      const response = await postLabAction({
-        type: 'put_away',
-        tool_item_id: TONGS_ID,
-      })
-      setScene(response.scene)
-      setSelectedToolItemId(null)
-      return true
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed')
-      return false
-    } finally {
-      setBusy(false)
-    }
+  function onTongs(event: MouseEvent<HTMLButtonElement>) {
+    return selectTool(TONGS_ID, event)
   }
 
   async function applySpoonTo(targetItemId: string) {
@@ -894,7 +831,7 @@ export function LabBench() {
     if (!scene) return
     if (selectedToolItemId === TONGS_ID) {
       if (tongsHeldVesselId(scene) === targetItemId) {
-        await putTongsAway()
+        await putToolAway(TONGS_ID)
         return
       }
       await applyTongsTo(targetItemId)
@@ -915,7 +852,7 @@ export function LabBench() {
     if (!scene) return
     if (selectedToolItemId === TONGS_ID) {
       if (tongsHeldVesselId(scene) === H2O_ID) {
-        await putTongsAway()
+        await putToolAway(TONGS_ID)
         return
       }
       await applyTongsTo(H2O_ID)
@@ -974,7 +911,7 @@ export function LabBench() {
     if (!scene) return
     if (selectedToolItemId === TONGS_ID) {
       if (tongsHeldVesselId(scene) === WATER_ID) {
-        await putTongsAway()
+        await putToolAway(TONGS_ID)
         return
       }
       await applyTongsTo(WATER_ID)
@@ -1016,7 +953,7 @@ export function LabBench() {
     if (!scene) return
     if (selectedToolItemId === TONGS_ID) {
       if (tongsHeldVesselId(scene) === DISH_ID) {
-        await putTongsAway()
+        await putToolAway(TONGS_ID)
         return
       }
       await applyTongsTo(DISH_ID)
@@ -1040,7 +977,7 @@ export function LabBench() {
     if (!scene) return
     if (selectedToolItemId === TONGS_ID) {
       if (tongsHeldVesselId(scene) === PAPER_ID) {
-        await putTongsAway()
+        await putToolAway(TONGS_ID)
         return
       }
       if (tongsHeldVesselId(scene) === FILTRATE_ID) {
@@ -1066,7 +1003,7 @@ export function LabBench() {
     if (!scene) return
     if (selectedToolItemId === TONGS_ID) {
       if (tongsHeldVesselId(scene) === FILTRATE_ID) {
-        await putTongsAway()
+        await putToolAway(TONGS_ID)
         return
       }
       await applyTongsTo(FILTRATE_ID)

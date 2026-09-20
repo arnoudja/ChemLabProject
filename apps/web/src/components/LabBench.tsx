@@ -121,8 +121,6 @@ function itemTemperatureC(scene: LabScene, item: Item): number {
   return item.properties.temperature_c ?? scene.temperature_c
 }
 
-
-
 function stockAmountG(scene: LabScene, itemId: string, substanceId: StockSolid): number | null {
   const item = findItem(scene, itemId)
   const entry = optionalArray(item?.properties.composition).find(

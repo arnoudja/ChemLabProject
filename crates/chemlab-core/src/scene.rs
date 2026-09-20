@@ -5547,7 +5547,9 @@ mod tests {
         )
         .unwrap();
         assert!(item(&scene, "spoon-1").properties.holding.is_empty());
-        assert!((solid_g(item(&scene, "filter-paper-1"), "nacl") - SPOON_SCOOP_MASS_G).abs() < 1e-12);
+        assert!(
+            (solid_g(item(&scene, "filter-paper-1"), "nacl") - SPOON_SCOOP_MASS_G).abs() < 1e-12
+        );
 
         scoop_nacl_stock(&mut scene).unwrap();
         apply_action(
@@ -5558,7 +5560,9 @@ mod tests {
             },
         )
         .unwrap();
-        assert!((solid_g(item(&scene, "beaker-filtrate"), "nacl") - SPOON_SCOOP_MASS_G).abs() < 1e-12);
+        assert!(
+            (solid_g(item(&scene, "beaker-filtrate"), "nacl") - SPOON_SCOOP_MASS_G).abs() < 1e-12
+        );
 
         scoop_nacl_stock(&mut scene).unwrap();
         assert_eq!(
@@ -5611,7 +5615,10 @@ mod tests {
         let mut scene = bench_with_water("lab-test");
         use_tongs(&mut scene, "beaker-water").unwrap();
         use_tongs(&mut scene, "beaker-filtrate").unwrap();
-        assert!((water_ml(item(&scene, "beaker-filtrate")) - FILLED_MAIN_BEAKER_ML.min(250.0)).abs() < 1e-9);
+        assert!(
+            (water_ml(item(&scene, "beaker-filtrate")) - FILLED_MAIN_BEAKER_ML.min(250.0)).abs()
+                < 1e-9
+        );
         assert_eq!(solid_g(item(&scene, "filter-paper-1"), "sand"), 0.0);
         assert_eq!(item(&scene, "beaker-water").location, "held");
     }

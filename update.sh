@@ -22,7 +22,7 @@ if is_arch_like && ! is_debian_like; then
     rm -f ./dist/chemlab-*.pkg.tar.zst
     ./scripts/build-arch.sh
     echo "### Installing the package ###"
-    sudo pacman -U ./dist/chemlab-*.pkg.tar.zst
+    sudo pacman -U --noconfirm ./dist/chemlab-*.pkg.tar.zst
 elif is_debian_like; then
     rm -f ./dist/chemlab_*_amd64.deb
     ./scripts/build-deb.sh

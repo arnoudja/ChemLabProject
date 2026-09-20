@@ -272,7 +272,7 @@ function withDryDishSolids(
 
 function applySolidsScoop(
   scene: LabScene,
-  sourceId: 'dish-1' | 'filter-paper-1',
+  sourceId: string,
 ): LabScene | { error: string; code: string; status: number } {
   const next = cloneScene(scene)
   const source = next.items.find((item) => item.id === sourceId)!
@@ -309,20 +309,28 @@ function applySolidsScoop(
       }))
       .filter((entry) => (entry.amount_g ?? 0) > 1e-12),
   ]
+  const place =
+    sourceId === 'filter-paper-1'
+      ? 'paper'
+      : sourceId === 'beaker-filtrate'
+        ? 'filtrate beaker'
+        : sourceId === 'beaker-water'
+          ? 'beaker'
+          : 'dish'
   next.last_events = [
     {
       kind: 'scooped',
-      message: sourceId === 'filter-paper-1' ? 'Scooped solids from the paper.' : 'Scooped solids from the dish.',
+      message: `Scooped solids from the ${place}.`,
     },
   ]
   next.version += 1
   return next
 }
 
-function applySolidsPutAway(scene: LabScene, sourceId: 'dish-1' | 'filter-paper-1'): LabScene {
+function applySolidsDeposit(scene: LabScene, destId: string): LabScene {
   const next = cloneScene(scene)
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
-  const dest = next.items.find((item) => item.id === sourceId)!
+  const dest = next.items.find((item) => item.id === destId)!
   for (const held of optionalArray(spoon.properties.holding)) {
     if (held.phase !== 'solid') continue
     const existing = optionalArray(dest.properties.composition).find(
@@ -336,14 +344,23 @@ function applySolidsPutAway(scene: LabScene, sourceId: 'dish-1' | 'filter-paper-
   }
   spoon.properties.holding = []
   spoon.properties.source_item_id = null
-  spoon.location = 'bench'
-  next.last_events = [
-    {
-      kind: 'returned',
-      message: sourceId === 'filter-paper-1' ? 'Returned solids to the paper.' : 'Returned solids to the dish.',
-    },
-  ]
+  const place =
+    destId === 'filter-paper-1'
+      ? 'paper'
+      : destId === 'beaker-filtrate'
+        ? 'filtrate beaker'
+        : destId === 'beaker-water'
+          ? 'beaker'
+          : 'dish'
+  next.last_events = [{ kind: 'returned', message: `Returned solids to the ${place}.` }]
   next.version += 1
+  return next
+}
+
+function applySolidsPutAway(scene: LabScene, sourceId: string): LabScene {
+  const next = applySolidsDeposit(scene, sourceId)
+  const spoon = next.items.find((item) => item.id === 'spoon-1')!
+  spoon.location = 'bench'
   return next
 }
 
@@ -681,12 +698,25 @@ function applyTongsUse(
   targetId: string,
 ): LabScene | { error: string; code: string; status: number } {
   const held = scene.items.find((item) => item.id === 'tongs-1')?.properties.source_item_id
-  if (targetId === 'beaker-filtrate' || targetId === 'filter-paper-1') {
+  if (targetId === 'filter-paper-1') {
+    if (!held) return applyTongsPickUp(scene, 'filter-paper-1')
+    if (held === 'beaker-filtrate') {
+      return { error: 'invalid action', code: 'invalid_action', status: 400 }
+    }
+    const source = scene.items.find((item) => item.id === held)
+    const sourceMl = liquidWaterEntry(source!)?.amount_ml ?? 0
+    const solids = optionalArray(source?.properties.composition).filter((entry) => entry.phase === 'solid')
+    if (sourceMl <= 0 && solids.length > 0) {
+      return applyTongsPour(scene, 'filter-paper-1')
+    }
+    return applyFilterPour(scene)
+  }
+  if (targetId === 'beaker-filtrate') {
     if (!held) return applyTongsPickUp(scene, 'beaker-filtrate')
     if (held === 'beaker-filtrate') {
       return { error: 'invalid action', code: 'invalid_action', status: 400 }
     }
-    return applyFilterPour(scene)
+    return applyTongsPour(scene, 'beaker-filtrate')
   }
   if (!held) return applyTongsPickUp(scene, targetId)
   return applyTongsPour(scene, targetId)
@@ -861,8 +891,18 @@ function stubLabFetch(options?: {
       if (
         action.type === 'use_tool' &&
         action.tool_item_id === 'spoon-1' &&
-        (action.target_item_id === 'dish-1' || action.target_item_id === 'filter-paper-1')
+        (action.target_item_id === 'dish-1' ||
+          action.target_item_id === 'filter-paper-1' ||
+          action.target_item_id === 'beaker-filtrate' ||
+          action.target_item_id === 'beaker-water')
       ) {
+        const held = optionalArray(
+          scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
+        )
+        if (held.length > 0) {
+          scene = applySolidsDeposit(scene, action.target_item_id)
+          return jsonResponse({ scene })
+        }
         const result = applySolidsScoop(scene, action.target_item_id)
         if ('error' in result) {
           return jsonResponse({ error: result.error, code: result.code }, result.status)
@@ -2497,7 +2537,7 @@ describe('LabBench', () => {
     render(<LabBench />)
     await screen.findByRole('button', { name: 'Beaker' })
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveTextContent(
-      /tongs to lift the water beaker, dish, or solid ingredients/,
+      /tongs to lift vessels, filter paper, or solid ingredients/,
     )
 
     clickTongs()
@@ -3022,7 +3062,7 @@ describe('LabBench', () => {
     expect(document.querySelector('[data-h2o-fill]')).toHaveAttribute('data-h2o-fill', '1.00')
   })
 
-  it('picks up the filtrate beaker with empty tongs and returns it on put-away', async () => {
+  it('picks up filter paper and filtrate separately with empty tongs', async () => {
     const fetchMock = stubLabFetch()
     vi.stubGlobal('fetch', fetchMock)
 
@@ -3039,9 +3079,30 @@ describe('LabBench', () => {
         target_item_id: 'filter-paper-1',
       })
     })
+    expect(screen.getByRole('button', { name: 'Filter paper' }).querySelector('[data-funnel]')).toBeNull()
+    expect(document.querySelector('.lab-cursor-vessel [data-funnel]')).not.toBeNull()
+    expect(filtrate.querySelector('[data-filtrate-fill]')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter paper' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'put_away',
+        tool_item_id: 'tongs-1',
+      })
+    })
+    expect(screen.getByRole('button', { name: 'Filter paper' }).querySelector('[data-funnel]')).not.toBeNull()
+
+    clickTongs()
+    fireEvent.click(filtrate)
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'beaker-filtrate',
+      })
+    })
     expect(filtrate.querySelector('[data-filtrate-fill]')).toBeNull()
     expect(document.querySelector('.lab-cursor-vessel [data-filtrate-fill]')).not.toBeNull()
-    expect(screen.getByRole('button', { name: 'Filter paper' }).querySelector('[data-funnel]')).not.toBeNull()
 
     fireEvent.click(filtrate)
     await waitFor(() => {
@@ -3053,7 +3114,34 @@ describe('LabBench', () => {
     expect(screen.getByRole('button', { name: 'Filtrate beaker' }).querySelector('[data-filtrate-fill]')).not.toBeNull()
   })
 
-  it('filter-pours a held water beaker through the unit into the seated filtrate', async () => {
+  it('filter-pours a held water beaker through the paper into the seated filtrate', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Beaker' })
+    clickTongs()
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'beaker-water',
+      })
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Filter paper' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'tongs-1',
+        target_item_id: 'filter-paper-1',
+      })
+    })
+    expect(document.querySelector('[data-filtrate-fill]')).toHaveAttribute('data-filtrate-fill', '0.80')
+    expect(screen.getByRole('button', { name: 'Beaker' }).querySelector('[data-water-fill]')).toBeNull()
+  })
+
+  it('pours a held vessel into filtrate without filtering through paper', async () => {
     const fetchMock = stubLabFetch()
     vi.stubGlobal('fetch', fetchMock)
 
@@ -3077,7 +3165,6 @@ describe('LabBench', () => {
       })
     })
     expect(document.querySelector('[data-filtrate-fill]')).toHaveAttribute('data-filtrate-fill', '0.80')
-    expect(screen.getByRole('button', { name: 'Beaker' }).querySelector('[data-water-fill]')).toBeNull()
   })
 
   it('scoops paper solids with the spoon and put-away returns them to the paper', async () => {
@@ -3108,9 +3195,6 @@ describe('LabBench', () => {
       expect(cy).toBeLessThanOrEqual(stemTopY)
     }
     clickSpoon()
-    fireEvent.click(screen.getByRole('button', { name: 'Filtrate beaker' }))
-    expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/action')).toHaveLength(0)
-
     fireEvent.click(screen.getByRole('button', { name: 'Filter paper' }))
     await waitFor(() => {
       expectCsrfLabAction(fetchMock, {
@@ -3173,7 +3257,7 @@ describe('LabBench', () => {
     expect(await screen.findByRole('dialog', { name: 'Contents of Filtrate' })).toBeInTheDocument()
   })
 
-  it('does not pipette-insert through the paper or dump a full pipette into filtrate', async () => {
+  it('pipettes from filtrate, dumps back into filtrate, and rejects paper', async () => {
     const seeded = initialScene()
     const filtrate = seeded.items.find((item) => item.id === 'beaker-filtrate')!
     filtrate.properties.composition = [
@@ -3202,11 +3286,55 @@ describe('LabBench', () => {
       })
     })
     const actionsAfterFill = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/action').length
-    fireEvent.click(screen.getByRole('button', { name: 'Filtrate beaker' }))
     fireEvent.click(screen.getByRole('button', { name: 'Filter paper' }))
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/action')).toHaveLength(
       actionsAfterFill,
     )
+    fireEvent.click(screen.getByRole('button', { name: 'Filtrate beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'pipette-1',
+        target_item_id: 'beaker-filtrate',
+      })
+    })
+  })
+
+  it('spoon scoops and deposits dry filtrate solids over CSRF', async () => {
+    const seeded = initialScene()
+    const filtrate = seeded.items.find((item) => item.id === 'beaker-filtrate')!
+    filtrate.properties.composition = [
+      {
+        substance_id: 'sand',
+        phase: 'solid',
+        amount_ml: null,
+        amount_scoop: null,
+        amount_g: 0.5,
+        amount_mol: null,
+      },
+    ]
+    const fetchMock = stubLabFetch({ scene: seeded })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Filtrate beaker' })
+    clickSpoon()
+    fireEvent.click(screen.getByRole('button', { name: 'Filtrate beaker' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'spoon-1',
+        target_item_id: 'beaker-filtrate',
+      })
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Filter paper' }))
+    await waitFor(() => {
+      expectCsrfLabAction(fetchMock, {
+        type: 'use_tool',
+        tool_item_id: 'spoon-1',
+        target_item_id: 'filter-paper-1',
+      })
+    })
   })
 
   it('pours a held filtrate beaker into water with tongs', async () => {

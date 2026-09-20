@@ -443,7 +443,7 @@ function FiltrateBeakerSvg({ amountMl, floating }: { amountMl?: number | null; f
   )
 }
 
-function FunnelPaperSvg({ residue }: { residue: boolean }) {
+function FunnelPaperSvg({ residue, floating }: { residue: boolean; floating?: boolean }) {
   // Cone/quarter-fold lining the inner glass wall. Firefox: presentation
   // attributes on paths only (no ellipse disk, clipPath, or CSS `d`).
   const funnelRimY = 6
@@ -454,10 +454,11 @@ function FunnelPaperSvg({ residue }: { residue: boolean }) {
   return (
     <svg
       viewBox="0 0 120 88"
-      className="h-20 w-28"
+      className={floating ? 'h-16 w-24' : 'h-20 w-28'}
       aria-hidden
       data-funnel
       data-paper-residue={residue ? 'true' : 'false'}
+      data-floating={floating ? 'true' : undefined}
     >
       <path
         data-funnel-cone
@@ -590,6 +591,7 @@ function tongsHeldVesselId(
   | typeof DISH_ID
   | typeof H2O_ID
   | typeof FILTRATE_ID
+  | typeof PAPER_ID
   | typeof NACL_ID
   | typeof CACL2_ID
   | typeof SAND_ID
@@ -600,6 +602,7 @@ function tongsHeldVesselId(
     held === DISH_ID ||
     held === H2O_ID ||
     held === FILTRATE_ID ||
+    held === PAPER_ID ||
     held === NACL_ID ||
     held === CACL2_ID ||
     held === SAND_ID
@@ -982,21 +985,25 @@ export function LabBench() {
       return
     }
     if (selectedToolItemId === SPOON_ID) {
-      if (busy || !spoonHoldingSubstance(scene)) return
-      setError(null)
-      setBusy(true)
-      try {
-        const response = await postLabAction({
-          type: 'pour',
-          source_item_id: SPOON_ID,
-          target_item_id: WATER_ID,
-        })
-        setScene(response.scene)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Action failed')
-      } finally {
-        setBusy(false)
+      if (spoonHoldingSubstance(scene)) {
+        if (busy) return
+        setError(null)
+        setBusy(true)
+        try {
+          const response = await postLabAction({
+            type: 'pour',
+            source_item_id: SPOON_ID,
+            target_item_id: WATER_ID,
+          })
+          setScene(response.scene)
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Action failed')
+        } finally {
+          setBusy(false)
+        }
+        return
       }
+      await applySpoonTo(WATER_ID)
       return
     }
     if (selectedToolItemId === null) {
@@ -1032,6 +1039,10 @@ export function LabBench() {
     trackPointer(event)
     if (!scene) return
     if (selectedToolItemId === TONGS_ID) {
+      if (tongsHeldVesselId(scene) === PAPER_ID) {
+        await putTongsAway()
+        return
+      }
       if (tongsHeldVesselId(scene) === FILTRATE_ID) {
         return
       }
@@ -1062,11 +1073,11 @@ export function LabBench() {
       return
     }
     if (selectedToolItemId === PIPETTE_ID) {
-      if (pipetteIsFilled(scene)) return
       await applyPipetteTo(FILTRATE_ID)
       return
     }
     if (selectedToolItemId === SPOON_ID) {
+      await applySpoonTo(FILTRATE_ID)
       return
     }
     if (selectedToolItemId === null) {
@@ -1139,6 +1150,7 @@ export function LabBench() {
   const dishHeld = dish?.location === 'held'
   const h2oHeld = scene ? findItem(scene, H2O_ID)?.location === 'held' : false
   const filtrateHeld = filtrate?.location === 'held'
+  const paperHeld = paper?.location === 'held'
   const lastEvents = scene ? optionalArray(scene.last_events) : []
   const dissolveCue = dissolveCueFromEvents(lastEvents)
   const hasAqueous = scene ? waterHasAqueous(scene) : false
@@ -1173,8 +1185,8 @@ export function LabBench() {
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-sm text-[var(--ink-soft)]">
-          Pick up the spoon to scoop solids, the pipette to move {PIPETTE_VOLUME_ML.toFixed(2)} ml
-          of solution, or the tongs to lift the water beaker, dish, or solid ingredients and pour.
+          Pick up the spoon to scoop dry solids, the pipette to move {PIPETTE_VOLUME_ML.toFixed(2)} ml
+          of solution, or the tongs to lift vessels, filter paper, or solid ingredients and pour.
           With no tool selected, click a vessel to inspect it, or the burner to heat the dish.
         </p>
         <button
@@ -1202,7 +1214,11 @@ export function LabBench() {
               disabled={busy}
               onClick={onFilterPaper}
             >
-              <FunnelPaperSvg residue={scene ? paperHasResidue(scene) : false} />
+              {paperHeld ? (
+                <svg viewBox="0 0 120 88" className="h-20 w-28" aria-hidden />
+              ) : (
+                <FunnelPaperSvg residue={scene ? paperHasResidue(scene) : false} />
+              )}
               <span className="lab-item-label">{paper?.label ?? 'Filter paper'}</span>
             </button>
             <button
@@ -1429,6 +1445,8 @@ export function LabBench() {
               <EvaporationDishSvg amountMl={dishAmountMl(scene)} floating />
             ) : heldVesselId === FILTRATE_ID && scene ? (
               <FiltrateBeakerSvg amountMl={filtrateAmountMl(scene)} floating />
+            ) : heldVesselId === PAPER_ID && scene ? (
+              <FunnelPaperSvg residue={paperHasResidue(scene)} floating />
             ) : (
               <TongsSvg floating />
             )

@@ -552,100 +552,12 @@ fn apply_spoon_use_while_holding(
         if composition_has_liquid(target) {
             let tool_id = scene.items[tool_idx].id.clone();
             let target_id = scene.items[target_idx].id.clone();
-            return apply_spoon_deposit_into_liquid_vessel(scene, &tool_id, &target_id);
+            return apply_pour(scene, &tool_id, &target_id);
         }
         return apply_return_holding_to_solids_vessel(scene, tool_idx, target_idx);
     }
 
     Err(SceneError::InvalidAction)
-}
-
-/// Deposit spoon solids into a wet vessel (or dry main beaker via dissolve/sit rules).
-fn apply_spoon_deposit_into_liquid_vessel(
-    scene: &mut Scene,
-    source_item_id: &str,
-    target_item_id: &str,
-) -> Result<(), SceneError> {
-    let source_idx = find_item_index(scene, source_item_id)?;
-    let target_idx = find_item_index(scene, target_item_id)?;
-
-    if scene.items[source_idx].properties.holding.is_empty() {
-        return Err(SceneError::EmptyHolding);
-    }
-
-    let held_all = scene.items[source_idx].properties.holding.clone();
-    if held_all.iter().any(|held| held.phase != "solid") {
-        return Err(SceneError::InvalidAction);
-    }
-
-    let target = &scene.items[target_idx];
-    let dest_is_main_beaker = target.id == "beaker-water";
-    let dest_is_filtrate = is_filtrate_beaker(target);
-    let dest_is_dish = target.kind == "evaporation_dish";
-    if !(dest_is_main_beaker || dest_is_filtrate || dest_is_dish) {
-        return Err(SceneError::InvalidAction);
-    }
-
-    let has_water = target
-        .properties
-        .composition
-        .iter()
-        .any(|c| c.substance_id == "water" && c.phase == "liquid");
-    if !has_water && !dest_is_main_beaker {
-        return Err(SceneError::InvalidAction);
-    }
-
-    scene.items[source_idx].properties.holding.clear();
-    scene.items[source_idx].properties.source_item_id = None;
-
-    let poured_label = if held_all.len() == 1 {
-        held_all[0].substance_id.clone()
-    } else {
-        "solids".into()
-    };
-    scene.last_events.push(SceneEvent {
-        kind: "poured".into(),
-        message: format!("Poured {poured_label} into the target."),
-    });
-
-    if !has_water {
-        for held in held_all {
-            let scoops = held.amount_scoop.or(Some(1));
-            let mass_g = held.amount_g.or(Some(SPOON_SCOOP_MASS_G));
-            add_or_increase_solid(
-                &mut scene.items[target_idx],
-                &held.substance_id,
-                scoops,
-                mass_g,
-            );
-        }
-        crate::solubility::enforce_saturation(&mut scene.items[target_idx]);
-        return Ok(());
-    }
-
-    for held in held_all {
-        let temperature_c = scene.items[target_idx]
-            .properties
-            .temperature_c
-            .unwrap_or(scene.temperature_c);
-        let outcome = dissolve(&held.substance_id, "water", temperature_c.round() as i32)?;
-        mix_held_solid_into_water(
-            &mut scene.items[target_idx],
-            &held,
-            temperature_c,
-            outcome.dissolved,
-        );
-        scene.last_events.push(SceneEvent {
-            kind: if outcome.dissolved {
-                "dissolved".into()
-            } else {
-                "did_not_dissolve".into()
-            },
-            message: outcome.explanation.into(),
-        });
-    }
-    crate::solubility::enforce_saturation(&mut scene.items[target_idx]);
-    Ok(())
 }
 
 fn composition_has_liquid(item: &SceneItem) -> bool {
@@ -888,7 +800,6 @@ fn apply_pour(
     }
 
     if is_distilled_water_stock(&scene.items[target_idx])
-        || is_filtrate_beaker(&scene.items[target_idx])
         || scene.items[target_idx].kind == "filter_paper"
     {
         return Err(SceneError::InvalidAction);
@@ -905,6 +816,11 @@ fn apply_pour(
 
     let target = &scene.items[target_idx];
     let dest_is_main_beaker = target.id == "beaker-water";
+    let dest_is_filtrate = is_filtrate_beaker(target);
+    let dest_is_dish = target.kind == "evaporation_dish";
+    if !(dest_is_main_beaker || dest_is_filtrate || dest_is_dish) {
+        return Err(SceneError::InvalidAction);
+    }
     let has_water = target
         .properties
         .composition
@@ -1379,7 +1295,7 @@ fn vessel_liquid_capacity_ml(item: &SceneItem) -> Option<f64> {
     if is_filtrate_beaker(item) {
         return Some(item.properties.volume_ml.unwrap_or(FILTRATE_CAPACITY_ML));
     }
-    if !is_tongs_vessel(item) || is_filter_paper(item) {
+    if !is_tongs_vessel(item) {
         return None;
     }
     item.properties.volume_ml
@@ -4055,6 +3971,22 @@ mod tests {
         }
         assert_eq!(item(&scene, "beaker-nacl").location, "held");
         assert!((solid_g(item(&scene, "beaker-nacl"), "nacl") - stock_g).abs() < 1e-12);
+    }
+
+    #[test]
+    fn tongs_dump_exact_type_solids_into_matching_stock() {
+        let mut scene = initial_bench_scene("lab-test");
+        use_tongs(&mut scene, "beaker-nacl").unwrap();
+        use_tongs(&mut scene, "dish-1").unwrap();
+        put_tongs_away(&mut scene).unwrap();
+        assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 0.0);
+        assert!((solid_g(item(&scene, "dish-1"), "nacl") - 2.0).abs() < 1e-12);
+
+        use_tongs(&mut scene, "dish-1").unwrap();
+        use_tongs(&mut scene, "beaker-nacl").unwrap();
+        assert_eq!(solid_g(item(&scene, "dish-1"), "nacl"), 0.0);
+        assert!((solid_g(item(&scene, "beaker-nacl"), "nacl") - 2.0).abs() < 1e-12);
+        assert_eq!(item(&scene, "dish-1").location, "held");
     }
 
     #[test]

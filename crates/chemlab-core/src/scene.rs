@@ -1652,8 +1652,7 @@ fn blend_temperature_with_added_water(target: &mut SceneItem, add_ml: f64, sourc
     if v0 <= AMOUNT_EPS {
         target.properties.temperature_c = Some(source_t);
     } else {
-        target.properties.temperature_c =
-            Some((v0 * t0 + add_ml * source_t) / (v0 + add_ml));
+        target.properties.temperature_c = Some((v0 * t0 + add_ml * source_t) / (v0 + add_ml));
     }
 }
 

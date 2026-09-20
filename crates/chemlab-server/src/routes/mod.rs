@@ -3292,7 +3292,7 @@ mod tests {
             serde_json::json!({
                 "type": "use_tool",
                 "tool_item_id": "tongs-1",
-                "target_item_id": "filter-paper-1"
+                "target_item_id": "beaker-filtrate"
             }),
         )
         .await;

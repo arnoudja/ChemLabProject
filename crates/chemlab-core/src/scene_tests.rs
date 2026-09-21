@@ -1375,6 +1375,65 @@ fn dish_rejects_over_capacity_and_fill_requires_one_ml() {
 }
 
 #[test]
+fn use_tool_spoon_returns_evaporated_nacl_to_emptied_stock() {
+    // Tongs can dump solids into an emptied exact-type stock; spoon must too after
+    // evaporating aqueous NaCl back to dry solid (stock composition is empty).
+    let mut scene = initial_bench_scene("lab-test");
+    use_tongs(&mut scene, "beaker-nacl").unwrap();
+    use_tongs(&mut scene, "dish-1").unwrap();
+    put_tongs_away(&mut scene).unwrap();
+    assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 0.0);
+    assert!(item(&scene, "beaker-nacl")
+        .properties
+        .composition
+        .iter()
+        .all(|c| !(c.phase == "solid" && c.substance_id == "nacl")));
+
+    let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+    dish.properties.temperature_c = Some(20.0);
+    dish.properties.composition.insert(
+        0,
+        CompositionEntry {
+            substance_id: "water".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(5.0),
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: None,
+        },
+    );
+    crate::solubility::enforce_saturation(dish);
+
+    apply_action(
+        &mut scene,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    apply_elapsed(&mut scene, 8.0);
+    apply_elapsed(&mut scene, 12.0);
+
+    assert!(water_ml(item(&scene, "dish-1")) < 1e-9);
+    assert!((solid_g(item(&scene, "dish-1"), "nacl") - 2.0).abs() < 1e-9);
+
+    scoop_dish(&mut scene).unwrap();
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "spoon-1".into(),
+            target_item_id: "beaker-nacl".into(),
+        },
+    )
+    .unwrap();
+
+    assert!(item(&scene, "spoon-1").properties.holding.is_empty());
+    assert!((solid_g(item(&scene, "beaker-nacl"), "nacl") - SPOON_SCOOP_MASS_G).abs() < 1e-12);
+    assert!((solid_g(item(&scene, "dish-1"), "nacl") - (2.0 - SPOON_SCOOP_MASS_G)).abs() < 1e-9);
+    assert!(scene.last_events.iter().any(|e| e.kind == "returned"));
+}
+
+#[test]
 fn burner_heats_to_100_then_evaporates_precipitates_and_turns_off() {
     let mut scene = initial_bench_scene("lab-test");
     let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();

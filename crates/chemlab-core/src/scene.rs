@@ -1635,32 +1635,33 @@ fn take_all_solids(source: &mut SceneItem) -> Vec<CompositionEntry> {
     taken
 }
 
-fn mix_transfer_into(
-    target: &mut SceneItem,
-    transferred: &[CompositionEntry],
-    source_t: Option<f64>,
-) {
-    let add_ml = transferred
+fn liquid_water_ml_in(entries: &[CompositionEntry]) -> f64 {
+    entries
         .iter()
         .filter(|c| c.substance_id == "water" && c.phase == "liquid")
         .map(|c| c.amount_ml.unwrap_or(0.0))
-        .sum::<f64>();
-    if let Some(aliquot_t) = source_t {
-        let v0 = crate::solubility::liquid_water_ml(target);
-        let t0 = target
-            .properties
-            .temperature_c
-            .unwrap_or(AMBIENT_TEMPERATURE_C);
-        if add_ml > AMOUNT_EPS {
-            if v0 <= AMOUNT_EPS {
-                target.properties.temperature_c = Some(aliquot_t);
-            } else {
-                target.properties.temperature_c =
-                    Some((v0 * t0 + add_ml * aliquot_t) / (v0 + add_ml));
-            }
-        }
+        .sum()
+}
+
+fn blend_temperature_with_added_water(target: &mut SceneItem, add_ml: f64, source_t: f64) {
+    let v0 = crate::solubility::liquid_water_ml(target);
+    let t0 = target
+        .properties
+        .temperature_c
+        .unwrap_or(AMBIENT_TEMPERATURE_C);
+    if v0 <= AMOUNT_EPS {
+        target.properties.temperature_c = Some(source_t);
+    } else {
+        target.properties.temperature_c = Some((v0 * t0 + add_ml * source_t) / (v0 + add_ml));
     }
-    for entry in transferred {
+}
+
+fn merge_composition_into(
+    target: &mut SceneItem,
+    entries: &[CompositionEntry],
+    include_solids: bool,
+) {
+    for entry in entries {
         if entry.substance_id == "water" && entry.phase == "liquid" {
             add_or_increase_water(target, entry.amount_ml.unwrap_or(0.0));
         } else if entry.phase == "aqueous" {
@@ -1670,7 +1671,7 @@ fn mix_transfer_into(
                 "aqueous",
                 entry.amount_mol.unwrap_or(0.0),
             );
-        } else if entry.phase == "solid" {
+        } else if include_solids && entry.phase == "solid" {
             add_or_increase_solid(
                 target,
                 &entry.substance_id,
@@ -1679,37 +1680,28 @@ fn mix_transfer_into(
             );
         }
     }
+}
+
+fn mix_transfer_into(
+    target: &mut SceneItem,
+    transferred: &[CompositionEntry],
+    source_t: Option<f64>,
+) {
+    let add_ml = liquid_water_ml_in(transferred);
+    if let Some(source_t) = source_t {
+        if add_ml > AMOUNT_EPS {
+            blend_temperature_with_added_water(target, add_ml, source_t);
+        }
+    }
+    merge_composition_into(target, transferred, true);
     crate::solubility::sync_fill_ml(target);
 }
 
 fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquot_t: f64) {
-    let add_ml = aliquot
-        .iter()
-        .filter(|c| c.substance_id == "water" && c.phase == "liquid")
-        .map(|c| c.amount_ml.unwrap_or(0.0))
-        .sum::<f64>();
-    let v0 = crate::solubility::liquid_water_ml(target);
-    let t0 = target
-        .properties
-        .temperature_c
-        .unwrap_or(AMBIENT_TEMPERATURE_C);
-    if v0 <= AMOUNT_EPS {
-        target.properties.temperature_c = Some(aliquot_t);
-    } else {
-        target.properties.temperature_c = Some((v0 * t0 + add_ml * aliquot_t) / (v0 + add_ml));
-    }
-    for entry in aliquot {
-        if entry.substance_id == "water" && entry.phase == "liquid" {
-            add_or_increase_water(target, entry.amount_ml.unwrap_or(0.0));
-        } else if entry.phase == "aqueous" {
-            add_or_increase_mol(
-                target,
-                &entry.substance_id,
-                "aqueous",
-                entry.amount_mol.unwrap_or(0.0),
-            );
-        }
-    }
+    let add_ml = liquid_water_ml_in(aliquot);
+    // Pipette always blends with aliquot T (even when dest is empty / add_ml is tiny).
+    blend_temperature_with_added_water(target, add_ml, aliquot_t);
+    merge_composition_into(target, aliquot, false);
     crate::solubility::sync_fill_ml(target);
 }
 

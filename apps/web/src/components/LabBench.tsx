@@ -1,10 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react'
-import type { Item, LabScene } from '../generated/contracts'
+import type { LabScene } from '../generated/contracts'
 import { fetchLabScene, postLabAction } from '../lib/api'
 import {
-  CompositionInspectLine,
-  formatTemperatureC,
-  solventVolumeLitres,
   StockSubstanceLabel,
   stockSubstanceAriaLabel,
 } from '../lib/compositionDisplay'
@@ -19,6 +16,7 @@ import {
   PIPETTE_VOLUME_ML,
   FILTRATE_CAPACITY_ML,
 } from '../lib/benchAmounts'
+import { BeakerInspectPanel } from './BeakerInspectPanel'
 import {
   BurnerSvg,
   DistilledWaterBeakerSvg,
@@ -56,7 +54,6 @@ import {
   distilledWaterAmountMl,
   filtrateAmountMl,
   findItem,
-  itemTemperatureC,
   outcomeLabel,
   paperHasResidue,
   pipetteIsFilled,
@@ -104,54 +101,6 @@ const TOOL_CAROUSEL: { itemId: string; kind: 'pipette' | 'spoon' | 'tongs' }[] =
 ]
 
 type ToolUi = 'none' | 'spoon' | 'pipette' | 'tongs' | StockSolid
-
-function BeakerInspectPanel({
-  scene,
-  item,
-  onClose,
-}: {
-  scene: LabScene
-  item: Item
-  onClose: () => void
-}) {
-  const composition = optionalArray(item.properties.composition)
-  const temperatureC = itemTemperatureC(scene, item)
-  const solventL = solventVolumeLitres(composition)
-
-  return (
-    <aside
-      className="lab-beaker-inspect mt-3 rounded-xl border border-[var(--border)] bg-[var(--input-bg)] p-3 text-sm"
-      role="dialog"
-      aria-label={`Contents of ${item.label}`}
-      data-beaker-inspect
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-medium text-[var(--ink)]">{item.label}</p>
-          <p className="mt-1 text-[var(--ink-soft)]">Temperature: {formatTemperatureC(temperatureC)}°C</p>
-        </div>
-        <button
-          type="button"
-          className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--ink-soft)] hover:bg-[var(--surface-hover)]"
-          onClick={onClose}
-        >
-          Close
-        </button>
-      </div>
-      {composition.length > 0 ? (
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--ink)]">
-          {composition.map((entry, index) => (
-            <li key={`${entry.substance_id}-${entry.phase}-${index}`}>
-              <CompositionInspectLine entry={entry} solventVolumeL={solventL} />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-2 text-[var(--ink-soft)]">No composition reported by the server.</p>
-      )}
-    </aside>
-  )
-}
 
 export function LabBench() {
   const [scene, setScene] = useState<LabScene | null>(null)

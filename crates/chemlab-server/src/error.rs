@@ -84,6 +84,7 @@ impl From<SceneError> for ApiError {
             SceneError::UnknownItem => "unknown_item",
             SceneError::InvalidAction => "invalid_action",
             SceneError::EmptyHolding => "empty_holding",
+            SceneError::UnknownMode => "unknown_mode",
             SceneError::Dissolve(error) => error.code(),
         };
         Self::bad_request(code, value.to_string())

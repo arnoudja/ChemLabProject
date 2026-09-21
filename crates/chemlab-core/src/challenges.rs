@@ -16,10 +16,6 @@ pub const FREE_MODE: &str = "free";
 /// float compare would make a finished challenge unwinnable.
 pub const CHALLENGE_MASS_TOLERANCE_G: f64 = 1e-6;
 
-/// Ingredient stock beakers on the Free bench. A challenge keeps a subset.
-pub(crate) const STOCK_ITEM_IDS: &[&str] =
-    &["beaker-h2o", "beaker-nacl", "beaker-cacl2", "beaker-sand"];
-
 /// One "this stock holds about this much of this species" clause of a win condition.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StockTarget {

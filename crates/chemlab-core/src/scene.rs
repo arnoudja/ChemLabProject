@@ -2,7 +2,7 @@
 
 use thiserror::Error;
 
-use crate::challenges::{find_challenge, is_free_mode, Challenge, FREE_MODE, STOCK_ITEM_IDS};
+use crate::challenges::{find_challenge, is_free_mode, Challenge, FREE_MODE};
 use crate::dissolve::{dissolve, DissolveError};
 
 /// Mass of one spoon scoop of solid, in grams.
@@ -366,8 +366,7 @@ fn challenge_scene(lab_id: String, challenge: &Challenge) -> Scene {
     let mut scene = initial_bench_scene(lab_id);
     scene.mode = challenge.id.into();
     scene.items.retain(|item| {
-        !STOCK_ITEM_IDS.contains(&item.id.as_str())
-            || challenge.allowed_stock_item_ids.contains(&item.id.as_str())
+        !is_ingredient_stock(item) || challenge.allowed_stock_item_ids.contains(&item.id.as_str())
     });
     for stock_id in challenge.empty_stock_item_ids {
         if let Some(stock) = scene.items.iter_mut().find(|item| item.id == *stock_id) {
@@ -1354,6 +1353,12 @@ fn is_solid_stock_beaker(item: &SceneItem) -> bool {
         item.id.as_str(),
         "beaker-nacl" | "beaker-cacl2" | "beaker-sand"
     )
+}
+
+/// Any ingredient stock on the Free bench, so a challenge layout that does not list
+/// a stock drops it — including stocks added to the bench later.
+fn is_ingredient_stock(item: &SceneItem) -> bool {
+    is_distilled_water_stock(item) || is_solid_stock_beaker(item)
 }
 
 fn is_filter_paper(item: &SceneItem) -> bool {

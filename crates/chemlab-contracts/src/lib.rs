@@ -181,9 +181,20 @@ pub struct LabScene {
     /// Server clock watermark (unix ms) for elapsed heat/evaporation. Omitted when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_applied_unix_ms: Option<i64>,
+    /// Bench mode: `"free"` or a challenge id. Missing in older saves; treat as `"free"`.
+    #[serde(default = "free_mode")]
+    pub mode: String,
+    /// Derived after every action: the current challenge's win condition holds.
+    /// Always false in Free mode.
+    #[serde(default)]
+    pub challenge_completed: bool,
 }
 
-/// Client → server lab action. Tagged JSON `type`: `use_tool` | `pour` | `put_away` | `reset` | `toggle_burner`.
+fn free_mode() -> String {
+    "free".into()
+}
+
+/// Client → server lab action. Tagged JSON `type`: `use_tool` | `pour` | `put_away` | `reset` | `toggle_burner` | `select_mode`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export, export_to = "../../../apps/web/src/generated/")]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -199,10 +210,12 @@ pub enum LabAction {
     /// Return the tool to the bench holder. Spoon scoops restore to the dish they
     /// came from, or to the matching stock if scooped from a jar.
     PutAway { tool_item_id: String },
-    /// Rebuild the default bench scene (pure water, empty spoon, stock jars).
+    /// Rebuild the start scene of the lab's current mode.
     Reset,
     /// Idle click on the burner. Stays off when the dish has no liquid.
     ToggleBurner { burner_item_id: String },
+    /// Switch to `"free"` or a challenge id; hard-resets into that mode's start scene.
+    SelectMode { mode: String },
 }
 
 /// Response body for `POST /api/lab/action`.
@@ -298,6 +311,8 @@ mod tests {
             items: vec![item.clone()],
             last_events: vec![],
             last_applied_unix_ms: None,
+            mode: free_mode(),
+            challenge_completed: false,
         };
         let json = serde_json::to_string(&scene).unwrap();
         let back: LabScene = serde_json::from_str(&json).unwrap();
@@ -353,6 +368,46 @@ mod tests {
     }
 
     #[test]
+    fn select_mode_action_round_trips() {
+        let raw = r#"{ "type": "select_mode", "mode": "separate-nacl-sio2" }"#;
+        let action: LabAction = serde_json::from_str(raw).unwrap();
+        assert_eq!(
+            action,
+            LabAction::SelectMode {
+                mode: "separate-nacl-sio2".into(),
+            }
+        );
+        let json = serde_json::to_string(&action).unwrap();
+        assert!(json.contains(r#""type":"select_mode""#));
+        let back: LabAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(action, back);
+    }
+
+    #[test]
+    fn scene_mode_defaults_to_free_and_round_trips_a_completed_challenge() {
+        let raw = r#"{
+  "lab_id": "lab-1",
+  "version": 3,
+  "temperature_c": 20,
+  "items": []
+}"#;
+        let legacy: LabScene = serde_json::from_str(raw).unwrap();
+        assert_eq!(legacy.mode, "free");
+        assert!(!legacy.challenge_completed);
+
+        let scene = LabScene {
+            mode: "separate-nacl-sio2".into(),
+            challenge_completed: true,
+            ..legacy
+        };
+        let json = serde_json::to_string(&scene).unwrap();
+        assert!(json.contains(r#""mode":"separate-nacl-sio2""#));
+        assert!(json.contains(r#""challenge_completed":true"#));
+        let back: LabScene = serde_json::from_str(&json).unwrap();
+        assert_eq!(scene, back);
+    }
+
+    #[test]
     fn pour_action_and_lab_action_response_round_trip() {
         let action = LabAction::Pour {
             source_item_id: "spoon-1".into(),
@@ -397,6 +452,8 @@ mod tests {
                 message: "Scooped nacl onto spoon.".into(),
             }],
             last_applied_unix_ms: None,
+            mode: free_mode(),
+            challenge_completed: false,
         };
         let response = LabActionResponse {
             scene: scene.clone(),
@@ -516,6 +573,8 @@ mod tests {
             items: vec![pipette, dish, burner],
             last_events: vec![],
             last_applied_unix_ms: Some(1_700_000_000_000),
+            mode: free_mode(),
+            challenge_completed: false,
         };
         let json = serde_json::to_string(&scene).unwrap();
         assert!(json.contains(r#""kind":"pipette""#));

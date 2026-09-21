@@ -17,4 +17,13 @@ last_events?: Array<LabEvent>,
 /**
  * Server clock watermark (unix ms) for elapsed heat/evaporation. Omitted when unset.
  */
-last_applied_unix_ms?: bigint | null, };
+last_applied_unix_ms?: bigint | null, 
+/**
+ * Bench mode: `"free"` or a challenge id. Missing in older saves; treat as `"free"`.
+ */
+mode: string, 
+/**
+ * Derived after every action: the current challenge's win condition holds.
+ * Always false in Free mode.
+ */
+challenge_completed: boolean, };

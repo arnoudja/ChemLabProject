@@ -2,6 +2,7 @@
 
 use thiserror::Error;
 
+use crate::challenges::{find_challenge, is_free_mode, Challenge, FREE_MODE, STOCK_ITEM_IDS};
 use crate::dissolve::{dissolve, DissolveError};
 
 /// Mass of one spoon scoop of solid, in grams.
@@ -116,6 +117,8 @@ pub struct Scene {
     pub last_events: Vec<SceneEvent>,
     /// Server clock watermark (unix ms) for elapsed heat/evaporation.
     pub last_applied_unix_ms: Option<i64>,
+    /// [`FREE_MODE`] or a challenge id from [`crate::challenges`].
+    pub mode: String,
 }
 
 /// Action applied to a scene (mirrors wire `LabAction` vocabulary).
@@ -132,10 +135,13 @@ pub enum Action {
     /// Return the tool to the bench holder. Spoon scoops restore to the dish they
     /// came from, or to the matching stock if scooped from a jar.
     PutAway { tool_item_id: String },
-    /// Replace the scene with a fresh default bench (same `lab_id` / `version`).
+    /// Replace the scene with a fresh start scene for the scene's current mode
+    /// (same `lab_id` / `version`).
     Reset,
     /// Idle click on the burner. Stays off when the dish has no liquid.
     ToggleBurner { burner_item_id: String },
+    /// Switch to Free mode or a challenge; always a hard reset into that mode's start scene.
+    SelectMode { mode: String },
 }
 
 /// Errors when an action cannot be applied.
@@ -147,11 +153,13 @@ pub enum SceneError {
     InvalidAction,
     #[error("empty holding")]
     EmptyHolding,
+    #[error("unknown mode")]
+    UnknownMode,
     #[error(transparent)]
     Dissolve(#[from] DissolveError),
 }
 
-/// Build the default bench scene for a lab.
+/// Build the Free-mode bench scene for a lab.
 pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
     Scene {
         lab_id: lab_id.into(),
@@ -159,6 +167,7 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
         temperature_c: 20.0,
         last_events: Vec::new(),
         last_applied_unix_ms: None,
+        mode: FREE_MODE.into(),
         items: vec![
             SceneItem {
                 id: "spoon-1".into(),
@@ -339,12 +348,65 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
     }
 }
 
-/// Insert any default bench items missing from a persisted scene.
+/// Build the start scene of `mode`: Free, or a challenge from the catalog.
 ///
-/// Labs saved before a catalog addition (e.g. `tongs-1`) keep their vessel
-/// state; only absent ids are filled from [`initial_bench_scene`].
+/// Returns `None` for an unknown challenge id.
+pub fn initial_scene_for_mode(lab_id: impl Into<String>, mode: &str) -> Option<Scene> {
+    let lab_id = lab_id.into();
+    if is_free_mode(mode) {
+        return Some(initial_bench_scene(lab_id));
+    }
+    let challenge = find_challenge(mode)?;
+    Some(challenge_scene(lab_id, challenge))
+}
+
+/// The Free bench with the challenge's edits: allowed stocks only, listed stocks
+/// emptied, main beaker preloaded with the challenge's dry solids.
+fn challenge_scene(lab_id: String, challenge: &Challenge) -> Scene {
+    let mut scene = initial_bench_scene(lab_id);
+    scene.mode = challenge.id.into();
+    scene.items.retain(|item| {
+        !STOCK_ITEM_IDS.contains(&item.id.as_str())
+            || challenge.allowed_stock_item_ids.contains(&item.id.as_str())
+    });
+    for stock_id in challenge.empty_stock_item_ids {
+        if let Some(stock) = scene.items.iter_mut().find(|item| item.id == *stock_id) {
+            empty_stock_solids(stock);
+        }
+    }
+    if let Some(beaker) = scene
+        .items
+        .iter_mut()
+        .find(|item| item.id == "beaker-water")
+    {
+        for (substance_id, grams) in challenge.main_beaker_solids {
+            add_or_increase_solid(beaker, substance_id, None, Some(*grams));
+        }
+    }
+    scene
+}
+
+/// Zero a stock beaker's own solid without dropping the composition line, so the
+/// UI still renders an (empty) stock of that species.
+fn empty_stock_solids(stock: &mut SceneItem) {
+    for entry in &mut stock.properties.composition {
+        if entry.phase != "solid" {
+            continue;
+        }
+        entry.amount_scoop = Some(0);
+        entry.amount_g = Some(0.0);
+        entry.amount_mol = None;
+    }
+}
+
+/// Insert any start-scene items missing from a persisted scene.
+///
+/// Labs saved before a catalog addition (e.g. `tongs-1`) keep their vessel state;
+/// only absent ids are filled, from the start scene of the lab's own mode — a
+/// challenge must not gain back a stock its layout removed.
 pub fn ensure_default_bench_items(scene: &mut Scene) {
-    let defaults = initial_bench_scene(scene.lab_id.clone());
+    let defaults = initial_scene_for_mode(scene.lab_id.clone(), &scene.mode)
+        .unwrap_or_else(|| initial_bench_scene(scene.lab_id.clone()));
     for item in defaults.items {
         if !scene.items.iter().any(|existing| existing.id == item.id) {
             scene.items.push(item);
@@ -370,20 +432,45 @@ pub fn apply_action(scene: &mut Scene, action: Action) -> Result<(), SceneError>
             Ok(())
         }
         Action::ToggleBurner { burner_item_id } => apply_toggle_burner(scene, &burner_item_id),
+        Action::SelectMode { mode } => apply_select_mode(scene, &mode),
     }
 }
 
+/// Rebuild the start scene of the mode the lab is already in.
 fn apply_reset(scene: &mut Scene) {
     let lab_id = scene.lab_id.clone();
-    let version = scene.version;
-    let last_applied_unix_ms = scene.last_applied_unix_ms;
-    *scene = initial_bench_scene(lab_id);
-    scene.version = version;
-    scene.last_applied_unix_ms = last_applied_unix_ms;
+    let start = initial_scene_for_mode(lab_id.clone(), &scene.mode)
+        .unwrap_or_else(|| initial_bench_scene(lab_id));
+    restart_into(scene, start);
     scene.last_events.push(SceneEvent {
         kind: "reset".into(),
         message: "Lab reset to the starting bench.".into(),
     });
+}
+
+/// Switch modes. Always a hard reset into the new mode's start scene.
+fn apply_select_mode(scene: &mut Scene, mode: &str) -> Result<(), SceneError> {
+    let start =
+        initial_scene_for_mode(scene.lab_id.clone(), mode).ok_or(SceneError::UnknownMode)?;
+    restart_into(scene, start);
+    let message = match find_challenge(mode) {
+        Some(challenge) => format!("Started challenge: {}.", challenge.title),
+        None => "Switched to Free mode.".into(),
+    };
+    scene.last_events.push(SceneEvent {
+        kind: "mode_selected".into(),
+        message,
+    });
+    Ok(())
+}
+
+/// Replace the scene with `start`, keeping the lab's version and clock watermark.
+fn restart_into(scene: &mut Scene, start: Scene) {
+    let version = scene.version;
+    let last_applied_unix_ms = scene.last_applied_unix_ms;
+    *scene = start;
+    scene.version = version;
+    scene.last_applied_unix_ms = last_applied_unix_ms;
 }
 
 fn find_item_index(scene: &Scene, id: &str) -> Result<usize, SceneError> {
@@ -567,7 +654,7 @@ fn composition_has_liquid(item: &SceneItem) -> bool {
         .any(|entry| entry.phase == "liquid" && entry.amount_ml.unwrap_or(0.0) > AMOUNT_EPS)
 }
 
-fn solid_amount_g(entry: &CompositionEntry) -> f64 {
+pub(crate) fn solid_amount_g(entry: &CompositionEntry) -> f64 {
     entry
         .amount_g
         .unwrap_or_else(|| entry.amount_scoop.unwrap_or(0) as f64 * SPOON_SCOOP_MASS_G)

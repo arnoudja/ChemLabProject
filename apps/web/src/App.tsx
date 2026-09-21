@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { AuthUserResponse, HealthResponse } from './generated/contracts'
-import { fetchHealth, fetchMe, login, logout, register } from './lib/api'
+import { fetchHealth, fetchMe, login, logout, postLabAction, register } from './lib/api'
+import { FREE_MODE, LAB_MODE_OPTIONS } from './lib/challenges'
 import { LabBackdrop } from './components/LabBackdrop'
 import { LabBench } from './components/LabBench'
 
@@ -17,6 +18,10 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [sessionLoading, setSessionLoading] = useState(true)
+  const [labMode, setLabMode] = useState(FREE_MODE)
+  const [labModeEpoch, setLabModeEpoch] = useState(0)
+  const [labModeBusy, setLabModeBusy] = useState(false)
+  const [labModeError, setLabModeError] = useState<string | null>(null)
   const signupEnabled = health?.signup_enabled !== false
 
   useEffect(() => {
@@ -61,6 +66,22 @@ export default function App() {
       setAuthError(err instanceof Error ? err.message : 'Authentication failed')
     } finally {
       setBusy(false)
+    }
+  }
+
+  /** Switching mode is a hard reset on the server; remount the bench onto the new scene. */
+  async function onSelectMode(next: string) {
+    if (next === labMode || labModeBusy) return
+    setLabModeBusy(true)
+    setLabModeError(null)
+    try {
+      const response = await postLabAction({ type: 'select_mode', mode: next })
+      setLabMode(response.scene.mode)
+      setLabModeEpoch((epoch) => epoch + 1)
+    } catch (err) {
+      setLabModeError(err instanceof Error ? err.message : 'Could not switch mode')
+    } finally {
+      setLabModeBusy(false)
     }
   }
 
@@ -119,10 +140,31 @@ export default function App() {
                 <p className="font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight">
                   Welcome back, {user.display_name}
                 </p>
-                <p className="text-sm text-[var(--ink-soft)]">
-                  Signed in as {user.email}. Use the lab bench below — scoop solids and pour into
-                  water; the server owns the scene and the dissolve outcome.
-                </p>
+                <fieldset className="space-y-2" disabled={labModeBusy}>
+                  <legend className="text-sm font-medium text-[var(--ink)]">Lab mode</legend>
+                  {LAB_MODE_OPTIONS.map((option) => (
+                    <label
+                      key={option.id}
+                      className="flex items-center gap-2 text-sm text-[var(--ink-soft)]"
+                    >
+                      <input
+                        type="radio"
+                        name="lab-mode"
+                        value={option.id}
+                        checked={labMode === option.id}
+                        onChange={() => void onSelectMode(option.id)}
+                      />
+                      <span>{option.title}</span>
+                    </label>
+                  ))}
+                </fieldset>
+
+                {labModeError && (
+                  <p className="text-sm text-[var(--danger)]" role="alert">
+                    {labModeError}
+                  </p>
+                )}
+
                 <button
                   type="button"
                   onClick={onLogout}
@@ -230,7 +272,7 @@ export default function App() {
           </div>
         </section>
         </div>
-        {user ? <LabBench /> : null}
+        {user ? <LabBench key={labModeEpoch} onModeChange={setLabMode} /> : null}
       </main>
     </div>
   )

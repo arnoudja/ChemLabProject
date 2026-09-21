@@ -2,7 +2,9 @@ import { fireEvent, screen } from '@testing-library/react'
 import { expect, vi } from 'vitest'
 import type { LabAction, LabScene } from '../generated/contracts'
 import { optionalArray } from '../lib/scene'
+import { FREE_MODE } from '../lib/challenges'
 import {
+  challengeScene,
   cloneScene,
   initialScene,
   withFilledMainBeaker,
@@ -25,6 +27,11 @@ import {
   applyTongsUse,
   withBurnerToggle,
 } from './labBenchTestTools'
+
+/** Mirror of the server's mode-aware reset: back to the start scene of the current mode. */
+function startSceneForMode(mode: string): LabScene {
+  return mode === FREE_MODE ? initialScene() : challengeScene()
+}
 
 export function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -182,7 +189,7 @@ export function stubLabFetch(options?: {
         }
       }
       if (action.type === 'reset') {
-        const next = initialScene()
+        const next = startSceneForMode(scene.mode)
         next.lab_id = scene.lab_id
         next.version = scene.version + 1
         next.last_events = [{ kind: 'reset', message: 'Lab reset to the starting bench.' }]

@@ -1,4 +1,5 @@
 import type { LabScene } from '../generated/contracts'
+import { CHALLENGES, FREE_MODE } from '../lib/challenges'
 import {
   STOCK_FULL_MASS_G,
   STOCK_FULL_SCOOPS,
@@ -41,6 +42,8 @@ export function initialScene(): LabScene {
     lab_id: 'lab-1',
     version: 0,
     temperature_c: 20,
+    mode: FREE_MODE,
+    challenge_completed: false,
     last_events: [],
     items: [
       {
@@ -235,6 +238,33 @@ export function withFilledMainBeaker(scene: LabScene, amountMl = WATER_FULL_ML):
 
 export function filledScene(): LabScene {
   return withFilledMainBeaker(initialScene())
+}
+
+export const SEPARATE_CHALLENGE = CHALLENGES[0]
+
+/** Mirror of the server start scene for `separate-nacl-sio2`. */
+export function challengeScene(): LabScene {
+  const next = initialScene()
+  next.mode = SEPARATE_CHALLENGE.id
+  next.items = next.items.filter((item) => item.id !== 'beaker-cacl2')
+  for (const stockId of ['beaker-nacl', 'beaker-sand']) {
+    const stock = next.items.find((item) => item.id === stockId)!
+    stock.properties.composition = stock.properties.composition!.map((entry) => ({
+      ...entry,
+      amount_scoop: 0,
+      amount_g: 0,
+    }))
+  }
+  const beaker = next.items.find((item) => item.id === 'beaker-water')!
+  beaker.properties.composition = (['nacl', 'sand'] as const).map((substance_id) => ({
+    substance_id,
+    phase: 'solid' as const,
+    amount_ml: null,
+    amount_scoop: null,
+    amount_g: 2,
+    amount_mol: null,
+  }))
+  return next
 }
 
 export function withDryDishSolids(

@@ -24,6 +24,8 @@ const EMPTY_LAB_SCENE = {
   lab_id: 'lab-1',
   version: 0,
   temperature_c: 20,
+  mode: 'free',
+  challenge_completed: false,
   last_events: [] as { kind: string; message: string }[],
   items: [
     {
@@ -121,6 +123,20 @@ const EMPTY_LAB_SCENE = {
   ],
 }
 
+const CHALLENGE_ID = 'separate-nacl-sio2'
+
+/** Mirror of the server's mode-aware start scene, minus the items App does not read. */
+function sceneForMode(mode: string) {
+  return {
+    ...EMPTY_LAB_SCENE,
+    mode,
+    items:
+      mode === 'free'
+        ? EMPTY_LAB_SCENE.items
+        : EMPTY_LAB_SCENE.items.filter((item) => item.id !== 'beaker-cacl2'),
+  }
+}
+
 function stubAppFetch(options?: {
   authenticated?: boolean
   signupEnabled?: boolean
@@ -130,10 +146,11 @@ function stubAppFetch(options?: {
   loginBody?: unknown
   loginStatus?: number
   logoutStatus?: number
+  selectModeFails?: boolean
 }) {
   const authenticated = options?.authenticated ?? false
+  let scene = sceneForMode('free')
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    void init
     const url = String(input)
     if (url === '/api/health') {
       if (options?.healthNetworkError) {
@@ -175,10 +192,17 @@ function stubAppFetch(options?: {
       return jsonResponse({ error: 'Could not log out', code: 'internal' }, status)
     }
     if (url === '/api/lab/scene') {
-      return jsonResponse(EMPTY_LAB_SCENE)
+      return jsonResponse(scene)
     }
     if (url === '/api/lab/action') {
-      return jsonResponse({ scene: EMPTY_LAB_SCENE })
+      const action = init?.body ? JSON.parse(String(init.body)) : null
+      if (action?.type === 'select_mode') {
+        if (options?.selectModeFails) {
+          return jsonResponse({ error: 'unknown mode', code: 'unknown_mode' }, 400)
+        }
+        scene = sceneForMode(action.mode)
+      }
+      return jsonResponse({ scene })
     }
     return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
   })
@@ -220,14 +244,54 @@ describe('App', () => {
     expect(screen.queryByLabelText('Solid')).not.toBeInTheDocument()
   })
 
-  it('signed-in copy points at the bench, not a text dissolve picker', async () => {
+  it('offers the challenge list with Free mode selected by default', async () => {
     vi.stubGlobal('fetch', stubAppFetch({ authenticated: true }))
 
     render(<App />)
 
-    expect(await screen.findByText(/lab bench below/i)).toBeInTheDocument()
-    expect(screen.queryByText(/benches unlock/i)).not.toBeInTheDocument()
+    const free = await screen.findByRole('radio', { name: 'Free mode' })
+    expect(free).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Separate salt from sand' })).not.toBeChecked()
+    expect(screen.queryByText(/lab bench below/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/pick a solid/i)).not.toBeInTheDocument()
+  })
+
+  it('selecting a challenge posts select_mode and reloads the bench into it', async () => {
+    const fetchMock = stubAppFetch({ authenticated: true })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Separate salt from sand' }))
+
+    expect(
+      await screen.findByText(/put all the salt and sand in the main beaker/i),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Separate salt from sand' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Free mode' })).not.toBeChecked()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/lab/action',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ type: 'select_mode', mode: CHALLENGE_ID }),
+      }),
+    )
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Free mode' }))
+    expect(await screen.findByText(/Pick up the spoon/i)).toBeInTheDocument()
+  })
+
+  it('surfaces a failed mode switch and keeps the current mode', async () => {
+    vi.stubGlobal('fetch', stubAppFetch({ authenticated: true, selectModeFails: true }))
+
+    render(<App />)
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Separate salt from sand' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('unknown mode')
+    expect(screen.getByRole('radio', { name: 'Free mode' })).toBeChecked()
   })
 
   it('hides Create account when health says signup is disabled', async () => {

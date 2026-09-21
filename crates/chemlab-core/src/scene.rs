@@ -687,6 +687,9 @@ fn apply_return_holding_to_solids_vessel(
 }
 
 /// Return held solid(s) of one species to its matching stock beaker.
+///
+/// Match the destination by stock beaker id (same as tongs exact-type dump), not by
+/// whether a solid composition line is already present — emptied stocks have none.
 fn apply_return_to_stock(
     scene: &mut Scene,
     tool_idx: usize,
@@ -701,15 +704,10 @@ fn apply_return_to_stock(
     if !is_stock_solid(&substance_id) {
         return Err(SceneError::InvalidAction);
     }
-    if scene.items[target_idx].kind != "beaker" {
+    let Some(expected) = stock_species_for_beaker(&scene.items[target_idx]) else {
         return Err(SceneError::InvalidAction);
-    }
-    if !scene.items[target_idx]
-        .properties
-        .composition
-        .iter()
-        .any(|c| c.phase == "solid" && c.substance_id == substance_id)
-    {
+    };
+    if expected != substance_id {
         return Err(SceneError::InvalidAction);
     }
 
@@ -777,12 +775,7 @@ fn find_matching_stock_index(scene: &Scene, substance_id: &str) -> Result<usize,
         .items
         .iter()
         .position(|item| {
-            item.kind == "beaker"
-                && item.properties.composition.iter().any(|c| {
-                    c.phase == "solid"
-                        && c.substance_id == substance_id
-                        && is_stock_solid(substance_id)
-                })
+            stock_species_for_beaker(item).is_some_and(|species| species == substance_id)
         })
         .ok_or(SceneError::InvalidAction)
 }

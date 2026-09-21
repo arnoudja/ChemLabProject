@@ -11,7 +11,7 @@ Short wire contract for the lab-scene redesign. Chemistry stays in `chemlab-core
 | Render scene + click → action POST | Frontend |
 | Persist `LabScene` JSON blob per lab row | `chemlab-db` → `labs.state_blob` |
 
-The server owns items, locations, and properties. The frontend posts **actions only** (`use_tool`, `pour`, `put_away`, `reset`, `toggle_burner`). It never chooses a dissolve triple (`substance_id` / `solvent_id` / `temperature_c`) for scene play — those come from item properties on the server.
+The server owns items, locations, and properties. The frontend posts **actions only** (`use_tool`, `pour`, `put_away`, `reset`, `toggle_burner`, `select_mode`). It never chooses a dissolve triple (`substance_id` / `solvent_id` / `temperature_c`) for scene play — those come from item properties on the server.
 
 **Dissolve is a consequence of pouring** a solid into water inside `chemlab-core`, not a separate client decision.
 
@@ -34,8 +34,12 @@ Explanations stay verbatim from the dissolve spec.
 | `use_tool` | Active tool item used on a target item (e.g. spoon → NaCl beaker scoops salt onto spoon; empty pipette → water or dish fills 1.00 ml of solution; full pipette → water or dish empties) |
 | `pour` | Pour from held/source item into target (e.g. spoon with NaCl → water beaker, or full pipette → dish). Server may call `dissolve()` when solid meets water. Dish liquid is capped at **25.00 ml**. |
 | `put_away` | Return the spoon or pipette to the bench. Held scoops restore to matching stock; a full pipette returns 1.00 ml to its last source. |
-| `reset` | Rebuild the default bench (empty dish, burner off, empty pipette, T = 20 °C). |
+| `reset` | Rebuild the start bench of the lab's current mode (empty dish, burner off, empty pipette, T = 20 °C). |
 | `toggle_burner` | Flip the burner. Stays off when the dish has no liquid. |
+| `select_mode` | Switch the bench to `"free"` or a challenge id from the [challenge catalog](challenges.md); always a hard reset into that mode's start scene. Unknown id → `400 unknown_mode`. |
+
+The scene carries `mode` (`"free"` when a save predates modes) and the derived
+`challenge_completed`; both are server-owned.
 
 Successful responses return the full updated `LabScene` (and optional `events` / `last_events` for UI copy).
 

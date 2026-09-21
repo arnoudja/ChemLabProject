@@ -1781,5 +1781,5 @@ fn take_liquid_aliquot(
 }
 
 #[cfg(test)]
-#[path = "scene_tests.rs"]
+#[path = "scene_tests/mod.rs"]
 mod tests;

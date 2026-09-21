@@ -9,10 +9,6 @@ mod dissolve;
 mod scene;
 mod solubility;
 
-pub use challenges::{
-    find_challenge, is_free_mode, Challenge, StockTarget, CHALLENGES, CHALLENGE_MASS_TOLERANCE_G,
-    FREE_MODE,
-};
 pub use dissolve::{dissolve, DissolveError, DissolveOutcome};
 pub use scene::{
     apply_action, apply_elapsed, ensure_default_bench_items, initial_bench_scene,

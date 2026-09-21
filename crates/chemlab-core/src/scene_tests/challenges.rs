@@ -1,8 +1,6 @@
 use super::super::*;
 use super::helpers::{item, solid_g};
-use crate::challenges::{
-    find_challenge, is_completed, is_free_mode, CHALLENGES, FREE_MODE, SEPARATE_NACL_SIO2,
-};
+use crate::challenges::{is_completed, CHALLENGES, SEPARATE_NACL_SIO2};
 
 const SEPARATE: &str = "separate-nacl-sio2";
 

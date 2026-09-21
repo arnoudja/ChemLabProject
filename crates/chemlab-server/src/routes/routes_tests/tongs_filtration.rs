@@ -21,7 +21,6 @@ async fn tongs_use_tool_without_csrf_is_forbidden() {
     assert_eq!(body_json(response).await["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn tongs_use_tool_without_session_is_unauthorized() {
     let app = test_app().await;
@@ -40,7 +39,6 @@ async fn tongs_use_tool_without_session_is_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body_json(response).await["code"], "unauthenticated");
 }
-
 
 #[tokio::test]
 async fn tongs_put_away_without_csrf_is_forbidden() {
@@ -61,7 +59,6 @@ async fn tongs_put_away_without_csrf_is_forbidden() {
     assert_eq!(body_json(response).await["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn tongs_put_away_without_session_is_unauthorized() {
     let app = test_app().await;
@@ -79,7 +76,6 @@ async fn tongs_put_away_without_session_is_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body_json(response).await["code"], "unauthenticated");
 }
-
 
 #[tokio::test]
 async fn tongs_use_tool_and_put_away_with_csrf_and_session_pick_up_and_restore_water() {
@@ -135,7 +131,6 @@ async fn tongs_use_tool_and_put_away_with_csrf_and_session_pick_up_and_restore_w
     );
 }
 
-
 #[tokio::test]
 async fn get_scene_backfills_tongs_on_persisted_lab_from_before_tongs() {
     let (app, state) = test_app_state().await;
@@ -153,7 +148,6 @@ async fn get_scene_backfills_tongs_on_persisted_lab_from_before_tongs() {
     );
     assert_eq!(scene_item(&loaded, "beaker-water")["label"], "Water");
 }
-
 
 #[tokio::test]
 async fn tongs_use_tool_on_persisted_lab_without_tongs_picks_up_water() {
@@ -183,7 +177,6 @@ async fn tongs_use_tool_on_persisted_lab_without_tongs_picks_up_water() {
     );
 }
 
-
 #[tokio::test]
 async fn dish_spoon_use_tool_without_csrf_is_forbidden() {
     let app = test_app().await;
@@ -204,7 +197,6 @@ async fn dish_spoon_use_tool_without_csrf_is_forbidden() {
     assert_eq!(body_json(response).await["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn dish_spoon_use_tool_without_session_is_unauthorized() {
     let app = test_app().await;
@@ -223,7 +215,6 @@ async fn dish_spoon_use_tool_without_session_is_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body_json(response).await["code"], "unauthenticated");
 }
-
 
 #[tokio::test]
 async fn dish_spoon_put_away_without_csrf_is_forbidden() {
@@ -244,7 +235,6 @@ async fn dish_spoon_put_away_without_csrf_is_forbidden() {
     assert_eq!(body_json(response).await["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn dish_spoon_put_away_without_session_is_unauthorized() {
     let app = test_app().await;
@@ -262,7 +252,6 @@ async fn dish_spoon_put_away_without_session_is_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body_json(response).await["code"], "unauthenticated");
 }
-
 
 #[tokio::test]
 async fn dish_spoon_use_tool_and_put_away_with_csrf_and_session_scoop_and_restore() {
@@ -359,7 +348,6 @@ async fn dish_spoon_use_tool_and_put_away_with_csrf_and_session_scoop_and_restor
     );
 }
 
-
 #[tokio::test]
 async fn authenticated_scene_get_includes_full_distilled_water_beaker() {
     let app = test_app().await;
@@ -378,7 +366,6 @@ async fn authenticated_scene_get_includes_full_distilled_water_beaker() {
     assert_eq!(h2o["properties"]["composition"][0]["phase"], "liquid");
     assert_eq!(h2o["properties"]["composition"][0]["amount_ml"], 100.0);
 }
-
 
 #[tokio::test]
 async fn get_scene_backfills_beaker_h2o_on_persisted_lab_from_before_distilled_water() {
@@ -401,7 +388,6 @@ async fn get_scene_backfills_beaker_h2o_on_persisted_lab_from_before_distilled_w
     );
     assert_eq!(scene_item(&loaded, "beaker-water")["label"], "Water");
 }
-
 
 #[tokio::test]
 async fn tongs_use_tool_picks_up_beaker_h2o() {
@@ -429,7 +415,6 @@ async fn tongs_use_tool_picks_up_beaker_h2o() {
     );
 }
 
-
 #[tokio::test]
 async fn beaker_h2o_use_tool_without_csrf_is_forbidden() {
     let app = test_app().await;
@@ -450,7 +435,6 @@ async fn beaker_h2o_use_tool_without_csrf_is_forbidden() {
     assert_eq!(body_json(response).await["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn beaker_h2o_use_tool_without_session_is_unauthorized() {
     let app = test_app().await;
@@ -469,7 +453,6 @@ async fn beaker_h2o_use_tool_without_session_is_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body_json(response).await["code"], "unauthenticated");
 }
-
 
 #[tokio::test]
 async fn beaker_h2o_put_away_without_csrf_is_forbidden() {
@@ -490,7 +473,6 @@ async fn beaker_h2o_put_away_without_csrf_is_forbidden() {
     assert_eq!(body_json(response).await["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn beaker_h2o_put_away_without_session_is_unauthorized() {
     let app = test_app().await;
@@ -508,7 +490,6 @@ async fn beaker_h2o_put_away_without_session_is_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body_json(response).await["code"], "unauthenticated");
 }
-
 
 #[tokio::test]
 async fn pipette_beaker_h2o_use_tool_without_csrf_is_forbidden() {
@@ -529,7 +510,6 @@ async fn pipette_beaker_h2o_use_tool_without_csrf_is_forbidden() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     assert_eq!(body_json(response).await["code"], "csrf");
 }
-
 
 #[tokio::test]
 async fn beaker_h2o_use_tool_and_put_away_with_csrf_and_session_pick_up_and_restore() {
@@ -585,7 +565,6 @@ async fn beaker_h2o_use_tool_and_put_away_with_csrf_and_session_pick_up_and_rest
     );
 }
 
-
 #[tokio::test]
 async fn pipette_beaker_h2o_use_tool_with_csrf_and_session_draws_one_ml() {
     let app = test_app().await;
@@ -621,7 +600,6 @@ async fn pipette_beaker_h2o_use_tool_with_csrf_and_session_draws_one_ml() {
     );
 }
 
-
 #[tokio::test]
 async fn authenticated_scene_get_includes_empty_filtrate_beaker_and_filter_paper() {
     let app = test_app().await;
@@ -648,7 +626,6 @@ async fn authenticated_scene_get_includes_empty_filtrate_beaker_and_filter_paper
     assert_eq!(paper["location"], "bench");
 }
 
-
 #[tokio::test]
 async fn get_scene_backfills_filtration_items_on_persisted_lab() {
     let (app, state) = test_app_state().await;
@@ -674,7 +651,6 @@ async fn get_scene_backfills_filtration_items_on_persisted_lab() {
     );
 }
 
-
 #[tokio::test]
 async fn filtration_use_tool_without_csrf_is_forbidden() {
     let app = test_app().await;
@@ -695,7 +671,6 @@ async fn filtration_use_tool_without_csrf_is_forbidden() {
     assert_eq!(body_json(response).await["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn filtration_use_tool_without_session_is_unauthorized() {
     let app = test_app().await;
@@ -714,7 +689,6 @@ async fn filtration_use_tool_without_session_is_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body_json(response).await["code"], "unauthenticated");
 }
-
 
 #[tokio::test]
 async fn filtration_put_away_without_csrf_is_forbidden() {
@@ -735,7 +709,6 @@ async fn filtration_put_away_without_csrf_is_forbidden() {
     assert_eq!(body_json(response).await["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn filtration_put_away_without_session_is_unauthorized() {
     let app = test_app().await;
@@ -753,7 +726,6 @@ async fn filtration_put_away_without_session_is_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body_json(response).await["code"], "unauthenticated");
 }
-
 
 #[tokio::test]
 async fn filtration_use_tool_and_put_away_with_csrf_and_session_pick_up_filtrate() {
@@ -813,7 +785,6 @@ async fn filtration_use_tool_and_put_away_with_csrf_and_session_pick_up_filtrate
     );
 }
 
-
 #[tokio::test]
 async fn tongs_use_tool_on_persisted_lab_without_filtration_picks_up_filtrate() {
     let (app, state) = test_app_state().await;
@@ -842,7 +813,6 @@ async fn tongs_use_tool_on_persisted_lab_without_filtration_picks_up_filtrate() 
     );
 }
 
-
 #[tokio::test]
 async fn pipette_filtrate_use_tool_without_csrf_is_forbidden() {
     let app = test_app().await;
@@ -863,7 +833,6 @@ async fn pipette_filtrate_use_tool_without_csrf_is_forbidden() {
     assert_eq!(body_json(response).await["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn spoon_paper_use_tool_without_csrf_is_forbidden() {
     let app = test_app().await;
@@ -883,7 +852,6 @@ async fn spoon_paper_use_tool_without_csrf_is_forbidden() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     assert_eq!(body_json(response).await["code"], "csrf");
 }
-
 
 #[tokio::test]
 async fn filtration_use_tool_with_csrf_and_session_filter_pours_and_pipettes() {

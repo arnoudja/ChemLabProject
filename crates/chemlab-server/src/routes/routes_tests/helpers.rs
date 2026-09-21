@@ -17,34 +17,28 @@ pub(crate) fn test_config() -> Config {
     }
 }
 
-
 pub(crate) async fn test_app_state() -> (Router, AppState) {
     test_app_state_with(test_config()).await
 }
-
 
 pub(crate) async fn test_app_state_with(config: Config) -> (Router, AppState) {
     let state = AppState::new(&config).await.expect("state");
     (router(state.clone()), state)
 }
 
-
 pub(crate) async fn test_app() -> Router {
     test_app_state().await.0
 }
-
 
 pub(crate) async fn body_text(response: axum::response::Response) -> String {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     String::from_utf8(bytes.to_vec()).unwrap()
 }
 
-
 pub(crate) async fn body_json(response: axum::response::Response) -> serde_json::Value {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&bytes).unwrap()
 }
-
 
 pub(crate) fn set_cookie_headers(response: &axum::response::Response) -> Vec<String> {
     response
@@ -55,13 +49,11 @@ pub(crate) fn set_cookie_headers(response: &axum::response::Response) -> Vec<Str
         .collect()
 }
 
-
 pub(crate) fn cookie_has_secure(set_cookie: &str) -> bool {
     set_cookie
         .split(';')
         .any(|part| part.trim().eq_ignore_ascii_case("secure"))
 }
-
 
 pub(crate) fn assert_html_security_headers(response: &axum::response::Response) {
     use axum::http::header::{
@@ -103,7 +95,6 @@ pub(crate) fn assert_html_security_headers(response: &axum::response::Response) 
         .is_none());
 }
 
-
 pub(crate) fn first_set_cookie(response: &axum::response::Response) -> String {
     response
         .headers()
@@ -114,7 +105,6 @@ pub(crate) fn first_set_cookie(response: &axum::response::Response) -> String {
         .to_string()
 }
 
-
 pub(crate) fn without_clock(scene: &serde_json::Value) -> serde_json::Value {
     let mut scene = scene.clone();
     if let Some(obj) = scene.as_object_mut() {
@@ -123,11 +113,9 @@ pub(crate) fn without_clock(scene: &serde_json::Value) -> serde_json::Value {
     scene
 }
 
-
 pub(crate) fn cookie_pair(set_cookie: &str) -> String {
     set_cookie.split(';').next().unwrap().to_string()
 }
-
 
 pub(crate) fn csrf_pair_from_response(response: &axum::response::Response) -> (String, String) {
     let set_cookie = set_cookie_headers(response)
@@ -143,12 +131,10 @@ pub(crate) fn csrf_pair_from_response(response: &axum::response::Response) -> (S
     (token, cookie)
 }
 
-
 pub(crate) fn set_cookie_clears_cookie(set_cookie: &str, name: &str) -> bool {
     set_cookie.starts_with(&format!("{name}="))
         && set_cookie.to_ascii_lowercase().contains("max-age=0")
 }
-
 
 pub(crate) fn session_cookie_pair(response: &axum::response::Response) -> String {
     response
@@ -160,7 +146,6 @@ pub(crate) fn session_cookie_pair(response: &axum::response::Response) -> String
         .map(cookie_pair)
         .expect("chemlab_session set-cookie")
 }
-
 
 pub(crate) async fn get_me(app: &Router, cookie: &str) -> serde_json::Value {
     let response = app
@@ -177,7 +162,6 @@ pub(crate) async fn get_me(app: &Router, cookie: &str) -> serde_json::Value {
     assert_eq!(response.status(), StatusCode::OK);
     body_json(response).await
 }
-
 
 pub(crate) async fn issue_csrf(app: &Router) -> (String, String) {
     let response = app
@@ -196,7 +180,6 @@ pub(crate) async fn issue_csrf(app: &Router) -> (String, String) {
     let token = json["csrf_token"].as_str().expect("csrf_token").to_string();
     (token, cookie)
 }
-
 
 pub(crate) async fn post_login(
     app: &Router,
@@ -222,7 +205,6 @@ pub(crate) async fn post_login(
         .unwrap()
 }
 
-
 pub(crate) async fn post_register(
     app: &Router,
     csrf_token: &str,
@@ -232,7 +214,6 @@ pub(crate) async fn post_register(
     let body = format!(r#"{{"email":"{email}","password":"secret123","display_name":"Ada"}}"#);
     post_register_body(app, csrf_token, csrf_cookie, body).await
 }
-
 
 pub(crate) async fn post_register_body(
     app: &Router,
@@ -254,7 +235,6 @@ pub(crate) async fn post_register_body(
         .await
         .unwrap()
 }
-
 
 pub(crate) async fn register_user(app: &Router, email: &str) -> (String, String, String) {
     let (csrf_token, csrf_cookie) = issue_csrf(app).await;
@@ -280,7 +260,6 @@ pub(crate) async fn register_user(app: &Router, email: &str) -> (String, String,
     (csrf_token, csrf_cookie, session_cookie)
 }
 
-
 pub(crate) fn dissolve_json(substance_id: &str, solvent_id: &str, temperature_c: i32) -> String {
     serde_json::json!({
         "substance_id": substance_id,
@@ -289,7 +268,6 @@ pub(crate) fn dissolve_json(substance_id: &str, solvent_id: &str, temperature_c:
     })
     .to_string()
 }
-
 
 pub(crate) async fn post_dissolve(
     app: &Router,
@@ -311,7 +289,6 @@ pub(crate) async fn post_dissolve(
         .unwrap()
 }
 
-
 pub(crate) async fn get_scene(app: &Router, cookie: Option<&str>) -> axum::response::Response {
     let mut builder = Request::builder().uri("/api/lab/scene");
     if let Some(cookie) = cookie {
@@ -322,7 +299,6 @@ pub(crate) async fn get_scene(app: &Router, cookie: Option<&str>) -> axum::respo
         .await
         .unwrap()
 }
-
 
 pub(crate) async fn post_action(
     app: &Router,
@@ -344,7 +320,6 @@ pub(crate) async fn post_action(
         .unwrap()
 }
 
-
 pub(crate) fn scene_item<'a>(scene: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
     scene["items"]
         .as_array()
@@ -353,7 +328,6 @@ pub(crate) fn scene_item<'a>(scene: &'a serde_json::Value, id: &str) -> &'a serd
         .find(|item| item["id"] == id)
         .unwrap_or_else(|| panic!("missing item {id}"))
 }
-
 
 pub(crate) fn set_main_beaker_water(scene: &mut serde_json::Value, amount_ml: f64) {
     let water = scene["items"]
@@ -372,7 +346,6 @@ pub(crate) fn set_main_beaker_water(scene: &mut serde_json::Value, amount_ml: f6
     ]);
 }
 
-
 pub(crate) async fn save_scene_blob(state: &AppState, scene: &serde_json::Value) {
     let lab_id = scene["lab_id"].as_str().unwrap().to_string();
     let version = scene["version"].as_u64().unwrap() as i64;
@@ -386,13 +359,11 @@ pub(crate) async fn save_scene_blob(state: &AppState, scene: &serde_json::Value)
     .unwrap();
 }
 
-
 pub(crate) async fn persist_filled_main_beaker(state: &AppState, app: &Router, cookies: &str) {
     let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
     set_main_beaker_water(&mut scene, 200.0);
     save_scene_blob(state, &scene).await;
 }
-
 
 pub(crate) async fn pipette_one_ml_into_dish(app: &Router, cookies: &str, csrf_token: &str) {
     assert_eq!(
@@ -427,7 +398,6 @@ pub(crate) async fn pipette_one_ml_into_dish(app: &Router, cookies: &str, csrf_t
     );
 }
 
-
 pub(crate) async fn persist_scene_without_tongs(state: &AppState, app: &Router, cookies: &str) {
     let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
     // Old labs had a filled "Water" beaker; backfill must not wipe that fill.
@@ -449,7 +419,6 @@ pub(crate) async fn persist_scene_without_tongs(state: &AppState, app: &Router, 
         .all(|item| item["id"] != "tongs-1"));
     save_scene_blob(state, &scene).await;
 }
-
 
 pub(crate) async fn persist_dry_dish_solids(state: &AppState, app: &Router, cookies: &str) {
     let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
@@ -484,8 +453,11 @@ pub(crate) async fn persist_dry_dish_solids(state: &AppState, app: &Router, cook
     .unwrap();
 }
 
-
-pub(crate) async fn persist_scene_without_beaker_h2o(state: &AppState, app: &Router, cookies: &str) {
+pub(crate) async fn persist_scene_without_beaker_h2o(
+    state: &AppState,
+    app: &Router,
+    cookies: &str,
+) {
     let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
     scene["items"]
         .as_array_mut()
@@ -506,8 +478,11 @@ pub(crate) async fn persist_scene_without_beaker_h2o(state: &AppState, app: &Rou
     save_scene_blob(state, &scene).await;
 }
 
-
-pub(crate) async fn persist_scene_without_filtration(state: &AppState, app: &Router, cookies: &str) {
+pub(crate) async fn persist_scene_without_filtration(
+    state: &AppState,
+    app: &Router,
+    cookies: &str,
+) {
     let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
     scene["items"]
         .as_array_mut()
@@ -527,4 +502,3 @@ pub(crate) async fn persist_scene_without_filtration(state: &AppState, app: &Rou
         .all(|item| { item["id"] != "beaker-filtrate" && item["id"] != "filter-paper-1" }));
     save_scene_blob(state, &scene).await;
 }
-

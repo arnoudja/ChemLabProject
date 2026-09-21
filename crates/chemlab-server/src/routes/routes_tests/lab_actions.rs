@@ -10,7 +10,6 @@ async fn scene_without_session_is_unauthorized() {
     assert_eq!(body_json(response).await["code"], "unauthenticated");
 }
 
-
 #[tokio::test]
 async fn authenticated_scene_get_creates_initial_water_beaker() {
     let app = test_app().await;
@@ -42,7 +41,6 @@ async fn authenticated_scene_get_creates_initial_water_beaker() {
     );
 }
 
-
 #[tokio::test]
 async fn action_without_csrf_is_forbidden() {
     let app = test_app().await;
@@ -63,7 +61,6 @@ async fn action_without_csrf_is_forbidden() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     assert_eq!(body_json(response).await["code"], "csrf");
 }
-
 
 #[tokio::test]
 async fn use_tool_action_persists_spoon_holding_across_get() {
@@ -105,7 +102,6 @@ async fn use_tool_action_persists_spoon_holding_across_get() {
     assert_eq!(nacl["properties"]["composition"][0]["amount_scoop"], 9);
     assert_eq!(nacl["properties"]["composition"][0]["amount_g"], 1.8);
 }
-
 
 #[tokio::test]
 async fn use_tool_put_back_restores_stock_and_clears_holding() {
@@ -153,7 +149,6 @@ async fn use_tool_put_back_restores_stock_and_clears_holding() {
     let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
     assert_eq!(without_clock(&persisted), without_clock(&scene));
 }
-
 
 #[tokio::test]
 async fn put_away_returns_scoop_to_matching_stock_for_each_solid() {
@@ -227,7 +222,6 @@ async fn put_away_returns_scoop_to_matching_stock_for_each_solid() {
     }
 }
 
-
 #[tokio::test]
 async fn put_away_empty_spoon_is_noop() {
     let app = test_app().await;
@@ -286,7 +280,6 @@ async fn put_away_empty_spoon_is_noop() {
     );
 }
 
-
 #[tokio::test]
 async fn use_tool_rejects_putting_nacl_into_sand_stock() {
     let app = test_app().await;
@@ -322,7 +315,6 @@ async fn use_tool_rejects_putting_nacl_into_sand_stock() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert_eq!(body_json(response).await["code"], "invalid_action");
 }
-
 
 #[tokio::test]
 async fn pour_nacl_action_persists_dissolve_scene_and_events() {
@@ -392,7 +384,6 @@ async fn pour_nacl_action_persists_dissolve_scene_and_events() {
     );
     assert!(cooled < 20.0);
 }
-
 
 #[tokio::test]
 async fn reset_action_restores_default_scene_and_persists() {
@@ -476,7 +467,6 @@ async fn reset_action_restores_default_scene_and_persists() {
     assert_eq!(without_clock(&persisted), without_clock(&action["scene"]));
 }
 
-
 #[tokio::test]
 async fn scene_errors_return_stable_bad_request_codes() {
     let app = test_app().await;
@@ -517,7 +507,6 @@ async fn scene_errors_return_stable_bad_request_codes() {
     }
 }
 
-
 #[tokio::test]
 async fn pour_into_dry_beaker_returns_invalid_action() {
     let app = test_app().await;
@@ -554,7 +543,6 @@ async fn pour_into_dry_beaker_returns_invalid_action() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert_eq!(body_json(response).await["code"], "invalid_action");
 }
-
 
 #[tokio::test]
 async fn pour_sand_at_non_bench_temperature_leaves_undissolved_solid() {
@@ -639,7 +627,6 @@ async fn pour_sand_at_non_bench_temperature_leaves_undissolved_solid() {
     assert_eq!(sand_solid["amount_scoop"], 1);
     assert!((sand_solid["amount_g"].as_f64().unwrap() - 0.2).abs() < 1e-12);
 }
-
 
 #[tokio::test]
 async fn pour_sand_after_cacl2_heating_succeeds() {
@@ -760,7 +747,6 @@ async fn pour_sand_after_cacl2_heating_succeeds() {
     );
 }
 
-
 #[tokio::test]
 async fn pour_second_cacl2_scoop_after_heating_succeeds() {
     let (app, state) = test_app_state().await;
@@ -834,7 +820,6 @@ async fn pour_second_cacl2_scoop_after_heating_succeeds() {
     assert!(ca_mol > 0.0);
 }
 
-
 #[tokio::test]
 async fn dissolve_without_csrf_is_forbidden() {
     let app = test_app().await;
@@ -852,7 +837,6 @@ async fn dissolve_without_csrf_is_forbidden() {
     assert_eq!(json["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn dissolve_without_session_is_unauthorized() {
     let app = test_app().await;
@@ -869,7 +853,6 @@ async fn dissolve_without_session_is_unauthorized() {
     let json = body_json(response).await;
     assert_eq!(json["code"], "unauthenticated");
 }
-
 
 #[tokio::test]
 async fn dissolve_returns_spec_outcomes_when_authenticated() {
@@ -948,7 +931,6 @@ async fn dissolve_returns_spec_outcomes_when_authenticated() {
     }
 }
 
-
 #[tokio::test]
 async fn dissolve_errors_return_spec_codes() {
     let app = test_app().await;
@@ -984,7 +966,6 @@ async fn dissolve_errors_return_spec_codes() {
     }
 }
 
-
 #[tokio::test]
 async fn toggle_burner_without_csrf_is_forbidden() {
     let app = test_app().await;
@@ -1004,7 +985,6 @@ async fn toggle_burner_without_csrf_is_forbidden() {
     assert_eq!(body_json(response).await["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn toggle_burner_without_session_is_unauthorized() {
     let app = test_app().await;
@@ -1022,7 +1002,6 @@ async fn toggle_burner_without_session_is_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body_json(response).await["code"], "unauthenticated");
 }
-
 
 #[tokio::test]
 async fn toggle_burner_with_csrf_and_session_turns_on_when_dish_has_liquid() {
@@ -1047,7 +1026,6 @@ async fn toggle_burner_with_csrf_and_session_turns_on_when_dish_has_liquid() {
     assert_eq!(scene_item(&scene, "burner-1")["properties"]["on"], true);
     assert_eq!(scene["last_events"][0]["kind"], "toggled");
 }
-
 
 #[tokio::test]
 async fn get_scene_applies_elapsed_heat_while_burner_on() {
@@ -1111,7 +1089,6 @@ async fn get_scene_applies_elapsed_heat_while_burner_on() {
     );
 }
 
-
 #[tokio::test]
 async fn post_action_applies_elapsed_heat_before_user_action() {
     let (app, state) = test_app_state().await;
@@ -1172,7 +1149,6 @@ async fn post_action_applies_elapsed_heat_before_user_action() {
     assert_eq!(scene_item(&after, "burner-1")["properties"]["on"], true);
 }
 
-
 #[tokio::test]
 async fn get_scene_clamps_elapsed_time_to_two_seconds() {
     let (app, state) = test_app_state().await;
@@ -1219,4 +1195,3 @@ async fn get_scene_clamps_elapsed_time_to_two_seconds() {
         "elapsed dt must clamp to 2 s: expected ~{expected}, got {temperature}"
     );
 }
-

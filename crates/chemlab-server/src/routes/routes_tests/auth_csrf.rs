@@ -27,7 +27,6 @@ async fn csrf_endpoint_sets_cookie_and_returns_token() {
     assert!(set_cookie.contains(token));
 }
 
-
 #[tokio::test]
 async fn csrf_endpoint_reuses_existing_cookie_token() {
     let app = test_app().await;
@@ -49,7 +48,6 @@ async fn csrf_endpoint_reuses_existing_cookie_token() {
     let json = body_json(response).await;
     assert_eq!(json["csrf_token"], token);
 }
-
 
 #[tokio::test]
 async fn register_without_csrf_is_forbidden() {
@@ -73,7 +71,6 @@ async fn register_without_csrf_is_forbidden() {
     assert_eq!(json["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn login_without_csrf_is_forbidden() {
     let app = test_app().await;
@@ -96,7 +93,6 @@ async fn login_without_csrf_is_forbidden() {
     assert_eq!(json["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn logout_without_csrf_is_forbidden() {
     let app = test_app().await;
@@ -115,7 +111,6 @@ async fn logout_without_csrf_is_forbidden() {
     let json = body_json(response).await;
     assert_eq!(json["code"], "csrf");
 }
-
 
 #[tokio::test]
 async fn register_rejects_mismatched_csrf_token() {
@@ -153,7 +148,6 @@ async fn register_rejects_mismatched_csrf_token() {
     assert_eq!(json["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn me_does_not_require_csrf() {
     let app = test_app().await;
@@ -170,7 +164,6 @@ async fn me_does_not_require_csrf() {
     let json = body_json(response).await;
     assert_eq!(json["authenticated"], false);
 }
-
 
 #[tokio::test]
 async fn register_login_me_logout_flow() {
@@ -256,7 +249,6 @@ async fn register_login_me_logout_flow() {
     assert_eq!(login_json["email"], "ada@chemlab.local");
 }
 
-
 #[tokio::test]
 async fn register_disabled_returns_forbidden_and_does_not_insert_user() {
     let (app, state) = test_app_state_with(Config {
@@ -278,7 +270,6 @@ async fn register_disabled_returns_forbidden_and_does_not_insert_user() {
         "disabled register must not insert a user: {found:?}"
     );
 }
-
 
 #[tokio::test]
 async fn register_disabled_still_requires_csrf() {
@@ -307,7 +298,6 @@ async fn register_disabled_still_requires_csrf() {
     assert_eq!(json["code"], "csrf");
 }
 
-
 #[tokio::test]
 async fn login_rotates_session_old_cookie_rejected_new_cookie_works() {
     let app = test_app().await;
@@ -334,7 +324,6 @@ async fn login_rotates_session_old_cookie_rejected_new_cookie_works() {
     assert_eq!(me_new["authenticated"], true);
     assert_eq!(me_new["user"]["email"], "ada@chemlab.local");
 }
-
 
 #[tokio::test]
 async fn login_rotates_csrf_old_token_rejected_new_token_works() {
@@ -386,7 +375,6 @@ async fn login_rotates_csrf_old_token_rejected_new_token_works() {
     assert_eq!(logout_new_csrf.status(), StatusCode::NO_CONTENT);
 }
 
-
 #[tokio::test]
 async fn register_duplicate_email_returns_conflict() {
     let app = test_app().await;
@@ -396,7 +384,6 @@ async fn register_duplicate_email_returns_conflict() {
     assert_eq!(response.status(), StatusCode::CONFLICT);
     assert_eq!(body_json(response).await["code"], "email_taken");
 }
-
 
 #[tokio::test]
 async fn login_wrong_password_for_existing_user_is_unauthorized() {
@@ -415,7 +402,6 @@ async fn login_wrong_password_for_existing_user_is_unauthorized() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body_json(response).await["code"], "invalid_credentials");
 }
-
 
 #[tokio::test]
 async fn register_validation_edges_return_bad_request() {
@@ -447,7 +433,6 @@ async fn register_validation_edges_return_bad_request() {
     }
 }
 
-
 #[tokio::test]
 async fn login_validation_edges_return_bad_request() {
     let app = test_app().await;
@@ -477,7 +462,6 @@ async fn login_validation_edges_return_bad_request() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert_eq!(body_json(response).await["code"], "validation");
 }
-
 
 #[tokio::test]
 async fn login_burst_is_rate_limited() {
@@ -516,7 +500,6 @@ async fn login_burst_is_rate_limited() {
         .contains("too many"));
 }
 
-
 #[tokio::test]
 async fn register_burst_is_rate_limited() {
     let app = test_app().await;
@@ -542,7 +525,6 @@ async fn register_burst_is_rate_limited() {
     assert_eq!(last_status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(last_json["code"], "rate_limited");
 }
-
 
 #[tokio::test]
 async fn logout_is_not_rate_limited() {
@@ -570,4 +552,3 @@ async fn logout_is_not_rate_limited() {
         );
     }
 }
-

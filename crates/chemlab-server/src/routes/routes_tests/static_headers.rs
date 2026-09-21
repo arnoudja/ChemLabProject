@@ -25,7 +25,6 @@ async fn health_returns_ok() {
     assert_eq!(json["signup_enabled"], true);
 }
 
-
 #[tokio::test]
 async fn health_reports_signup_enabled_false_when_disabled() {
     let (app, _state) = test_app_state_with(Config {
@@ -48,7 +47,6 @@ async fn health_reports_signup_enabled_false_when_disabled() {
     assert_eq!(json["signup_enabled"], false);
 }
 
-
 #[tokio::test]
 async fn favicon_is_served_without_spa() {
     let app = test_app().await;
@@ -67,7 +65,6 @@ async fn favicon_is_served_without_spa() {
         "image/svg+xml"
     );
 }
-
 
 #[tokio::test]
 async fn unknown_path_is_not_found_not_unavailable() {
@@ -88,7 +85,6 @@ async fn unknown_path_is_not_found_not_unavailable() {
     assert!(body.contains("CHEMLAB_STATIC_DIR"));
 }
 
-
 #[tokio::test]
 async fn embedded_welcome_includes_html_security_headers() {
     let app = test_app().await;
@@ -99,7 +95,6 @@ async fn embedded_welcome_includes_html_security_headers() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_html_security_headers(&response);
 }
-
 
 #[tokio::test]
 async fn cookie_secure_true_sets_secure_on_csrf_session_and_clear() {
@@ -183,7 +178,6 @@ async fn cookie_secure_true_sets_secure_on_csrf_session_and_clear() {
     );
 }
 
-
 #[tokio::test]
 async fn cookie_secure_false_omits_secure_attribute() {
     let app = test_app().await;
@@ -206,7 +200,6 @@ async fn cookie_secure_false_omits_secure_attribute() {
         "Secure must be omitted when cookie_secure=false: {headers:?}"
     );
 }
-
 
 #[tokio::test]
 async fn static_dir_serves_spa_index_html() {
@@ -264,7 +257,6 @@ async fn static_dir_serves_spa_index_html() {
     assert!(body_text(spa).await.contains("ChemLab SPA"));
 }
 
-
 #[tokio::test]
 async fn static_dir_missing_index_returns_sensible_404_html() {
     let dir = tempfile::tempdir().unwrap();
@@ -299,4 +291,3 @@ async fn static_dir_missing_index_returns_sensible_404_html() {
     assert_html_security_headers(&missing);
     assert!(body_text(missing).await.contains("CHEMLAB_STATIC_DIR"));
 }
-

@@ -297,11 +297,16 @@ fn action_to_core(action: LabAction) -> chemlab_core::Action {
         LabAction::ToggleBurner { burner_item_id } => {
             chemlab_core::Action::ToggleBurner { burner_item_id }
         }
+        LabAction::SelectMode { mode } => chemlab_core::Action::SelectMode { mode },
     }
 }
 
 fn scene_to_contract(scene: chemlab_core::Scene) -> LabScene {
+    // Completion is derived on the way out, never stored, so undoing a winning move un-wins.
+    let challenge_completed = chemlab_core::challenges::is_completed(&scene);
     LabScene {
+        mode: scene.mode,
+        challenge_completed,
         lab_id: scene.lab_id,
         version: scene.version,
         temperature_c: scene.temperature_c,
@@ -363,6 +368,7 @@ fn composition_to_contract(
 
 fn contract_to_scene(scene: LabScene) -> chemlab_core::Scene {
     chemlab_core::Scene {
+        mode: scene.mode,
         lab_id: scene.lab_id,
         version: scene.version,
         temperature_c: scene.temperature_c,

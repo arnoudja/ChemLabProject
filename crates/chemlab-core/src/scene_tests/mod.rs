@@ -1,5 +1,6 @@
 //! Thematic scene tests (split from the former monolithic `scene_tests.rs`).
 
+mod challenges;
 mod evaporation;
 mod filter;
 mod helpers;

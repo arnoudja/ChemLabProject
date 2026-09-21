@@ -1,5 +1,6 @@
 mod auth_csrf;
 mod burner_elapsed;
+mod challenges;
 mod dissolve_http;
 mod dissolve_pour;
 mod distilled_water;

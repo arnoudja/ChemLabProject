@@ -5,6 +5,7 @@ import {
   StockSubstanceLabel,
   stockSubstanceAriaLabel,
 } from '../lib/compositionDisplay'
+import { findChallenge } from '../lib/challenges'
 import { optionalArray } from '../lib/scene'
 import {
   SPOON_SCOOP_MASS_G,
@@ -102,7 +103,8 @@ const TOOL_CAROUSEL: { itemId: string; kind: 'pipette' | 'spoon' | 'tongs' }[] =
 
 type ToolUi = 'none' | 'spoon' | 'pipette' | 'tongs' | StockSolid
 
-export function LabBench() {
+/** `onModeChange` lets the mode picker follow the server-owned scene mode. */
+export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => void }) {
   const [scene, setScene] = useState<LabScene | null>(null)
   const [selectedToolItemId, setSelectedToolItemId] = useState<string | null>(null)
   const [inspectItemId, setInspectItemId] = useState<string | null>(null)
@@ -131,6 +133,10 @@ export function LabBench() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (scene) onModeChange?.(scene.mode)
+  }, [scene, onModeChange])
 
   useEffect(() => {
     if (!burnerOn) return
@@ -426,14 +432,18 @@ export function LabBench() {
   const hasAqueous = scene ? waterHasAqueous(scene) : false
   const inspectItem = scene && inspectItemId ? findItem(scene, inspectItemId) : undefined
   const pipetteFilled = scene ? pipetteIsFilled(scene) : false
-  const visibleIngredient = INGREDIENT_CAROUSEL[stockCarouselIndex] ?? INGREDIENT_CAROUSEL[0]
+  // A mode only offers the stocks its start scene put on the bench.
+  const onBench = scene
+    ? INGREDIENT_CAROUSEL.filter((entry) => findItem(scene, entry.itemId))
+    : []
+  const ingredients = onBench.length > 0 ? onBench : INGREDIENT_CAROUSEL
+  const visibleIngredient = ingredients[stockCarouselIndex % ingredients.length] ?? ingredients[0]
   const visibleTool = TOOL_CAROUSEL[toolCarouselIndex] ?? TOOL_CAROUSEL[0]
+  const challenge = scene ? findChallenge(scene.mode) : null
 
   function stepStockCarousel(delta: number, event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
-    setStockCarouselIndex(
-      (index) => (index + delta + INGREDIENT_CAROUSEL.length) % INGREDIENT_CAROUSEL.length,
-    )
+    setStockCarouselIndex((index) => (index + delta + ingredients.length) % ingredients.length)
   }
 
   function stepToolCarousel(delta: number, event: MouseEvent<HTMLButtonElement>) {
@@ -454,11 +464,17 @@ export function LabBench() {
       onMouseMove={holdingSelected ? trackPointer : undefined}
     >
       <div className="mb-3 flex items-start justify-between gap-3">
-        <p className="text-sm text-[var(--ink-soft)]">
-          Pick up the spoon to scoop dry solids, the pipette to move {PIPETTE_VOLUME_ML.toFixed(2)} ml
-          of solution, or the tongs to lift vessels, filter paper, or solid ingredients and pour.
-          With no tool selected, click a vessel to inspect it, or the burner to heat the dish.
-        </p>
+        {challenge ? (
+          <p className="text-sm text-[var(--ink)]" data-bench-challenge={challenge.id}>
+            {scene?.challenge_completed ? challenge.done : challenge.prompt}
+          </p>
+        ) : (
+          <p className="text-sm text-[var(--ink-soft)]">
+            Pick up the spoon to scoop dry solids, the pipette to move {PIPETTE_VOLUME_ML.toFixed(2)} ml
+            of solution, or the tongs to lift vessels, filter paper, or solid ingredients and pour.
+            With no tool selected, click a vessel to inspect it, or the burner to heat the dish.
+          </p>
+        )}
         <button
           type="button"
           className="lab-bench-reset shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--ink-soft)] hover:bg-[var(--surface-hover)] disabled:opacity-50"

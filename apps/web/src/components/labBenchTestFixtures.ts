@@ -1,5 +1,5 @@
 import type { LabScene } from '../generated/contracts'
-import { CHALLENGES, FREE_MODE } from '../lib/challenges'
+import { findChallenge, FREE_MODE } from '../lib/challenges'
 import {
   STOCK_FULL_MASS_G,
   STOCK_FULL_SCOOPS,
@@ -240,7 +240,7 @@ export function filledScene(): LabScene {
   return withFilledMainBeaker(initialScene())
 }
 
-export const SEPARATE_CHALLENGE = CHALLENGES[0]
+export const SEPARATE_CHALLENGE = findChallenge('separate-nacl-sio2')!
 
 /** Mirror of the server start scene for `separate-nacl-sio2`. */
 export function challengeScene(): LabScene {

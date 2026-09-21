@@ -14,5 +14,5 @@ pub fn router(state: AppState) -> Router {
 }
 
 #[cfg(test)]
-#[path = "routes_tests.rs"]
+#[path = "routes_tests/mod.rs"]
 mod tests;

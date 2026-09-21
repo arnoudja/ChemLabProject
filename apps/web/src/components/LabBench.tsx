@@ -419,14 +419,14 @@ export function LabBench() {
     return selectTool(TONGS_ID, event)
   }
 
-  async function applySpoonTo(targetItemId: string) {
+  async function applyUseTool(toolItemId: BenchToolId, targetItemId: string) {
     if (busy) return
     setError(null)
     setBusy(true)
     try {
       const response = await postLabAction({
         type: 'use_tool',
-        tool_item_id: SPOON_ID,
+        tool_item_id: toolItemId,
         target_item_id: targetItemId,
       })
       setScene(response.scene)
@@ -437,20 +437,75 @@ export function LabBench() {
     }
   }
 
-  async function onSolid(targetItemId: string, event: MouseEvent<HTMLButtonElement>) {
+  async function applyPour(sourceItemId: string, targetItemId: string) {
+    if (busy) return
+    setError(null)
+    setBusy(true)
+    try {
+      const response = await postLabAction({
+        type: 'pour',
+        source_item_id: sourceItemId,
+        target_item_id: targetItemId,
+      })
+      setScene(response.scene)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * Shared vessel-click dispatch: tongs home → pipette → spoon → inspect.
+   * Options encode the few vessel-specific exceptions without copying the chain.
+   */
+  async function onVessel(
+    targetItemId: string,
+    event: MouseEvent<HTMLButtonElement>,
+    opts: {
+      allowPipette?: boolean
+      allowSpoon?: boolean
+      blockMultiSpeciesSpoon?: boolean
+      spoonPourIfHolding?: boolean
+      tongsRejectHeldId?: string
+    } = {},
+  ) {
+    const {
+      allowPipette = true,
+      allowSpoon = true,
+      blockMultiSpeciesSpoon = false,
+      spoonPourIfHolding = false,
+      tongsRejectHeldId,
+    } = opts
+
     trackPointer(event)
     if (!scene) return
+
     if (selectedToolItemId === TONGS_ID) {
-      if (tongsHeldVesselId(scene) === targetItemId) {
+      const held = tongsHeldVesselId(scene)
+      if (held === targetItemId) {
         await putToolAway(TONGS_ID)
         return
       }
-      await applyTongsTo(targetItemId)
+      if (tongsRejectHeldId != null && held === tongsRejectHeldId) {
+        return
+      }
+      await applyUseTool(TONGS_ID, targetItemId)
+      return
+    }
+    if (selectedToolItemId === PIPETTE_ID) {
+      if (!allowPipette) return
+      await applyUseTool(PIPETTE_ID, targetItemId)
       return
     }
     if (selectedToolItemId === SPOON_ID) {
-      if (spoonHoldingSpecies(scene).length > 1) return
-      await applySpoonTo(targetItemId)
+      if (!allowSpoon) return
+      if (blockMultiSpeciesSpoon && spoonHoldingSpecies(scene).length > 1) return
+      if (spoonPourIfHolding && spoonHoldingSubstance(scene)) {
+        await applyPour(SPOON_ID, targetItemId)
+        return
+      }
+      await applyUseTool(SPOON_ID, targetItemId)
       return
     }
     if (selectedToolItemId === null) {
@@ -458,179 +513,34 @@ export function LabBench() {
     }
   }
 
+  async function onSolid(targetItemId: string, event: MouseEvent<HTMLButtonElement>) {
+    return onVessel(targetItemId, event, {
+      allowPipette: false,
+      blockMultiSpeciesSpoon: true,
+    })
+  }
+
   async function onDistilledWater(event: MouseEvent<HTMLButtonElement>) {
-    trackPointer(event)
-    if (!scene) return
-    if (selectedToolItemId === TONGS_ID) {
-      if (tongsHeldVesselId(scene) === H2O_ID) {
-        await putToolAway(TONGS_ID)
-        return
-      }
-      await applyTongsTo(H2O_ID)
-      return
-    }
-    if (selectedToolItemId === PIPETTE_ID) {
-      await applyPipetteTo(H2O_ID)
-      return
-    }
-    if (selectedToolItemId === SPOON_ID) {
-      return
-    }
-    if (selectedToolItemId === null) {
-      setInspectItemId(H2O_ID)
-    }
-  }
-
-  async function applyPipetteTo(targetItemId: string) {
-    if (busy) return
-    setError(null)
-    setBusy(true)
-    try {
-      const response = await postLabAction({
-        type: 'use_tool',
-        tool_item_id: PIPETTE_ID,
-        target_item_id: targetItemId,
-      })
-      setScene(response.scene)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function applyTongsTo(targetItemId: string) {
-    if (busy) return
-    setError(null)
-    setBusy(true)
-    try {
-      const response = await postLabAction({
-        type: 'use_tool',
-        tool_item_id: TONGS_ID,
-        target_item_id: targetItemId,
-      })
-      setScene(response.scene)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed')
-    } finally {
-      setBusy(false)
-    }
+    return onVessel(H2O_ID, event, { allowSpoon: false })
   }
 
   async function onWater(event: MouseEvent<HTMLButtonElement>) {
-    trackPointer(event)
-    if (!scene) return
-    if (selectedToolItemId === TONGS_ID) {
-      if (tongsHeldVesselId(scene) === WATER_ID) {
-        await putToolAway(TONGS_ID)
-        return
-      }
-      await applyTongsTo(WATER_ID)
-      return
-    }
-    if (selectedToolItemId === PIPETTE_ID) {
-      await applyPipetteTo(WATER_ID)
-      return
-    }
-    if (selectedToolItemId === SPOON_ID) {
-      if (spoonHoldingSubstance(scene)) {
-        if (busy) return
-        setError(null)
-        setBusy(true)
-        try {
-          const response = await postLabAction({
-            type: 'pour',
-            source_item_id: SPOON_ID,
-            target_item_id: WATER_ID,
-          })
-          setScene(response.scene)
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Action failed')
-        } finally {
-          setBusy(false)
-        }
-        return
-      }
-      await applySpoonTo(WATER_ID)
-      return
-    }
-    if (selectedToolItemId === null) {
-      setInspectItemId(WATER_ID)
-    }
+    return onVessel(WATER_ID, event, { spoonPourIfHolding: true })
   }
 
   async function onDish(event: MouseEvent<HTMLButtonElement>) {
-    trackPointer(event)
-    if (!scene) return
-    if (selectedToolItemId === TONGS_ID) {
-      if (tongsHeldVesselId(scene) === DISH_ID) {
-        await putToolAway(TONGS_ID)
-        return
-      }
-      await applyTongsTo(DISH_ID)
-      return
-    }
-    if (selectedToolItemId === PIPETTE_ID) {
-      await applyPipetteTo(DISH_ID)
-      return
-    }
-    if (selectedToolItemId === SPOON_ID) {
-      await applySpoonTo(DISH_ID)
-      return
-    }
-    if (selectedToolItemId === null) {
-      setInspectItemId(DISH_ID)
-    }
+    return onVessel(DISH_ID, event)
   }
 
   async function onFilterPaper(event: MouseEvent<HTMLButtonElement>) {
-    trackPointer(event)
-    if (!scene) return
-    if (selectedToolItemId === TONGS_ID) {
-      if (tongsHeldVesselId(scene) === PAPER_ID) {
-        await putToolAway(TONGS_ID)
-        return
-      }
-      if (tongsHeldVesselId(scene) === FILTRATE_ID) {
-        return
-      }
-      await applyTongsTo(PAPER_ID)
-      return
-    }
-    if (selectedToolItemId === PIPETTE_ID) {
-      return
-    }
-    if (selectedToolItemId === SPOON_ID) {
-      await applySpoonTo(PAPER_ID)
-      return
-    }
-    if (selectedToolItemId === null) {
-      setInspectItemId(PAPER_ID)
-    }
+    return onVessel(PAPER_ID, event, {
+      allowPipette: false,
+      tongsRejectHeldId: FILTRATE_ID,
+    })
   }
 
   async function onFiltrate(event: MouseEvent<HTMLButtonElement>) {
-    trackPointer(event)
-    if (!scene) return
-    if (selectedToolItemId === TONGS_ID) {
-      if (tongsHeldVesselId(scene) === FILTRATE_ID) {
-        await putToolAway(TONGS_ID)
-        return
-      }
-      await applyTongsTo(FILTRATE_ID)
-      return
-    }
-    if (selectedToolItemId === PIPETTE_ID) {
-      await applyPipetteTo(FILTRATE_ID)
-      return
-    }
-    if (selectedToolItemId === SPOON_ID) {
-      await applySpoonTo(FILTRATE_ID)
-      return
-    }
-    if (selectedToolItemId === null) {
-      setInspectItemId(FILTRATE_ID)
-    }
+    return onVessel(FILTRATE_ID, event)
   }
 
   async function onBurner(event: MouseEvent<HTMLButtonElement>) {

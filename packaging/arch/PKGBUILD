@@ -22,5 +22,5 @@ package() {
   install -Dm640 "$root/packaging/common/chemlab.env" "$pkgdir/etc/chemlab/chemlab.env"
   install -Dm644 "$root/packaging/common/chemlab.service" \
     "$pkgdir/usr/lib/systemd/system/chemlab.service"
-  install -d "$pkgdir/var/lib/chemlab"
+  install -d -m 0750 "$pkgdir/var/lib/chemlab"
 }

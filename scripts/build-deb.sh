@@ -28,8 +28,9 @@ mkdir -p \
     "$STAGE/usr/bin" \
     "$STAGE/usr/share/chemlab/www" \
     "$STAGE/etc/chemlab" \
-    "$STAGE/lib/systemd/system" \
-    "$STAGE/var/lib/chemlab"
+    "$STAGE/lib/systemd/system"
+# Match postinst: SQLite state dir must not be world-traversable (pacman warns if package is 755).
+install -d -m 0750 "$STAGE/var/lib/chemlab"
 
 install -m 0755 target/release/chemlab-server "$STAGE/usr/bin/chemlab-server"
 cp -a apps/web/dist/. "$STAGE/usr/share/chemlab/www/"

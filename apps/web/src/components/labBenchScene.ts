@@ -1,0 +1,173 @@
+import type { Item, LabScene } from '../generated/contracts'
+import { optionalArray } from '../lib/scene'
+import type { StockSolid } from './LabBenchIcons'
+
+export const SPOON_ID = 'spoon-1'
+export const PIPETTE_ID = 'pipette-1'
+export const TONGS_ID = 'tongs-1'
+export const DISH_ID = 'dish-1'
+export const BURNER_ID = 'burner-1'
+export const FILTRATE_ID = 'beaker-filtrate'
+export const PAPER_ID = 'filter-paper-1'
+export const NACL_ID = 'beaker-nacl'
+export const CACL2_ID = 'beaker-cacl2'
+export const SAND_ID = 'beaker-sand'
+export const H2O_ID = 'beaker-h2o'
+export const WATER_ID = 'beaker-water'
+
+export function isStockSolid(id: string): id is StockSolid {
+  return id === 'nacl' || id === 'cacl2' || id === 'sand'
+}
+
+export function findItem(scene: LabScene, id: string): Item | undefined {
+  return scene.items.find((item) => item.id === id)
+}
+
+export function spoonHoldingSubstance(scene: LabScene): StockSolid | null {
+  const spoon = findItem(scene, SPOON_ID)
+  const held = optionalArray(spoon?.properties.holding)[0]
+  if (!held || held.phase !== 'solid') return null
+  return isStockSolid(held.substance_id) ? held.substance_id : null
+}
+
+export function spoonHoldingSpecies(scene: LabScene): string[] {
+  const ids: string[] = []
+  for (const held of optionalArray(findItem(scene, SPOON_ID)?.properties.holding)) {
+    if (held.phase !== 'solid') continue
+    if (!ids.includes(held.substance_id)) ids.push(held.substance_id)
+  }
+  return ids
+}
+
+/** Undissolved solid grains come only from server composition on the water item. */
+export function undissolvedSolidInWater(scene: LabScene): StockSolid | null {
+  const water = findItem(scene, WATER_ID)
+  const solid = optionalArray(water?.properties.composition).find((entry) => entry.phase === 'solid')
+  if (!solid) return null
+  return isStockSolid(solid.substance_id) ? solid.substance_id : null
+}
+
+export function itemTemperatureC(scene: LabScene, item: Item): number {
+  return item.properties.temperature_c ?? scene.temperature_c
+}
+
+export function stockAmountG(scene: LabScene, itemId: string, substanceId: StockSolid): number | null {
+  const item = findItem(scene, itemId)
+  const entry = optionalArray(item?.properties.composition).find(
+    (c) => c.substance_id === substanceId && c.phase === 'solid',
+  )
+  return entry?.amount_g ?? null
+}
+
+export function distilledWaterAmountMl(scene: LabScene): number | null {
+  const item = findItem(scene, H2O_ID)
+  const entry = optionalArray(item?.properties.composition).find(
+    (c) => c.substance_id === 'water' && c.phase === 'liquid',
+  )
+  return entry?.amount_ml ?? null
+}
+
+export function waterAmountMl(scene: LabScene): number | null {
+  const item = findItem(scene, WATER_ID)
+  const entry = optionalArray(item?.properties.composition).find(
+    (c) => c.substance_id === 'water' && c.phase === 'liquid',
+  )
+  return entry?.amount_ml ?? null
+}
+
+/** True when the water beaker composition includes server-authored aqueous ions. */
+export function waterHasAqueous(scene: LabScene): boolean {
+  const item = findItem(scene, WATER_ID)
+  return optionalArray(item?.properties.composition).some((c) => c.phase === 'aqueous')
+}
+
+/** Latest dissolve-related cue from server `last_events` (no client chemistry). */
+export function dissolveCueFromEvents(
+  events: { kind: string; message: string }[],
+): 'dissolved' | 'did_not_dissolve' | null {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const kind = events[i]?.kind
+    if (kind === 'dissolved' || kind === 'did_not_dissolve') return kind
+  }
+  return null
+}
+
+export function dishAmountMl(scene: LabScene): number | null {
+  const item = findItem(scene, DISH_ID)
+  const entry = optionalArray(item?.properties.composition).find(
+    (c) => c.substance_id === 'water' && c.phase === 'liquid',
+  )
+  return entry?.amount_ml ?? null
+}
+
+export function filtrateAmountMl(scene: LabScene): number | null {
+  const item = findItem(scene, FILTRATE_ID)
+  const entry = optionalArray(item?.properties.composition).find(
+    (c) => c.substance_id === 'water' && c.phase === 'liquid',
+  )
+  return entry?.amount_ml ?? item?.properties.fill_ml ?? null
+}
+
+export function paperHasResidue(scene: LabScene): boolean {
+  return optionalArray(findItem(scene, PAPER_ID)?.properties.composition).some(
+    (entry) => entry.phase === 'solid' && (entry.amount_g ?? 0) > 0,
+  )
+}
+
+export function pipetteIsFilled(scene: LabScene): boolean {
+  const pipette = findItem(scene, PIPETTE_ID)
+  return optionalArray(pipette?.properties.holding).some(
+    (entry) => entry.phase === 'liquid' && (entry.amount_ml ?? 0) > 0,
+  )
+}
+
+export function burnerIsOn(scene: LabScene): boolean {
+  return findItem(scene, BURNER_ID)?.properties.on === true
+}
+
+export function tongsHeldVesselId(
+  scene: LabScene,
+):
+  | typeof WATER_ID
+  | typeof DISH_ID
+  | typeof H2O_ID
+  | typeof FILTRATE_ID
+  | typeof PAPER_ID
+  | typeof NACL_ID
+  | typeof CACL2_ID
+  | typeof SAND_ID
+  | null {
+  const held = findItem(scene, TONGS_ID)?.properties.source_item_id
+  if (
+    held === WATER_ID ||
+    held === DISH_ID ||
+    held === H2O_ID ||
+    held === FILTRATE_ID ||
+    held === PAPER_ID ||
+    held === NACL_ID ||
+    held === CACL2_ID ||
+    held === SAND_ID
+  ) {
+    return held
+  }
+  return null
+}
+
+export function solidStockKind(itemId: string): StockSolid | null {
+  if (itemId === NACL_ID) return 'nacl'
+  if (itemId === CACL2_ID) return 'cacl2'
+  if (itemId === SAND_ID) return 'sand'
+  return null
+}
+
+export function outcomeLabel(kind: string): string | null {
+  if (kind === 'dissolved') return 'Dissolved'
+  if (kind === 'did_not_dissolve') return 'Did not dissolve'
+  if (kind === 'returned') return 'Returned'
+  if (kind === 'reset') return 'Reset'
+  if (kind === 'scooped') return 'Scooped'
+  if (kind === 'poured') return 'Poured'
+  if (kind === 'pipetted') return 'Pipetted'
+  if (kind === 'toggled') return 'Toggled'
+  return null
+}

@@ -1,5 +1,10 @@
 mod auth_csrf;
+mod burner_elapsed;
+mod dissolve_http;
+mod dissolve_pour;
+mod distilled_water;
+mod filtration;
 mod helpers;
-mod lab_actions;
+mod lab_spoon;
 mod static_headers;
-mod tongs_filtration;
+mod tongs_dish;

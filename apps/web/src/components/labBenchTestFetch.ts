@@ -78,7 +78,11 @@ export function stubLabFetch(options?: {
         return jsonResponse({ scene })
       }
       if (action.type === 'use_tool' && action.tool_item_id === 'pipette-1') {
-        scene = applyPipetteUse(scene, action.target_item_id)
+        const result = applyPipetteUse(scene, action.target_item_id)
+        if ('error' in result) {
+          return jsonResponse({ error: result.error, code: result.code }, result.status)
+        }
+        scene = result
         return jsonResponse({ scene })
       }
       if (action.type === 'use_tool' && action.tool_item_id === 'tongs-1') {

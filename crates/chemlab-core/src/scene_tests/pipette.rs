@@ -86,19 +86,22 @@ fn pipette_extracts_one_ml_from_water_scaling_aqueous_and_leaving_sand() {
 #[test]
 fn pipette_fill_from_dish_and_pour_back_to_water_is_consistent() {
     let mut scene = bench_with_water("lab-test");
-    fill_pipette_from(&mut scene, "beaker-water");
-    apply_action(
-        &mut scene,
-        Action::Pour {
-            source_item_id: "pipette-1".into(),
-            target_item_id: "dish-1".into(),
-        },
-    )
-    .unwrap();
+    for _ in 0..3 {
+        fill_pipette_from(&mut scene, "beaker-water");
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "pipette-1".into(),
+                target_item_id: "dish-1".into(),
+            },
+        )
+        .unwrap();
+    }
 
     let dish = item(&scene, "dish-1");
-    assert!((water_ml(dish) - 1.0).abs() < 1e-9);
+    assert!((water_ml(dish) - PIPETTE_MIN_SOURCE_ML).abs() < 1e-9);
     assert_eq!(dish.properties.temperature_c, Some(20.0));
+    assert!((water_ml(item(&scene, "beaker-water")) - 197.0).abs() < 1e-9);
 
     fill_pipette_from(&mut scene, "dish-1");
     apply_action(
@@ -111,15 +114,15 @@ fn pipette_fill_from_dish_and_pour_back_to_water_is_consistent() {
     .unwrap();
 
     let water = item(&scene, "beaker-water");
-    assert!((water_ml(water) - 200.0).abs() < 1e-9);
+    assert!((water_ml(water) - 198.0).abs() < 1e-9);
     assert_eq!(water.properties.temperature_c, Some(20.0));
     let dish = item(&scene, "dish-1");
-    assert!(water_ml(dish) < 1e-9);
+    assert!((water_ml(dish) - 2.0).abs() < 1e-9);
     assert!(item(&scene, "pipette-1").properties.holding.is_empty());
 }
 
 #[test]
-fn dish_rejects_over_capacity_and_fill_requires_one_ml() {
+fn dish_rejects_over_capacity_and_fill_requires_min_source() {
     let mut scene = bench_with_water("lab-test");
     let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
     dish.properties.composition.push(CompositionEntry {
@@ -170,7 +173,71 @@ fn dish_rejects_over_capacity_and_fill_requires_one_ml() {
         },
     )
     .unwrap_err();
-    assert_eq!(err, SceneError::InvalidAction);
+    assert_eq!(err, SceneError::NotEnoughFluidAvailable);
+}
+
+#[test]
+fn pipette_fill_from_empty_vessel_reports_no_fluid() {
+    let mut scene = bench_with_water("lab-test");
+    let err = apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "dish-1".into(),
+        },
+    )
+    .unwrap_err();
+    assert_eq!(err, SceneError::NoFluidAvailable);
+    assert_eq!(err.to_string(), "No fluid available.");
+    assert_eq!(item(&scene, "pipette-1").location, "bench");
+    assert!(item(&scene, "pipette-1").properties.holding.is_empty());
+}
+
+#[test]
+fn pipette_fill_below_min_source_reports_not_enough_fluid() {
+    for available_ml in [1.0, 2.9] {
+        let mut scene = bench_with_water("lab-test");
+        set_dish_water(&mut scene, available_ml);
+
+        let err = apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "pipette-1".into(),
+                target_item_id: "dish-1".into(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err, SceneError::NotEnoughFluidAvailable);
+        assert_eq!(err.to_string(), "Not enough fluid available.");
+        assert!((water_ml(item(&scene, "dish-1")) - available_ml).abs() < 1e-9);
+        assert!(item(&scene, "pipette-1").properties.holding.is_empty());
+    }
+}
+
+#[test]
+fn pipette_fill_at_min_source_draws_one_ml_and_leaves_remainder() {
+    let mut scene = bench_with_water("lab-test");
+    set_dish_water(&mut scene, PIPETTE_MIN_SOURCE_ML);
+
+    fill_pipette_from(&mut scene, "dish-1");
+
+    assert!((water_ml(item(&scene, "dish-1")) - (PIPETTE_MIN_SOURCE_ML - 1.0)).abs() < 1e-9);
+    let pipette = item(&scene, "pipette-1");
+    assert!((pipette_holding_liquid_ml(pipette) - PIPETTE_VOLUME_ML).abs() < 1e-12);
+    assert_eq!(pipette.properties.source_item_id.as_deref(), Some("dish-1"));
+}
+
+fn set_dish_water(scene: &mut Scene, amount_ml: f64) {
+    let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+    dish.properties.composition = vec![CompositionEntry {
+        substance_id: "water".into(),
+        phase: "liquid".into(),
+        amount_ml: Some(amount_ml),
+        amount_scoop: None,
+        amount_g: None,
+        amount_mol: None,
+    }];
+    crate::solubility::sync_fill_ml(dish);
 }
 
 #[test]

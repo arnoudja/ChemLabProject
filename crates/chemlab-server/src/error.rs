@@ -84,6 +84,8 @@ impl From<SceneError> for ApiError {
             SceneError::UnknownItem => "unknown_item",
             SceneError::InvalidAction => "invalid_action",
             SceneError::EmptyHolding => "empty_holding",
+            SceneError::NoFluidAvailable => "no_fluid_available",
+            SceneError::NotEnoughFluidAvailable => "not_enough_fluid_available",
             SceneError::UnknownMode => "unknown_mode",
             SceneError::Dissolve(error) => error.code(),
         };

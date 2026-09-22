@@ -252,3 +252,45 @@ async fn pipette_beaker_h2o_use_tool_with_csrf_and_session_draws_one_ml() {
         "beaker-h2o"
     );
 }
+
+#[tokio::test]
+async fn pipette_fill_reports_missing_and_insufficient_source_fluid() {
+    let app = test_app().await;
+    let (csrf_token, csrf_cookie, session_cookie) =
+        register_user(&app, "h2o-pipette-low@chemlab.local").await;
+    let cookies = format!("{session_cookie}; {csrf_cookie}");
+
+    let dry = post_action(
+        &app,
+        &cookies,
+        Some(&csrf_token),
+        serde_json::json!({
+            "type": "use_tool",
+            "tool_item_id": "pipette-1",
+            "target_item_id": "dish-1"
+        }),
+    )
+    .await;
+    assert_eq!(dry.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(dry).await;
+    assert_eq!(body["code"], "no_fluid_available");
+    assert_eq!(body["error"], "No fluid available.");
+
+    pipette_one_ml_into_dish(&app, &cookies, &csrf_token).await;
+
+    let low = post_action(
+        &app,
+        &cookies,
+        Some(&csrf_token),
+        serde_json::json!({
+            "type": "use_tool",
+            "tool_item_id": "pipette-1",
+            "target_item_id": "dish-1"
+        }),
+    )
+    .await;
+    assert_eq!(low.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(low).await;
+    assert_eq!(body["code"], "not_enough_fluid_available");
+    assert_eq!(body["error"], "Not enough fluid available.");
+}

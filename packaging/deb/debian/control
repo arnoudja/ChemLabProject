@@ -2,7 +2,7 @@ Package: chemlab
 Version: @VERSION@
 Section: science
 Priority: optional
-Architecture: amd64
+Architecture: @ARCH@
 Maintainer: ChemLabProject contributors <arnoudja@users.noreply.github.com>
 Homepage: https://github.com/arnoudja/ChemLabProject
 Depends: adduser, libc6, systemd

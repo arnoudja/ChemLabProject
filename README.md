@@ -19,7 +19,8 @@ apps/
 scripts/
   generate-types.sh        # regenerate FE types from contracts
   build-release.sh         # cargo --release + Vite dist (used by packagers)
-  build-deb.sh             # Ubuntu amd64 .deb (binary + web UI + systemd)
+  build-deb.sh             # Ubuntu .deb (ARCH/TARGET; default amd64 host)
+  build-deb-pi.sh          # Raspberry Pi arm64 .deb (cross-compile aarch64)
   build-arch.sh            # Omarchy/Arch x86_64 .pkg.tar.zst
 packaging/common/          # systemd unit + env (shared)
 packaging/deb/             # Debian control + maintainer scripts
@@ -121,6 +122,17 @@ Build on the target distro (needs Rust, Node 22+, and the packager below).
 ```bash
 ./scripts/build-deb.sh
 sudo apt install ./dist/chemlab_*.deb
+```
+
+**Raspberry Pi OS 64-bit (arm64)** — cross-build from an amd64 Ubuntu/Debian host
+(needs `dpkg-deb`, `gcc-aarch64-linux-gnu`, and the Rust target
+`aarch64-unknown-linux-gnu`):
+
+```bash
+sudo apt install -y gcc-aarch64-linux-gnu
+./scripts/build-deb-pi.sh
+# copy dist/chemlab_*_arm64.deb to the Pi, then:
+sudo apt install ./chemlab_*_arm64.deb
 ```
 
 **Omarchy / Arch x86_64** (needs `makepkg` from `base-devel`):

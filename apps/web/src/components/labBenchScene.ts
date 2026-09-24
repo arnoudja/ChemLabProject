@@ -125,6 +125,23 @@ export function burnerIsOn(scene: LabScene): boolean {
   return findItem(scene, BURNER_ID)?.properties.on === true
 }
 
+/** Ambient bench temperature mirrored from `chemlab-core::AMBIENT_TEMPERATURE_C`. */
+export const AMBIENT_TEMPERATURE_C = 20
+
+/** Poll while any vessel is meaningfully off ambient (cool-down / residual heat). */
+export const THERMAL_POLL_DELTA_C = 0.5
+
+/** True when the bench should poll for ongoing heat / ambient cool-down. */
+export function sceneNeedsThermalPoll(scene: LabScene): boolean {
+  if (burnerIsOn(scene)) return true
+  for (const item of scene.items) {
+    const t = item.properties.temperature_c
+    if (t == null) continue
+    if (Math.abs(t - AMBIENT_TEMPERATURE_C) >= THERMAL_POLL_DELTA_C) return true
+  }
+  return false
+}
+
 export function tongsHeldVesselId(
   scene: LabScene,
 ):

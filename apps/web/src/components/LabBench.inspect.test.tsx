@@ -93,7 +93,7 @@ describe('LabBench inspect', () => {
     expect(panel).toHaveTextContent('Cl− (aq)')
     expect(panel).toHaveTextContent('0.0171 M')
     expect(panel.querySelectorAll('sup')).toHaveLength(2)
-    expect(panel).toHaveTextContent('Temperature: 19.98°C')
+    expect(panel).toHaveTextContent('Temperature: 19.99°C')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 
@@ -181,7 +181,7 @@ describe('LabBench inspect', () => {
       expect(open).toHaveTextContent('Na+ (aq)')
       expect(open).toHaveTextContent('Cl− (aq)')
       expect(open).toHaveTextContent('0.0171 M')
-      expect(open).toHaveTextContent('Temperature: 19.98°C')
+      expect(open).toHaveTextContent('Temperature: 19.99°C')
     })
   })
 

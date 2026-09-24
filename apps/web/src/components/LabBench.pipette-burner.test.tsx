@@ -192,6 +192,24 @@ describe('LabBench pipette / burner', () => {
     vi.useRealTimers()
   })
 
+  it('polls the lab scene while a vessel is off ambient after the burner is off', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const cooling = filledScene()
+    cooling.items.find((item) => item.id === 'burner-1')!.properties.on = false
+    cooling.items.find((item) => item.id === 'dish-1')!.properties.temperature_c = 55
+    const fetchMock = stubLabFetch({ scene: cooling })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Burner' })
+    const getsBefore = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/scene').length
+
+    await vi.advanceTimersByTimeAsync(900)
+    const getsAfter = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/scene').length
+    expect(getsAfter).toBeGreaterThan(getsBefore)
+    vi.useRealTimers()
+  })
+
   it('returns a filled pipette to the last source on put-away', async () => {
     const fetchMock = stubLabFetch()
     vi.stubGlobal('fetch', fetchMock)

@@ -2,6 +2,7 @@ import type { LabScene } from '../generated/contracts'
 import { SPOON_SCOOP_MASS_G } from './LabBench'
 import { optionalArray } from '../lib/scene'
 import {
+  C_BEAKER,
   CACL2_DELTA_H_SOLUTION_J_PER_MOL,
   CACL2_EXPLANATION,
   CACL2_MOLAR_MASS_G_PER_MOL,
@@ -187,15 +188,15 @@ export function afterNaclPour(scene: LabScene): LabScene {
       amount_mol: moles,
     },
   ]
-  // Mirror server endothermic cooling (water mass ≈ liquid amount_ml at 1 g/ml).
+  // Mirror server endothermic cooling (C_eff = vessel + water mass · c_p).
   const waterMassG =
     optionalArray(water.properties.composition).find(
       (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
     )?.amount_ml ?? 0
   const heatJ = moles * NACL_DELTA_H_SOLUTION_J_PER_MOL
   const currentT = water.properties.temperature_c ?? next.temperature_c
-  water.properties.temperature_c =
-    currentT - heatJ / (waterMassG * WATER_SPECIFIC_HEAT_J_PER_G_K)
+  const cEff = C_BEAKER + waterMassG * WATER_SPECIFIC_HEAT_J_PER_G_K
+  water.properties.temperature_c = currentT - heatJ / cEff
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
     { kind: 'dissolved', message: NACL_EXPLANATION },
@@ -235,8 +236,8 @@ export function afterCacl2Pour(scene: LabScene): LabScene {
     )?.amount_ml ?? 0
   const heatJ = moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL
   const currentT = water.properties.temperature_c ?? next.temperature_c
-  water.properties.temperature_c =
-    currentT - heatJ / (waterMassG * WATER_SPECIFIC_HEAT_J_PER_G_K)
+  const cEff = C_BEAKER + waterMassG * WATER_SPECIFIC_HEAT_J_PER_G_K
+  water.properties.temperature_c = currentT - heatJ / cEff
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
     { kind: 'dissolved', message: CACL2_EXPLANATION },

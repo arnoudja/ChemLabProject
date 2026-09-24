@@ -32,9 +32,6 @@ pub const DISTILLED_WATER_CAPACITY_ML: f64 = 100.00;
 /// Filtrate beaker liquid capacity (ml).
 pub const FILTRATE_CAPACITY_ML: f64 = 250.00;
 
-/// Burner heating rate while on and the dish is below boiling (°C/s).
-pub const HEAT_K_PER_S: f64 = 10.0;
-
 /// Water loss rate while the dish is at 100 °C and the burner is on (ml/s).
 pub const EVAP_ML_PER_S: f64 = 0.50;
 
@@ -43,6 +40,35 @@ pub const AMBIENT_TEMPERATURE_C: f64 = 20.0;
 
 /// Boiling temperature; evaporation does not start below this (°C).
 pub const BOILING_TEMPERATURE_C: f64 = 100.0;
+
+/// Burner heat power delivered to the evaporation dish (W).
+pub const BURNER_POWER_W: f64 = 80.0;
+
+/// Glass beaker body heat capacity (J/K), including filtrate / distilled-water stocks.
+pub const C_BEAKER: f64 = 150.0;
+
+/// Evaporation dish body heat capacity (J/K).
+pub const C_DISH: f64 = 80.0;
+
+/// Overall heat-transfer coefficient × area for the dish (W/K).
+pub const UA_DISH: f64 = 4.0;
+
+/// Overall heat-transfer coefficient × area for beakers (W/K).
+pub const UA_BEAKER: f64 = 3.0;
+
+/// Specific heat of solid NaCl, J/(g·K).
+pub const CP_NACL: f64 = 0.88;
+
+/// Specific heat of solid CaCl₂, J/(g·K).
+pub const CP_CACL2: f64 = 0.67;
+
+/// Specific heat of solid sand (SiO₂), J/(g·K).
+pub const CP_SAND: f64 = 0.74;
+
+/// Snap item temperature to ambient when closer than this (°C).
+/// Kept below a typical NaCl scoop ΔT (~0.014 °C with vessel C) so dissolve
+/// cooling is not erased on the next clock tick.
+const TEMPERATURE_SNAP_EPS_C: f64 = 0.005;
 
 const AMOUNT_EPS: f64 = 1e-12;
 
@@ -597,10 +623,15 @@ fn apply_spoon_scoop_from_stock(
     };
 
     let target_id = scene.items[target_idx].id.clone();
+    let source_t = scene.items[target_idx]
+        .properties
+        .temperature_c
+        .unwrap_or(scene.temperature_c);
     let tool = &mut scene.items[tool_idx];
     tool.location = "hand".into();
     tool.properties.holding = vec![scoop];
     tool.properties.source_item_id = Some(target_id);
+    tool.properties.temperature_c = Some(source_t);
 
     scene.last_events.push(SceneEvent {
         kind: "scooped".into(),
@@ -722,6 +753,10 @@ fn apply_spoon_scoop_from_solids_vessel(
     let take_g = total.min(SPOON_SCOOP_MASS_G);
     let source_id = scene.items[target_idx].id.clone();
     let source_kind = scene.items[target_idx].kind.clone();
+    let source_t = scene.items[target_idx]
+        .properties
+        .temperature_c
+        .unwrap_or(scene.temperature_c);
     let taken = take_solids_by_mass(&mut scene.items[target_idx], take_g);
     if taken.is_empty() {
         return Err(SceneError::InvalidAction);
@@ -730,6 +765,7 @@ fn apply_spoon_scoop_from_solids_vessel(
     tool.location = "hand".into();
     tool.properties.holding = taken;
     tool.properties.source_item_id = Some(source_id.clone());
+    tool.properties.temperature_c = Some(source_t);
     let place = match source_kind.as_str() {
         "filter_paper" => "paper",
         "evaporation_dish" => "dish",
@@ -764,6 +800,7 @@ fn apply_return_holding_to_solids_vessel(
         );
     }
     scene.items[tool_idx].properties.source_item_id = None;
+    scene.items[tool_idx].properties.temperature_c = None;
     crate::solubility::sync_fill_ml(&mut scene.items[dest_idx]);
     let dest_id = scene.items[dest_idx].id.as_str();
     let place = match scene.items[dest_idx].kind.as_str() {
@@ -818,6 +855,7 @@ fn apply_return_to_stock(
 
     scene.items[tool_idx].properties.holding.clear();
     scene.items[tool_idx].properties.source_item_id = None;
+    scene.items[tool_idx].properties.temperature_c = None;
     scene.last_events.push(SceneEvent {
         kind: "returned".into(),
         message: format!("Returned {substance_id} to the stock beaker."),
@@ -859,6 +897,7 @@ fn apply_put_away(scene: &mut Scene, tool_item_id: &str) -> Result<(), SceneErro
         }
     }
 
+    scene.items[tool_idx].properties.temperature_c = None;
     scene.items[tool_idx].location = "bench".into();
     Ok(())
 }
@@ -918,6 +957,11 @@ fn apply_pour(
 
     scene.items[source_idx].properties.holding.clear();
     scene.items[source_idx].properties.source_item_id = None;
+    let spoon_t = scene.items[source_idx]
+        .properties
+        .temperature_c
+        .unwrap_or(scene.temperature_c);
+    scene.items[source_idx].properties.temperature_c = None;
 
     let poured_label = if held_all.len() == 1 {
         held_all[0].substance_id.clone()
@@ -930,7 +974,12 @@ fn apply_pour(
     });
 
     if dest_is_main_beaker && !has_water {
-        for held in held_all {
+        for held in &held_all {
+            blend_temperature_capacity(
+                &mut scene.items[target_idx],
+                heat_capacity_of_entries(std::slice::from_ref(held)),
+                spoon_t,
+            );
             let scoops = held.amount_scoop.or(Some(1));
             let mass_g = held.amount_g.or(Some(SPOON_SCOOP_MASS_G));
             add_or_increase_solid(
@@ -945,6 +994,11 @@ fn apply_pour(
     }
 
     for held in held_all {
+        blend_temperature_capacity(
+            &mut scene.items[target_idx],
+            heat_capacity_of_entries(std::slice::from_ref(&held)),
+            spoon_t,
+        );
         let temperature_c = scene.items[target_idx]
             .properties
             .temperature_c
@@ -1024,9 +1078,10 @@ fn mix_held_solid_into_water(
     }
 }
 
-/// Apply dissolution heat to the solvent beaker: ΔT = −(n·ΔH_sol) / (m_water · c_p).
+/// Apply dissolution heat to the solvent vessel: ΔT = −(n·ΔH_sol) / C_eff.
 ///
-/// Water mass ≈ liquid `amount_ml` (density ≈ 1 g/ml). Endothermic ΔH cools; exothermic heats.
+/// `C_eff` is [`effective_heat_capacity`] of the target (vessel + water + solids).
+/// Endothermic ΔH cools; exothermic heats.
 fn apply_dissolution_temperature_change(
     target: &mut SceneItem,
     moles: f64,
@@ -1043,8 +1098,12 @@ fn apply_dissolution_temperature_change(
     if water_ml <= 0.0 || moles <= 0.0 {
         return;
     }
+    let c_eff = effective_heat_capacity(target);
+    if c_eff <= AMOUNT_EPS {
+        return;
+    }
     let heat_j = moles * delta_h_j_per_mol;
-    let delta_t = -heat_j / (water_ml * WATER_SPECIFIC_HEAT_J_PER_G_K);
+    let delta_t = -heat_j / c_eff;
     target.properties.temperature_c = Some(current_temperature_c + delta_t);
 }
 
@@ -1173,7 +1232,7 @@ fn apply_toggle_burner(scene: &mut Scene, burner_item_id: &str) -> Result<(), Sc
     Ok(())
 }
 
-/// Apply burner heat / evaporation for `dt_s` seconds (no-op if the burner is off).
+/// Apply burner heat / evaporation and ambient Newton cooling for `dt_s` seconds.
 ///
 /// The HTTP layer clamps the clock delta (e.g. 0–2 s) before calling this.
 pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
@@ -1181,41 +1240,169 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
     if dt <= 0.0 {
         return;
     }
-    let Some(burner_idx) = scene.items.iter().position(|item| item.kind == "burner") else {
-        return;
-    };
-    if scene.items[burner_idx].properties.on != Some(true) {
-        return;
-    }
-    let Some(dish_idx) = scene
+
+    let burner_idx = scene.items.iter().position(|item| item.kind == "burner");
+    let dish_idx = scene
         .items
         .iter()
-        .position(|item| item.kind == "evaporation_dish")
-    else {
+        .position(|item| item.kind == "evaporation_dish");
+
+    let mut heating_dish = false;
+    if let (Some(burner_idx), Some(dish_idx)) = (burner_idx, dish_idx) {
+        if scene.items[burner_idx].properties.on == Some(true) {
+            if scene.items[dish_idx].location != "bench"
+                || !crate::solubility::dish_has_liquid(&scene.items[dish_idx])
+            {
+                scene.items[burner_idx].properties.on = Some(false);
+            } else {
+                heating_dish = true;
+                let temperature = scene.items[dish_idx]
+                    .properties
+                    .temperature_c
+                    .unwrap_or(AMBIENT_TEMPERATURE_C);
+                if temperature < BOILING_TEMPERATURE_C {
+                    let c_eff = effective_heat_capacity(&scene.items[dish_idx]).max(AMOUNT_EPS);
+                    let next =
+                        (temperature + (BURNER_POWER_W / c_eff) * dt).min(BOILING_TEMPERATURE_C);
+                    scene.items[dish_idx].properties.temperature_c = Some(next);
+                    crate::solubility::enforce_saturation(&mut scene.items[dish_idx]);
+                } else {
+                    evaporate_water(&mut scene.items[dish_idx], dt);
+                    crate::solubility::enforce_saturation(&mut scene.items[dish_idx]);
+                    if !crate::solubility::dish_has_liquid(&scene.items[dish_idx]) {
+                        scene.items[burner_idx].properties.on = Some(false);
+                    }
+                }
+            }
+        }
+    }
+
+    let dish_id = dish_idx.map(|idx| scene.items[idx].id.clone());
+    for idx in 0..scene.items.len() {
+        if heating_dish && dish_id.as_deref() == Some(scene.items[idx].id.as_str()) {
+            continue;
+        }
+        apply_ambient_cool(&mut scene.items[idx], dt);
+    }
+}
+
+fn solid_specific_heat(substance_id: &str) -> Option<f64> {
+    match substance_id {
+        "nacl" => Some(CP_NACL),
+        "cacl2" => Some(CP_CACL2),
+        "sand" => Some(CP_SAND),
+        _ => None,
+    }
+}
+
+fn vessel_heat_capacity(item: &SceneItem) -> f64 {
+    match item.kind.as_str() {
+        "evaporation_dish" => C_DISH,
+        "beaker" => C_BEAKER,
+        _ => 0.0,
+    }
+}
+
+fn vessel_ua(item: &SceneItem) -> Option<f64> {
+    match item.kind.as_str() {
+        "evaporation_dish" => Some(UA_DISH),
+        "beaker" => Some(UA_BEAKER),
+        "pipette" => Some(UA_BEAKER),
+        _ => None,
+    }
+}
+
+fn heat_capacity_of_entries(entries: &[CompositionEntry]) -> f64 {
+    let mut c = 0.0;
+    for entry in entries {
+        if entry.substance_id == "water" && entry.phase == "liquid" {
+            c += entry.amount_ml.unwrap_or(0.0) * WATER_SPECIFIC_HEAT_J_PER_G_K;
+        } else if entry.phase == "solid" {
+            if let Some(cp) = solid_specific_heat(&entry.substance_id) {
+                c += solid_amount_g(entry) * cp;
+            }
+        }
+        // Aqueous ions: thermal mass counted with the water solvent (plan).
+    }
+    c
+}
+
+/// Effective heat capacity of an item: vessel body + Σ contents m·c_p.
+///
+/// Tools / burner / filter paper contribute no vessel term. Pipettes use liquid
+/// holding only (no glass).
+pub fn effective_heat_capacity(item: &SceneItem) -> f64 {
+    if item.kind == "pipette" {
+        return heat_capacity_of_entries(&item.properties.holding);
+    }
+    if matches!(
+        item.kind.as_str(),
+        "spoon" | "tongs" | "burner" | "filter_paper"
+    ) {
+        return 0.0;
+    }
+    vessel_heat_capacity(item) + heat_capacity_of_entries(&item.properties.composition)
+}
+
+fn is_thermal_item(item: &SceneItem) -> bool {
+    match item.kind.as_str() {
+        "beaker" | "evaporation_dish" => item.properties.temperature_c.is_some(),
+        "pipette" => {
+            item.properties.temperature_c.is_some() && pipette_holding_liquid_ml(item) > AMOUNT_EPS
+        }
+        _ => false,
+    }
+}
+
+fn apply_ambient_cool(item: &mut SceneItem, dt: f64) {
+    if !is_thermal_item(item) {
+        return;
+    }
+    let Some(ua) = vessel_ua(item) else {
         return;
     };
-    if scene.items[dish_idx].location != "bench" {
-        scene.items[burner_idx].properties.on = Some(false);
+    let Some(temperature) = item.properties.temperature_c else {
+        return;
+    };
+    if (temperature - AMBIENT_TEMPERATURE_C).abs() < TEMPERATURE_SNAP_EPS_C {
+        item.properties.temperature_c = Some(AMBIENT_TEMPERATURE_C);
         return;
     }
-    if !crate::solubility::dish_has_liquid(&scene.items[dish_idx]) {
-        scene.items[burner_idx].properties.on = Some(false);
+    let c_eff = effective_heat_capacity(item);
+    if c_eff <= AMOUNT_EPS {
+        item.properties.temperature_c = Some(AMBIENT_TEMPERATURE_C);
         return;
     }
-    let temperature = scene.items[dish_idx]
+    let delta = -(ua / c_eff) * (temperature - AMBIENT_TEMPERATURE_C) * dt;
+    let mut next = temperature + delta;
+    // Do not cross ambient in one tick.
+    if (temperature - AMBIENT_TEMPERATURE_C).signum() != (next - AMBIENT_TEMPERATURE_C).signum()
+        && (next - AMBIENT_TEMPERATURE_C).abs() > AMOUNT_EPS
+    {
+        next = AMBIENT_TEMPERATURE_C;
+    }
+    if (next - AMBIENT_TEMPERATURE_C).abs() < TEMPERATURE_SNAP_EPS_C {
+        next = AMBIENT_TEMPERATURE_C;
+    }
+    item.properties.temperature_c = Some(next);
+}
+
+fn blend_temperature_capacity(target: &mut SceneItem, c_add: f64, source_t: f64) {
+    if c_add <= AMOUNT_EPS {
+        return;
+    }
+    let c_dest = effective_heat_capacity(target);
+    let t0 = target
         .properties
         .temperature_c
         .unwrap_or(AMBIENT_TEMPERATURE_C);
-    if temperature < BOILING_TEMPERATURE_C {
-        scene.items[dish_idx].properties.temperature_c =
-            Some((temperature + HEAT_K_PER_S * dt).min(BOILING_TEMPERATURE_C));
-        crate::solubility::enforce_saturation(&mut scene.items[dish_idx]);
+    if (source_t - t0).abs() <= AMOUNT_EPS {
         return;
     }
-    evaporate_water(&mut scene.items[dish_idx], dt);
-    crate::solubility::enforce_saturation(&mut scene.items[dish_idx]);
-    if !crate::solubility::dish_has_liquid(&scene.items[dish_idx]) {
-        scene.items[burner_idx].properties.on = Some(false);
+    if c_dest <= AMOUNT_EPS {
+        target.properties.temperature_c = Some(source_t);
+    } else {
+        target.properties.temperature_c = Some((c_dest * t0 + c_add * source_t) / (c_dest + c_add));
     }
 }
 
@@ -1631,8 +1818,12 @@ fn dump_all_solids(
     source_idx: usize,
     dest_idx: usize,
 ) -> Result<(), SceneError> {
+    let source_t = scene.items[source_idx]
+        .properties
+        .temperature_c
+        .unwrap_or(scene.temperature_c);
     let taken = take_all_solids(&mut scene.items[source_idx]);
-    mix_transfer_into(&mut scene.items[dest_idx], &taken, None);
+    mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
     crate::solubility::enforce_saturation(&mut scene.items[source_idx]);
     crate::solubility::enforce_saturation(&mut scene.items[dest_idx]);
     scene.last_events.push(SceneEvent {
@@ -1730,27 +1921,6 @@ fn take_all_solids(source: &mut SceneItem) -> Vec<CompositionEntry> {
     taken
 }
 
-fn liquid_water_ml_in(entries: &[CompositionEntry]) -> f64 {
-    entries
-        .iter()
-        .filter(|c| c.substance_id == "water" && c.phase == "liquid")
-        .map(|c| c.amount_ml.unwrap_or(0.0))
-        .sum()
-}
-
-fn blend_temperature_with_added_water(target: &mut SceneItem, add_ml: f64, source_t: f64) {
-    let v0 = crate::solubility::liquid_water_ml(target);
-    let t0 = target
-        .properties
-        .temperature_c
-        .unwrap_or(AMBIENT_TEMPERATURE_C);
-    if v0 <= AMOUNT_EPS {
-        target.properties.temperature_c = Some(source_t);
-    } else {
-        target.properties.temperature_c = Some((v0 * t0 + add_ml * source_t) / (v0 + add_ml));
-    }
-}
-
 fn merge_composition_into(
     target: &mut SceneItem,
     entries: &[CompositionEntry],
@@ -1782,10 +1952,10 @@ fn mix_transfer_into(
     transferred: &[CompositionEntry],
     source_t: Option<f64>,
 ) {
-    let add_ml = liquid_water_ml_in(transferred);
     if let Some(source_t) = source_t {
-        if add_ml > AMOUNT_EPS {
-            blend_temperature_with_added_water(target, add_ml, source_t);
+        let c_add = heat_capacity_of_entries(transferred);
+        if c_add > AMOUNT_EPS {
+            blend_temperature_capacity(target, c_add, source_t);
         }
     }
     merge_composition_into(target, transferred, true);
@@ -1793,9 +1963,13 @@ fn mix_transfer_into(
 }
 
 fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquot_t: f64) {
-    let add_ml = liquid_water_ml_in(aliquot);
+    let c_add = heat_capacity_of_entries(aliquot);
     // Pipette always blends with aliquot T (even when dest is empty / add_ml is tiny).
-    blend_temperature_with_added_water(target, add_ml, aliquot_t);
+    if c_add > AMOUNT_EPS {
+        blend_temperature_capacity(target, c_add, aliquot_t);
+    } else if effective_heat_capacity(target) <= AMOUNT_EPS {
+        target.properties.temperature_c = Some(aliquot_t);
+    }
     merge_composition_into(target, aliquot, false);
     crate::solubility::sync_fill_ml(target);
 }

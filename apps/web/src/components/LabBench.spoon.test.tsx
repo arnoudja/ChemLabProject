@@ -21,6 +21,7 @@ import { optionalArray } from '../lib/scene'
 import {
   NACL_EXPLANATION,
   SAND_EXPLANATION,
+  C_BEAKER,
   CACL2_DELTA_H_SOLUTION_J_PER_MOL,
   WATER_SPECIFIC_HEAT_J_PER_G_K,
   CACL2_MOLAR_MASS_G_PER_MOL,
@@ -358,7 +359,8 @@ describe('LabBench spoon', () => {
     expect(panel).toHaveTextContent(`${expectedClM.toPrecision(3)} M`)
     const expectedT =
       20 -
-      (moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL) / (200 * WATER_SPECIFIC_HEAT_J_PER_G_K)
+      (moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL) /
+        (C_BEAKER + 200 * WATER_SPECIFIC_HEAT_J_PER_G_K)
     expect(panel).toHaveTextContent(`Temperature: ${expectedT.toFixed(2)}°C`)
     expect(expectedT).toBeGreaterThan(20)
   })

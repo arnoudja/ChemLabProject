@@ -102,7 +102,9 @@ async fn get_scene_applies_elapsed_heat_while_burner_on() {
     let temperature = scene_item(&after, "dish-1")["properties"]["temperature_c"]
         .as_f64()
         .expect("temperature_c");
-    let expected = 20.0 + chemlab_core::HEAT_K_PER_S * 1.5;
+    // 1 ml water + dish body; power / C_eff ≈ 80 / 84.184 ≈ 0.95 °C/s.
+    let c_eff = chemlab_core::C_DISH + 1.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let expected = 20.0 + (chemlab_core::BURNER_POWER_W / c_eff) * 1.5;
     assert!(
         (temperature - expected).abs() < 1.0,
         "GET should apply ~1.5 s of heat: expected ~{expected}, got {temperature}"
@@ -176,7 +178,8 @@ async fn post_action_applies_elapsed_heat_before_user_action() {
     let temperature = scene_item(&after, "dish-1")["properties"]["temperature_c"]
         .as_f64()
         .expect("temperature_c");
-    let expected = 20.0 + chemlab_core::HEAT_K_PER_S * 1.5;
+    let c_eff = chemlab_core::C_DISH + 1.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let expected = 20.0 + (chemlab_core::BURNER_POWER_W / c_eff) * 1.5;
     assert!(
         (temperature - expected).abs() < 1.0,
         "POST should apply elapsed heat before the action: expected ~{expected}, got {temperature}"
@@ -224,7 +227,8 @@ async fn get_scene_clamps_elapsed_time_to_two_seconds() {
     let temperature = scene_item(&after, "dish-1")["properties"]["temperature_c"]
         .as_f64()
         .expect("temperature_c");
-    let expected = 20.0 + chemlab_core::HEAT_K_PER_S * 2.0;
+    let c_eff = chemlab_core::C_DISH + 1.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let expected = 20.0 + (chemlab_core::BURNER_POWER_W / c_eff) * 2.0;
     assert!(
         (temperature - expected).abs() < 1.0,
         "elapsed dt must clamp to 2 s: expected ~{expected}, got {temperature}"

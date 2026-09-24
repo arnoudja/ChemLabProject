@@ -407,8 +407,12 @@ fn use_tool_spoon_returns_evaporated_nacl_to_emptied_stock() {
         },
     )
     .unwrap();
-    apply_elapsed(&mut scene, 8.0);
-    apply_elapsed(&mut scene, 12.0);
+    // Capacity-aware heat to boil, then evaporate 5 ml at EVAP_ML_PER_S.
+    let heat_s = (BOILING_TEMPERATURE_C - 20.0) * (C_DISH + 5.0 * WATER_SPECIFIC_HEAT_J_PER_G_K)
+        / BURNER_POWER_W
+        + 1.0;
+    apply_elapsed(&mut scene, heat_s);
+    apply_elapsed(&mut scene, 5.0 / EVAP_ML_PER_S + 1.0);
 
     assert!(water_ml(item(&scene, "dish-1")) < 1e-9);
     assert!((solid_g(item(&scene, "dish-1"), "nacl") - 2.0).abs() < 1e-9);

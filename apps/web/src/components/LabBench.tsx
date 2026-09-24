@@ -59,6 +59,7 @@ import {
   outcomeLabel,
   paperHasResidue,
   pipetteIsFilled,
+  sceneNeedsThermalPoll,
   solidStockKind,
   spoonHoldingSpecies,
   spoonHoldingSubstance,
@@ -82,11 +83,12 @@ export {
   dishFillRatio,
   distilledWaterFillRatio,
   filtrateFillRatio,
+  sceneNeedsThermalPoll,
   stockFillRatio,
   waterFillRatio,
 }
 
-const BURNER_POLL_MS = 300
+const THERMAL_POLL_MS = 300
 
 type IngredientKind = 'h2o' | StockSolid
 
@@ -117,6 +119,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
   const [toolCarouselIndex, setToolCarouselIndex] = useState(0)
 
   const burnerOn = scene ? burnerIsOn(scene) : false
+  const needsThermalPoll = scene ? sceneNeedsThermalPoll(scene) : false
 
   useEffect(() => {
     let cancelled = false
@@ -141,7 +144,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
   }, [scene, onModeChange])
 
   useEffect(() => {
-    if (!burnerOn) return
+    if (!needsThermalPoll) return
     let cancelled = false
     const id = window.setInterval(() => {
       void fetchLabScene()
@@ -151,12 +154,12 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
         .catch(() => {
           /* Poll errors stay quiet so a transient GET failure does not clear the bench. */
         })
-    }, BURNER_POLL_MS)
+    }, THERMAL_POLL_MS)
     return () => {
       cancelled = true
       window.clearInterval(id)
     }
-  }, [burnerOn])
+  }, [needsThermalPoll])
 
   function trackPointer(event: MouseEvent<HTMLElement>) {
     const root = event.currentTarget.closest('[data-lab-bench]')

@@ -177,7 +177,9 @@ fn filter_pour_caps_at_250_ml_and_moves_proportional_solids_to_paper() {
     assert!((solid_g(paper, "sand") - sand_before * frac).abs() < 1e-12);
     assert_eq!(solid_g(filtrate, "sand"), 0.0);
     assert!((solid_g(water, "sand") - sand_before * (1.0 - frac)).abs() < 1e-12);
-    let expected_t = (100.0 * 40.0 + transferred * source_t) / 250.0;
+    let c_dest = C_BEAKER + 100.0 * WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let c_add = transferred * WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let expected_t = (c_dest * 40.0 + c_add * source_t) / (c_dest + c_add);
     assert!((filtrate.properties.temperature_c.unwrap() - expected_t).abs() < 1e-9);
     assert_eq!(water.location, "held");
 }

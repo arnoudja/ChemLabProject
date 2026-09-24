@@ -113,6 +113,27 @@ pub(crate) fn without_clock(scene: &serde_json::Value) -> serde_json::Value {
     scene
 }
 
+/// Strip item temperatures so ambient cool between POST and GET does not break equality.
+pub(crate) fn without_item_temperatures(scene: &serde_json::Value) -> serde_json::Value {
+    let mut scene = scene.clone();
+    if let Some(items) = scene
+        .as_object_mut()
+        .and_then(|obj| obj.get_mut("items"))
+        .and_then(|v| v.as_array_mut())
+    {
+        for item in items {
+            if let Some(props) = item
+                .as_object_mut()
+                .and_then(|obj| obj.get_mut("properties"))
+                .and_then(|v| v.as_object_mut())
+            {
+                props.remove("temperature_c");
+            }
+        }
+    }
+    scene
+}
+
 pub(crate) fn cookie_pair(set_cookie: &str) -> String {
     set_cookie.split(';').next().unwrap().to_string()
 }

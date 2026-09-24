@@ -17,6 +17,9 @@ pub(crate) const CACL2_MOLAR_MASS_G_PER_MOL: f64 = 110.98;
 /// Pipette aliquot volume (ml).
 pub const PIPETTE_VOLUME_ML: f64 = 1.00;
 
+/// Liquid a vessel must hold before the pipette may draw from it (ml).
+pub const PIPETTE_MIN_SOURCE_ML: f64 = 3.00;
+
 /// Evaporation dish capacity (ml).
 pub const DISH_CAPACITY_ML: f64 = 25.00;
 
@@ -153,6 +156,10 @@ pub enum SceneError {
     InvalidAction,
     #[error("empty holding")]
     EmptyHolding,
+    #[error("No fluid available.")]
+    NoFluidAvailable,
+    #[error("Not enough fluid available.")]
+    NotEnoughFluidAvailable,
     #[error("unknown mode")]
     UnknownMode,
     #[error(transparent)]
@@ -1247,9 +1254,12 @@ fn apply_pipette_fill(
     if is_filtrate_beaker(&scene.items[target_idx]) && scene.items[target_idx].location != "bench" {
         return Err(SceneError::InvalidAction);
     }
-    if crate::solubility::liquid_water_ml(&scene.items[target_idx]) + AMOUNT_EPS < PIPETTE_VOLUME_ML
-    {
-        return Err(SceneError::InvalidAction);
+    let available_ml = crate::solubility::liquid_water_ml(&scene.items[target_idx]);
+    if available_ml <= AMOUNT_EPS {
+        return Err(SceneError::NoFluidAvailable);
+    }
+    if available_ml + AMOUNT_EPS < PIPETTE_MIN_SOURCE_ML {
+        return Err(SceneError::NotEnoughFluidAvailable);
     }
     let source_id = scene.items[target_idx].id.clone();
     let source_t = scene.items[target_idx]

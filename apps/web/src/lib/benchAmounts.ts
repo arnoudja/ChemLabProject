@@ -16,6 +16,9 @@ export const DISTILLED_WATER_CAPACITY_ML = 100
 /** Pipette aliquot volume (ml). */
 export const PIPETTE_VOLUME_ML = 1
 
+/** Liquid a vessel must hold before the pipette may draw from it (ml). */
+export const PIPETTE_MIN_SOURCE_ML = 3
+
 /** Evaporation dish capacity (ml). */
 export const DISH_CAPACITY_ML = 25
 

@@ -3,6 +3,7 @@ import {
   DISH_CAPACITY_ML,
   DISTILLED_WATER_CAPACITY_ML,
   FILTRATE_CAPACITY_ML,
+  PIPETTE_MIN_SOURCE_ML,
   PIPETTE_VOLUME_ML,
 } from './LabBench'
 import { optionalArray } from '../lib/scene'
@@ -219,13 +220,26 @@ export function applyTongsPutAway(scene: LabScene): LabScene {
   return next
 }
 
-export function applyPipetteFill(scene: LabScene, sourceId: string): LabScene {
+export function applyPipetteFill(
+  scene: LabScene,
+  sourceId: string,
+): LabScene | { error: string; code: string; status: number } {
   const next = cloneScene(scene)
   const source = next.items.find((item) => item.id === sourceId)!
   const pipette = next.items.find((item) => item.id === 'pipette-1')!
   const water = liquidWaterEntry(source)
-  if (!water || (water.amount_ml ?? 0) < PIPETTE_VOLUME_ML) return scene
-  water.amount_ml = (water.amount_ml ?? 0) - PIPETTE_VOLUME_ML
+  const availableMl = water?.amount_ml ?? 0
+  if (!water || availableMl <= 0) {
+    return { error: 'No fluid available.', code: 'no_fluid_available', status: 400 }
+  }
+  if (availableMl < PIPETTE_MIN_SOURCE_ML) {
+    return {
+      error: 'Not enough fluid available.',
+      code: 'not_enough_fluid_available',
+      status: 400,
+    }
+  }
+  water.amount_ml = availableMl - PIPETTE_VOLUME_ML
   source.properties.fill_ml = water.amount_ml
   pipette.location = 'hand'
   pipette.properties.holding = [
@@ -283,7 +297,10 @@ export function applyPipetteEmpty(scene: LabScene, targetId: string): LabScene {
   return next
 }
 
-export function applyPipetteUse(scene: LabScene, targetId: string): LabScene {
+export function applyPipetteUse(
+  scene: LabScene,
+  targetId: string,
+): LabScene | { error: string; code: string; status: number } {
   return pipetteIsFull(scene) ? applyPipetteEmpty(scene, targetId) : applyPipetteFill(scene, targetId)
 }
 

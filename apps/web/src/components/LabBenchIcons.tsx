@@ -230,11 +230,26 @@ export function PipetteSvg({ filled, floating }: { filled: boolean; floating?: b
       aria-hidden
       data-pipette-filled={filled ? 'true' : 'false'}
     >
-      <path d="M14 8h8v14l4 8v70c0 6-3 12-8 12s-8-6-8-12V30l4-8z" fill="#3E4058" fillOpacity="0.35" stroke="#C4D2ED" strokeWidth="2" />
-      <rect x="14" y="4" width="8" height="8" rx="2" fill="#86A7DF" />
+      <path
+        d="M18 4c6 0 10 5 10 12 0 6-3 10-6 12v5h-8v-5c-3-2-6-6-6-12 0-7 4-12 10-12z"
+        fill="#86A7DF"
+        stroke="#DDF7FF"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <rect x="12" y="32" width="12" height="6" rx="2" fill="#6A6E95" stroke="#C4D2ED" strokeWidth="1.2" />
+      <path
+        d="M14 38H22V92L19 114c-.3 1.3-1.7 1.3-2 0L14 92z"
+        fill="#3E4058"
+        fillOpacity="0.32"
+        stroke="#C4D2ED"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
       {filled ? (
-        <path d="M16 48h4v42c0 4-1 8-4 8s-4-4-4-8V48z" fill="#7CF8F7" fillOpacity="0.7" />
+        <path d="M15.6 58H20.4V92l-1.7 13c-.2.9-1.4.9-1.6 0l-1.5-13z" fill="#7CF8F7" fillOpacity="0.7" />
       ) : null}
+      <path d="M16.4 42V88" fill="none" stroke="#DDF7FF" strokeWidth="1" strokeOpacity="0.45" strokeLinecap="round" />
     </svg>
   )
 }

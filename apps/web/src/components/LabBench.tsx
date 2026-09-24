@@ -15,6 +15,7 @@ import {
   DISTILLED_WATER_CAPACITY_ML,
   DISH_CAPACITY_ML,
   PIPETTE_VOLUME_ML,
+  PIPETTE_MIN_SOURCE_ML,
   FILTRATE_CAPACITY_ML,
 } from '../lib/benchAmounts'
 import { BeakerInspectPanel } from './BeakerInspectPanel'
@@ -76,6 +77,7 @@ export {
   DISTILLED_WATER_CAPACITY_ML,
   DISH_CAPACITY_ML,
   PIPETTE_VOLUME_ML,
+  PIPETTE_MIN_SOURCE_ML,
   FILTRATE_CAPACITY_ML,
   dishFillRatio,
   distilledWaterFillRatio,

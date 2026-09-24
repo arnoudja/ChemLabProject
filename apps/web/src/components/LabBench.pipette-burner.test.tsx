@@ -55,14 +55,25 @@ describe('LabBench pipette / burner', () => {
     })
     expect(document.querySelector('[data-dish-fill]')).toHaveAttribute('data-dish-fill', '0.04')
 
+    // The dish needs PIPETTE_MIN_SOURCE_ML before the pipette may draw from it again.
+    for (let i = 0; i < 2; i++) {
+      fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
+      await waitFor(() => {
+        expect(document.querySelector('[data-pipette-filled="true"]')).not.toBeNull()
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+      await waitFor(() => {
+        expect(document.querySelector('[data-pipette-filled="true"]')).toBeNull()
+      })
+    }
+    expect(document.querySelector('[data-dish-fill]')).toHaveAttribute('data-dish-fill', '0.12')
+
     fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
     await waitFor(() => {
-      expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
-        type: 'use_tool',
-        tool_item_id: 'pipette-1',
-        target_item_id: 'dish-1',
-      })
+      expect(document.querySelector('[data-pipette-filled="true"]')).not.toBeNull()
     })
+    expect(document.querySelector('[data-dish-fill]')).toHaveAttribute('data-dish-fill', '0.08')
+
     fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
     await waitFor(() => {
       expect(JSON.parse(String(lastActionInit(fetchMock)?.body))).toEqual({
@@ -71,7 +82,36 @@ describe('LabBench pipette / burner', () => {
         target_item_id: 'beaker-water',
       })
     })
-    expect(document.querySelector('[data-dish-fill]')).toHaveAttribute('data-dish-fill', '0.00')
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-water-fill', '0.99')
+  })
+
+  it('reports no fluid and not enough fluid when the pipette source is below 3 ml', async () => {
+    const lowScene = filledScene()
+    const fetchMock = stubLabFetch({ scene: lowScene })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('No fluid available.')
+    expect(document.querySelector('[data-pipette-filled="true"]')).toBeNull()
+
+    // One aliquot in the dish is fluid, but still short of the 3.00 ml the pipette needs.
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
+    await waitFor(() => {
+      expect(document.querySelector('[data-pipette-filled="true"]')).not.toBeNull()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expect(document.querySelector('[data-pipette-filled="true"]')).toBeNull()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not enough fluid available.')
+    expect(document.querySelector('[data-dish-fill]')).toHaveAttribute('data-dish-fill', '0.04')
+    expect(document.querySelector('[data-pipette-filled="true"]')).toBeNull()
   })
 
   it('idle burner click toggles the burner after the dish has liquid', async () => {

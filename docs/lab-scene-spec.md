@@ -31,7 +31,7 @@ Explanations stay verbatim from the dissolve spec.
 
 | `type` | Meaning |
 | --- | --- |
-| `use_tool` | Active tool item used on a target item (e.g. spoon → NaCl beaker scoops salt onto spoon; empty pipette → water or dish fills 1.00 ml of solution; full pipette → water or dish empties) |
+| `use_tool` | Active tool item used on a target item (e.g. spoon → NaCl beaker scoops salt onto spoon; empty pipette → water or dish fills 1.00 ml of solution from a source holding at least 3.00 ml; full pipette → water or dish empties) |
 | `pour` | Pour from held/source item into target (e.g. spoon with NaCl → water beaker, or full pipette → dish). Server may call `dissolve()` when solid meets water. Dish liquid is capped at **25.00 ml**. |
 | `put_away` | Return the spoon or pipette to the bench. Held scoops restore to matching stock; a full pipette returns 1.00 ml to its last source. |
 | `reset` | Rebuild the start bench of the lab's current mode (empty dish, burner off, empty pipette, T = 20 °C). |
@@ -105,7 +105,7 @@ Pour into water is a separate action, e.g. `{ "type": "pour", "source_item_id": 
 
 When NaCl dissolves into water, the scene engine applies **endothermic** cooling to the water beaker's `properties.temperature_c` (ΔH_sol ≈ 3.88 kJ/mol; water c_p = 4.184 J/(g·K); water mass ≈ liquid `amount_ml`). When CaCl₂ dissolves, it applies **exothermic** heating (ΔH_sol ≈ −81.3 kJ/mol) with the same mass/c_p model. Ambient `LabScene.temperature_c` is unchanged. Sand that does not dissolve leaves temperature unchanged. The frontend formats inspect mass (g) and volume (ml) to **two decimal places**, aqueous molarity (M) to **three significant digits**, and beaker/scene temperature to two decimal places.
 
-A **pipette** transfers **1.00 ml** of mixed solution (water + aqueous ions in proportion). Solid SiO₂ / other solids stay in the vessel. Mixing into the receiver uses volume-weighted temperature. The evaporation dish holds at most **25.00 ml**. While the **burner** is on, dish temperature rises toward 100 °C at `HEAT_K_PER_S = 10` with no evaporation; at 100 °C water leaves at `EVAP_ML_PER_S = 0.50`. Ions stay behind; mixed NaCl/CaCl₂ equilibrium (common-ion Cl⁻, Davies activities) then precipitates or redissolves `nacl` / `cacl2` on **every aqueous vessel**. The burner turns off when the dish has no liquid. Elapsed heat/evap is `chemlab-core::apply_elapsed`; the HTTP layer owns the clock.
+A **pipette** transfers **1.00 ml** of mixed solution (water + aqueous ions in proportion). The source vessel must hold at least **3.00 ml** of liquid, so a vessel can never be pipetted dry: a fill from a dry vessel fails with `no_fluid_available` ("No fluid available.") and a fill from a vessel below 3.00 ml fails with `not_enough_fluid_available` ("Not enough fluid available."). Solid SiO₂ / other solids stay in the vessel. Mixing into the receiver uses volume-weighted temperature. The evaporation dish holds at most **25.00 ml**. While the **burner** is on, dish temperature rises toward 100 °C at `HEAT_K_PER_S = 10` with no evaporation; at 100 °C water leaves at `EVAP_ML_PER_S = 0.50`. Ions stay behind; mixed NaCl/CaCl₂ equilibrium (common-ion Cl⁻, Davies activities) then precipitates or redissolves `nacl` / `cacl2` on **every aqueous vessel**. The burner turns off when the dish has no liquid. Elapsed heat/evap is `chemlab-core::apply_elapsed`; the HTTP layer owns the clock.
 
 ## Out of scope
 

@@ -1,6 +1,10 @@
 use super::super::*;
 use super::helpers::*;
 
+fn dish_c_eff_for_test(water_ml: f64) -> f64 {
+    C_DISH + water_ml * WATER_SPECIFIC_HEAT_J_PER_G_K
+}
+
 #[test]
 fn burner_heats_to_100_then_evaporates_precipitates_and_turns_off() {
     let mut scene = initial_bench_scene("lab-test");
@@ -43,7 +47,9 @@ fn burner_heats_to_100_then_evaporates_precipitates_and_turns_off() {
     .unwrap();
     assert_eq!(item(&scene, "burner-1").properties.on, Some(true));
 
-    apply_elapsed(&mut scene, 8.0);
+    // Capacity-aware: C_eff = C_DISH + 2·c_p → ~88.4 J/K; ~88 s to reach 100 °C.
+    let heat_s = (BOILING_TEMPERATURE_C - 20.0) * dish_c_eff_for_test(2.0) / BURNER_POWER_W + 1.0;
+    apply_elapsed(&mut scene, heat_s);
     let dish = item(&scene, "dish-1");
     assert!((dish.properties.temperature_c.unwrap() - 100.0).abs() < 1e-9);
     assert!(
@@ -128,10 +134,22 @@ fn heating_below_boil_redissolves_nacl_as_solubility_rises() {
         },
     )
     .unwrap();
-    apply_elapsed(&mut scene, 4.0);
+    // Solid NaCl from saturation adds thermal mass and redissolves as T rises, so
+    // heat in small steps until ~60 °C rather than a closed-form empty-dish time.
+    for _ in 0..500 {
+        let t = item(&scene, "dish-1").properties.temperature_c.unwrap();
+        if t >= 60.0 - 1e-6 {
+            break;
+        }
+        apply_elapsed(&mut scene, 0.25);
+    }
 
     let dish = item(&scene, "dish-1");
-    assert!((dish.properties.temperature_c.unwrap() - 60.0).abs() < 1e-9);
+    assert!(
+        (dish.properties.temperature_c.unwrap() - 60.0).abs() < 0.5,
+        "expected near 60 °C, got {}",
+        dish.properties.temperature_c.unwrap()
+    );
     assert!(
         (water_ml(dish) - 1.0).abs() < 1e-9,
         "no evaporation below 100"
@@ -149,9 +167,10 @@ fn heating_below_boil_redissolves_nacl_as_solubility_rises() {
         "heating must redissolve NaCl as s(T) rises; {na_after} vs {na_before}"
     );
     assert!(solid_after < solid_before - 1e-6);
-    let max_60 =
-        crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, 60.0) * 0.001;
-    assert!((na_after - max_60).abs() < 1e-9);
+    let t_now = dish.properties.temperature_c.unwrap();
+    let max_now =
+        crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, t_now) * 0.001;
+    assert!((na_after - max_now).abs() < 1e-9);
 }
 
 #[test]

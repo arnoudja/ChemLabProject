@@ -305,7 +305,7 @@ fn boil_dish_dry(scene: &mut Scene) {
         },
     )
     .unwrap();
-    for _ in 0..200 {
+    for _ in 0..1000 {
         apply_elapsed(scene, 1.0);
         if liquid_ml(scene, "dish-1") <= 0.0 {
             return;

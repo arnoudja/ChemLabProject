@@ -6,4 +6,5 @@ mod filter;
 mod helpers;
 mod pipette;
 mod spoon;
+mod temperature;
 mod tongs;

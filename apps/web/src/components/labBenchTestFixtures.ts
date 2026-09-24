@@ -20,6 +20,8 @@ export const NACL_DELTA_H_SOLUTION_J_PER_MOL = 3880
 export const CACL2_DELTA_H_SOLUTION_J_PER_MOL = -81300
 /** Mirror `chemlab-core::scene::WATER_SPECIFIC_HEAT_J_PER_G_K` — keep in sync. */
 export const WATER_SPECIFIC_HEAT_J_PER_G_K = 4.184
+/** Mirror `chemlab-core::scene::C_BEAKER` — keep in sync. */
+export const C_BEAKER = 150
 export const NACL_MOLAR_MASS_G_PER_MOL = 58.44
 export const CACL2_MOLAR_MASS_G_PER_MOL = 110.98
 export const CACL2_EXPLANATION =

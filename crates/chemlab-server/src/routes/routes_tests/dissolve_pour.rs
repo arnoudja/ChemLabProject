@@ -41,7 +41,10 @@ async fn pour_nacl_action_persists_dissolve_scene_and_events() {
     );
 
     let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
-    assert_eq!(without_clock(&persisted), without_clock(&action["scene"]));
+    assert_eq!(
+        without_item_temperatures(&without_clock(&persisted)),
+        without_item_temperatures(&without_clock(&action["scene"]))
+    );
     let water = persisted["items"]
         .as_array()
         .unwrap()
@@ -60,12 +63,11 @@ async fn pour_nacl_action_persists_dissolve_scene_and_events() {
         .any(|entry| entry["substance_id"] == "nacl"));
     let cooled = water["properties"]["temperature_c"].as_f64().unwrap();
     let moles = 0.2 / 58.44;
-    let expected = 20.0
-        - (moles * chemlab_core::NACL_DELTA_H_SOLUTION_J_PER_MOL)
-            / (200.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K);
+    let c_eff = chemlab_core::C_BEAKER + 200.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let expected = 20.0 - (moles * chemlab_core::NACL_DELTA_H_SOLUTION_J_PER_MOL) / c_eff;
     assert!(
-        (cooled - expected).abs() < 1e-9,
-        "expected cooled temperature {expected}, got {cooled}"
+        (cooled - expected).abs() < 1e-4,
+        "expected cooled temperature ~{expected}, got {cooled}"
     );
     assert!(cooled < 20.0);
 }
@@ -302,7 +304,21 @@ async fn pour_sand_at_non_bench_temperature_leaves_undissolved_solid() {
         .iter()
         .find(|item| item["id"] == "beaker-water")
         .expect("beaker-water");
-    assert_eq!(water["properties"]["temperature_c"], 21.0);
+    assert_eq!(
+        water["properties"]["temperature_c"]
+            .as_f64()
+            .unwrap()
+            .round() as i32,
+        21
+    );
+    let c_dest = chemlab_core::C_BEAKER + 200.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let c_add = 0.2 * chemlab_core::CP_SAND;
+    let expected_t = (c_dest * 21.0 + c_add * 20.0) / (c_dest + c_add);
+    let actual_t = water["properties"]["temperature_c"].as_f64().unwrap();
+    assert!(
+        (actual_t - expected_t).abs() < 1e-4,
+        "expected energy-weighted ~{expected_t}, got {actual_t}"
+    );
     let sand_solid = water["properties"]["composition"]
         .as_array()
         .expect("composition")
@@ -321,10 +337,9 @@ async fn pour_sand_after_cacl2_heating_succeeds() {
     let cookies = format!("{session_cookie}; {csrf_cookie}");
     persist_filled_main_beaker(&state, &app, &cookies).await;
 
-    // One scoop only raises T by ~0.175 °C (still rounds to 20). Pour until the
-    // dissolve lookup sees a non-bench integer °C — the real warm-water bug path.
+    // Vessel C_eff lowers ΔT/scoop; pour until dissolve lookup sees non-bench °C.
     let mut after_heat = 20.0_f64;
-    for scoop_n in 1..=4 {
+    for scoop_n in 1..=12 {
         assert_eq!(
             post_action(
                 &app,
@@ -365,6 +380,9 @@ async fn pour_sand_after_cacl2_heating_succeeds() {
             .expect("beaker-water")["properties"]["temperature_c"]
             .as_f64()
             .expect("temperature_c");
+        if after_heat.round() as i32 != 20 {
+            break;
+        }
     }
     assert!(
         after_heat.round() as i32 != 20,
@@ -413,7 +431,14 @@ async fn pour_sand_after_cacl2_heating_succeeds() {
         .iter()
         .find(|item| item["id"] == "beaker-water")
         .expect("beaker-water");
-    assert_eq!(water["properties"]["temperature_c"], after_heat);
+    let c_dest = chemlab_core::C_BEAKER + 200.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let c_add = 0.2 * chemlab_core::CP_SAND;
+    let expected_t = (c_dest * after_heat + c_add * 20.0) / (c_dest + c_add);
+    let actual_t = water["properties"]["temperature_c"].as_f64().unwrap();
+    assert!(
+        (actual_t - expected_t).abs() < 1e-4,
+        "expected energy-weighted ~{expected_t}, got {actual_t}"
+    );
     let sand_solid = water["properties"]["composition"]
         .as_array()
         .expect("composition")

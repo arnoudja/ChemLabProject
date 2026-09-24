@@ -85,8 +85,8 @@ fn pour_nacl_into_water_cools_solution_endothermically() {
 
     let water = item(&scene, "beaker-water");
     let moles = SPOON_SCOOP_MASS_G / NACL_MOLAR_MASS_G_PER_MOL;
-    let expected_delta_t =
-        -(moles * NACL_DELTA_H_SOLUTION_J_PER_MOL) / (200.0 * WATER_SPECIFIC_HEAT_J_PER_G_K);
+    let c_eff = C_BEAKER + FILLED_MAIN_BEAKER_ML * WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let expected_delta_t = -(moles * NACL_DELTA_H_SOLUTION_J_PER_MOL) / c_eff;
     let expected_t = 20.0 + expected_delta_t;
     assert!(
         expected_delta_t < 0.0,
@@ -156,8 +156,8 @@ fn pour_cacl2_into_water_dissolves_with_ions_and_heats_exothermically() {
         .iter()
         .any(|c| c.substance_id == "cacl2"));
 
-    let expected_delta_t =
-        -(moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL) / (200.0 * WATER_SPECIFIC_HEAT_J_PER_G_K);
+    let expected_delta_t = -(moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL)
+        / (C_BEAKER + FILLED_MAIN_BEAKER_ML * WATER_SPECIFIC_HEAT_J_PER_G_K);
     assert!(
         expected_delta_t > 0.0,
         "CaCl2 dissolution must be exothermic (positive ΔT)"
@@ -425,7 +425,10 @@ fn pour_sand_at_non_bench_temperature_leaves_undissolved_solid() {
     .unwrap();
 
     let water = item(&scene, "beaker-water");
-    assert_eq!(water.properties.temperature_c, Some(21.0));
+    let c_dest = C_BEAKER + FILLED_MAIN_BEAKER_ML * WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let c_add = SPOON_SCOOP_MASS_G * CP_SAND;
+    let expected_t = (c_dest * 21.0 + c_add * 20.0) / (c_dest + c_add);
+    assert!((water.properties.temperature_c.unwrap() - expected_t).abs() < 1e-9);
     assert!(water.properties.composition.iter().any(|c| {
         c.substance_id == "sand"
             && c.phase == "solid"
@@ -448,10 +451,9 @@ fn pour_sand_at_non_bench_temperature_leaves_undissolved_solid() {
 fn pour_sand_succeeds_after_cacl2_exothermic_heating() {
     let mut scene = bench_with_water("lab-test");
 
-    // One scoop only raises T by ~0.175 °C (still rounds to 20). Pour until the
-    // dissolve lookup sees a non-bench integer °C — the real warm-water bug path.
+    // Vessel C_eff lowers ΔT/scoop; pour until dissolve lookup sees non-bench °C.
     let mut after_heat = 20.0;
-    for _ in 0..4 {
+    for _ in 0..12 {
         apply_action(
             &mut scene,
             Action::UseTool {
@@ -472,6 +474,9 @@ fn pour_sand_succeeds_after_cacl2_exothermic_heating() {
             .properties
             .temperature_c
             .expect("water beaker should keep a temperature");
+        if after_heat.round() as i32 != 20 {
+            break;
+        }
     }
     assert!(
         after_heat.round() as i32 != 20,
@@ -496,7 +501,12 @@ fn pour_sand_succeeds_after_cacl2_exothermic_heating() {
     .unwrap();
 
     let water = item(&scene, "beaker-water");
-    assert_eq!(water.properties.temperature_c, Some(after_heat));
+    let c_dest = C_BEAKER
+        + FILLED_MAIN_BEAKER_ML * WATER_SPECIFIC_HEAT_J_PER_G_K
+        + /* dissolved ions share water c_p; sand not yet added */ 0.0;
+    let c_add = SPOON_SCOOP_MASS_G * CP_SAND;
+    let expected_t = (c_dest * after_heat + c_add * 20.0) / (c_dest + c_add);
+    assert!((water.properties.temperature_c.unwrap() - expected_t).abs() < 1e-9);
     assert!(water.properties.composition.iter().any(|c| {
         c.substance_id == "sand"
             && c.phase == "solid"
@@ -615,8 +625,10 @@ fn pour_nacl_succeeds_after_mild_heating_above_bench() {
 
     let water = item(&scene, "beaker-water");
     let moles = SPOON_SCOOP_MASS_G / NACL_MOLAR_MASS_G_PER_MOL;
-    let expected_t =
-        21.5 - (moles * NACL_DELTA_H_SOLUTION_J_PER_MOL) / (200.0 * WATER_SPECIFIC_HEAT_J_PER_G_K);
+    let c_dest = C_BEAKER + FILLED_MAIN_BEAKER_ML * WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let c_add = SPOON_SCOOP_MASS_G * CP_NACL;
+    let t_after_blend = (c_dest * 21.5 + c_add * 20.0) / (c_dest + c_add);
+    let expected_t = t_after_blend - (moles * NACL_DELTA_H_SOLUTION_J_PER_MOL) / c_dest;
     let actual = water
         .properties
         .temperature_c

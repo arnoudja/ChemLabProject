@@ -508,7 +508,9 @@ fn tongs_pour_uses_volume_weighted_destination_temperature() {
 
     let dish = item(&scene, "dish-1");
     assert!((water_ml(dish) - 25.0).abs() < 1e-9);
-    let expected_t = (10.0 * 80.0 + 15.0 * 20.0) / 25.0;
+    let c_dest = C_DISH + 10.0 * WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let c_add = 15.0 * WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let expected_t = (c_dest * 80.0 + c_add * 20.0) / (c_dest + c_add);
     assert!((dish.properties.temperature_c.unwrap() - expected_t).abs() < 1e-9);
     assert_eq!(
         item(&scene, "beaker-water").properties.temperature_c,

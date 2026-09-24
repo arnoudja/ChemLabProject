@@ -1250,9 +1250,9 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
     let mut heating_dish = false;
     if let (Some(burner_idx), Some(dish_idx)) = (burner_idx, dish_idx) {
         if scene.items[burner_idx].properties.on == Some(true) {
-            if scene.items[dish_idx].location != "bench" {
-                scene.items[burner_idx].properties.on = Some(false);
-            } else if !crate::solubility::dish_has_liquid(&scene.items[dish_idx]) {
+            if scene.items[dish_idx].location != "bench"
+                || !crate::solubility::dish_has_liquid(&scene.items[dish_idx])
+            {
                 scene.items[burner_idx].properties.on = Some(false);
             } else {
                 heating_dish = true;

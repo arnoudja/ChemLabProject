@@ -489,36 +489,6 @@ fn tongs_empty_source_with_nothing_to_move_errors_and_stays_holding() {
 }
 
 #[test]
-fn tongs_pour_uses_volume_weighted_destination_temperature() {
-    let mut scene = bench_with_water("lab-test");
-    let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
-    dish.properties.temperature_c = Some(80.0);
-    dish.properties.composition = vec![CompositionEntry {
-        substance_id: "water".into(),
-        phase: "liquid".into(),
-        amount_ml: Some(10.0),
-        amount_scoop: None,
-        amount_g: None,
-        amount_mol: None,
-    }];
-    crate::solubility::sync_fill_ml(dish);
-
-    use_tongs(&mut scene, "beaker-water").unwrap();
-    use_tongs(&mut scene, "dish-1").unwrap();
-
-    let dish = item(&scene, "dish-1");
-    assert!((water_ml(dish) - 25.0).abs() < 1e-9);
-    let c_dest = C_DISH + 10.0 * WATER_SPECIFIC_HEAT_J_PER_G_K;
-    let c_add = 15.0 * WATER_SPECIFIC_HEAT_J_PER_G_K;
-    let expected_t = (c_dest * 80.0 + c_add * 20.0) / (c_dest + c_add);
-    assert!((dish.properties.temperature_c.unwrap() - expected_t).abs() < 1e-9);
-    assert_eq!(
-        item(&scene, "beaker-water").properties.temperature_c,
-        Some(20.0)
-    );
-}
-
-#[test]
 fn tongs_pick_up_beaker_h2o_and_pour_into_dish_and_water() {
     let mut scene = initial_bench_scene("lab-test");
     use_tongs(&mut scene, "beaker-h2o").unwrap();

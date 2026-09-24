@@ -21,7 +21,8 @@ in the web mirror + tests.
   after every action from the challenge's win condition, so undoing the winning move un-wins it.
 - A challenge start scene is the Free bench with the challenge's edits applied: ingredient stocks
   outside the allowed list are removed, listed stocks start empty, and the main beaker
-  (`beaker-water`) is preloaded with the listed dry solids.
+  (`beaker-water`) is preloaded with the listed dry solids. Optional `distilled_water_ml`
+  overrides the Free-mode H2O stock fill (capacity stays 100 ml).
 
 | Mode | Id | Selected by default |
 | --- | --- | --- |
@@ -37,7 +38,7 @@ in the web mirror + tests.
 | Prompt | The previous student accidentally put all the salt and sand in the main beaker, can you please separate them and put them back in their containers? |
 | Done | Thank you. |
 | Main beaker (`beaker-water`) | 2.0 g solid `nacl` + 2.0 g solid `sand`, dry (no water) |
-| Allowed ingredient stocks | `beaker-h2o` (100 ml, as in Free), `beaker-nacl`, `beaker-sand` |
+| Allowed ingredient stocks | `beaker-h2o` (10 ml; Free keeps 100 ml), `beaker-nacl`, `beaker-sand` |
 | Empty at start | `beaker-nacl`, `beaker-sand` |
 | Removed from the bench | `beaker-cacl2` |
 | Win | `beaker-nacl` holds ~2.0 g solid `nacl` **and** `beaker-sand` holds ~2.0 g solid `sand` (mass compared with the core float tolerance) |

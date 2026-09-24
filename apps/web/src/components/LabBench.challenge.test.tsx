@@ -75,6 +75,13 @@ describe('LabBench challenge mode', () => {
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
   })
 
+  it('starts the challenge distilled-water stock at 10 ml', () => {
+    const h2o = challengeScene().items.find((item) => item.id === 'beaker-h2o')!
+    expect(h2o.properties.volume_ml).toBe(100)
+    expect(h2o.properties.fill_ml).toBe(10)
+    expect(h2o.properties.composition?.[0]?.amount_ml).toBe(10)
+  })
+
   it('reset inside a challenge stays in the challenge', async () => {
     const fetchMock = stubLabFetch({ scene: challengeScene() })
     vi.stubGlobal('fetch', fetchMock)

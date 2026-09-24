@@ -82,4 +82,3 @@ if [ ! -f apps/web/dist/index.html ]; then
 fi
 
 echo "==> binary: $BINARY"
-export CHEMLAB_RELEASE_BINARY="$BINARY"

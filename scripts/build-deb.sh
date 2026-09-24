@@ -16,6 +16,27 @@ ARCH="${ARCH:-amd64}"
 # Optional cargo triple for cross-compile (empty = host / native).
 TARGET="${TARGET:-}"
 
+# Refuse silent ARCH/TARGET mismatch (e.g. TARGET=aarch64-… with default ARCH=amd64).
+if [ -n "$TARGET" ]; then
+    case "$TARGET" in
+        aarch64-*)
+            EXPECTED_ARCH=arm64
+            ;;
+        x86_64-*|i686-*)
+            EXPECTED_ARCH=amd64
+            ;;
+        *)
+            EXPECTED_ARCH=
+            ;;
+    esac
+    if [ -n "$EXPECTED_ARCH" ] && [ "$ARCH" != "$EXPECTED_ARCH" ]; then
+        echo "ARCH=$ARCH does not match TARGET=$TARGET (expected ARCH=$EXPECTED_ARCH)" >&2
+        echo "Example: ARCH=arm64 TARGET=aarch64-unknown-linux-gnu ./scripts/build-deb.sh" >&2
+        echo "Or use: ./scripts/build-deb-pi.sh" >&2
+        exit 1
+    fi
+fi
+
 HOST_ARCH="$(dpkg --print-architecture 2>/dev/null || echo unknown)"
 if [ -z "$TARGET" ] && [ "$ARCH" != "$HOST_ARCH" ]; then
     echo "ARCH=$ARCH but host is $HOST_ARCH; set TARGET=<cargo-triple> for cross-compile (see build-deb-pi.sh)" >&2

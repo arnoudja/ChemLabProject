@@ -114,7 +114,9 @@ The package installs `chemlab-server`, the built web UI, and a systemd unit that
 starts on boot and binds **`127.0.0.1:3847`**. Put Caddy in front for HTTPS
 (see below). `cargo run` defaults stay `127.0.0.1:3847`.
 
-Build on the target distro (needs Rust, Node 22+, and the packager below).
+Build on the target distro for amd64/x86_64 packages (needs Rust, Node 22+, and
+the packager below). Raspberry Pi arm64 packages are cross-built from an amd64
+host via `./scripts/build-deb-pi.sh` (see below).
 `./update.sh` detects Ubuntu vs Omarchy and rebuilds + reinstalls.
 
 **Ubuntu amd64** (needs `dpkg-deb`):

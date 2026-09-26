@@ -121,8 +121,8 @@ async fn get_scene_applies_elapsed_heat_while_burner_on() {
         .and_then(|c| c["amount_ml"].as_f64())
         .unwrap_or(0.0);
     assert!(
-        (water_ml - 1.0).abs() < 1e-6,
-        "no evaporation below 100 °C, got {water_ml} ml"
+        (water_ml - 1.0).abs() < 0.01,
+        "sub-boil loss over ~1.5 s must stay lab-scale small, got {water_ml} ml"
     );
 }
 

@@ -32,14 +32,40 @@ pub const DISTILLED_WATER_CAPACITY_ML: f64 = 100.00;
 /// Filtrate beaker liquid capacity (ml).
 pub const FILTRATE_CAPACITY_ML: f64 = 250.00;
 
-/// Water loss rate while the dish is at 100 °C and the burner is on (ml/s).
-pub const EVAP_ML_PER_S: f64 = 0.50;
-
 /// Ambient bench / reset temperature (°C).
 pub const AMBIENT_TEMPERATURE_C: f64 = 20.0;
 
-/// Boiling temperature; evaporation does not start below this (°C).
-pub const BOILING_TEMPERATURE_C: f64 = 100.0;
+/// Lab air pressure (bar). Pure-water boil ≈ 100 °C at this pressure.
+pub const ATM_PRESSURE_BAR: f64 = 1.00;
+
+/// Fixed lab relative humidity (fraction).
+pub const RELATIVE_HUMIDITY: f64 = 0.50;
+
+/// Latent heat of vaporization of water (J/g ≈ J/ml).
+pub const WATER_LATENT_HEAT_J_PER_G: f64 = 2257.0;
+
+/// Molar mass of water (g/mol); 1 ml liquid water ≈ 1 g.
+pub const WATER_MOLAR_MASS_G_PER_MOL: f64 = 18.01528;
+
+/// Antoine A for water (`log10(P_sat / bar) = A − B / (T_C + C)`), ~1–100 °C.
+pub const WATER_ANTOINE_A: f64 = 5.1962;
+
+/// Antoine B for water (°C).
+pub const WATER_ANTOINE_B: f64 = 1730.63;
+
+/// Antoine C for water (°C).
+pub const WATER_ANTOINE_C: f64 = 233.426;
+
+/// Evaporating-dish free surface area (m²), ~70 mm diameter.
+pub const DISH_EVAP_AREA_M2: f64 = 0.004;
+
+/// Mass-transfer coefficient (ml/(s·m²)). With [`DISH_EVAP_AREA_M2`], pure water at
+/// 20 °C / 50% RH loses ≈ 2 ml/h (`m_dot = k A max(0, p_w − p_air) / P_atm`).
+pub const DISH_MASS_TRANSFER_COEFF_ML_PER_S_M2: f64 = 11.93;
+
+/// Pure-water boiling temperature at [`ATM_PRESSURE_BAR`] (°C), from Antoine.
+/// Prefer [`boiling_temperature_c`] for composition-aware boil.
+pub const BOILING_TEMPERATURE_C: f64 = 99.63;
 
 /// Burner heat power delivered to the evaporation dish (W).
 pub const BURNER_POWER_W: f64 = 80.0;
@@ -1248,9 +1274,11 @@ fn apply_toggle_burner(scene: &mut Scene, burner_item_id: &str) -> Result<(), Sc
     Ok(())
 }
 
-/// Apply burner heat / evaporation and ambient Newton cooling for `dt_s` seconds.
+/// Apply burner heat / dish evaporation and ambient Newton cooling for `dt_s` seconds.
 ///
 /// The HTTP layer clamps the clock delta (e.g. 0–2 s) before calling this.
+/// Dish water can leave with the burner on or off (ambient mass transfer); beakers
+/// do not evaporate.
 pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
     let dt = if dt_s.is_finite() { dt_s.max(0.0) } else { 0.0 };
     if dt <= 0.0 {
@@ -1272,22 +1300,21 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
                 scene.items[burner_idx].properties.on = Some(false);
             } else {
                 heating_dish = true;
-                let temperature = scene.items[dish_idx]
-                    .properties
-                    .temperature_c
-                    .unwrap_or(AMBIENT_TEMPERATURE_C);
-                if temperature < BOILING_TEMPERATURE_C {
-                    let c_eff = effective_heat_capacity(&scene.items[dish_idx]).max(AMOUNT_EPS);
-                    let next =
-                        (temperature + (BURNER_POWER_W / c_eff) * dt).min(BOILING_TEMPERATURE_C);
-                    scene.items[dish_idx].properties.temperature_c = Some(next);
-                    crate::solubility::enforce_saturation(&mut scene.items[dish_idx]);
-                } else {
-                    evaporate_water(&mut scene.items[dish_idx], dt);
-                    crate::solubility::enforce_saturation(&mut scene.items[dish_idx]);
-                    if !crate::solubility::dish_has_liquid(&scene.items[dish_idx]) {
-                        scene.items[burner_idx].properties.on = Some(false);
-                    }
+            }
+        }
+    }
+
+    if let Some(dish_idx) = dish_idx {
+        if scene.items[dish_idx].location == "bench"
+            && crate::solubility::dish_has_liquid(&scene.items[dish_idx])
+        {
+            apply_dish_evaporation(&mut scene.items[dish_idx], dt, heating_dish);
+            crate::solubility::enforce_saturation(&mut scene.items[dish_idx]);
+            if let Some(burner_idx) = burner_idx {
+                if scene.items[burner_idx].properties.on == Some(true)
+                    && !crate::solubility::dish_has_liquid(&scene.items[dish_idx])
+                {
+                    scene.items[burner_idx].properties.on = Some(false);
                 }
             }
         }
@@ -1299,6 +1326,179 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
             continue;
         }
         apply_ambient_cool(&mut scene.items[idx], dt);
+    }
+}
+
+/// Saturation vapor pressure of pure water (bar) via Antoine, `T` in °C.
+pub fn water_vapor_pressure_bar(temperature_c: f64) -> f64 {
+    if !temperature_c.is_finite() {
+        return 0.0;
+    }
+    10f64.powf(WATER_ANTOINE_A - WATER_ANTOINE_B / (temperature_c + WATER_ANTOINE_C))
+}
+
+/// Liquid-water mole fraction among water + aqueous ions (solids / sand excluded).
+pub fn water_mole_fraction(item: &SceneItem) -> f64 {
+    let n_water = crate::solubility::liquid_water_ml(item) / WATER_MOLAR_MASS_G_PER_MOL;
+    let n_ions: f64 = item
+        .properties
+        .composition
+        .iter()
+        .filter(|c| c.phase == "aqueous")
+        .map(|c| c.amount_mol.unwrap_or(0.0).max(0.0))
+        .sum();
+    let n_tot = n_water + n_ions;
+    if n_tot <= AMOUNT_EPS {
+        return 0.0;
+    }
+    (n_water / n_tot).clamp(0.0, 1.0)
+}
+
+/// Boiling temperature (°C) where `x_w · P_sat(T) = P_atm` (Raoult + Antoine).
+pub fn boiling_temperature_c(x_w: f64) -> f64 {
+    let x = x_w.clamp(AMOUNT_EPS, 1.0);
+    // Pure water at 1.00 bar is ~99.61 °C; salts raise T. Bracket generously.
+    let mut lo = 50.0;
+    let mut hi = 200.0;
+    for _ in 0..48 {
+        let mid = 0.5 * (lo + hi);
+        let p_w = x * water_vapor_pressure_bar(mid);
+        if p_w < ATM_PRESSURE_BAR {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    0.5 * (lo + hi)
+}
+
+fn air_water_partial_pressure_bar() -> f64 {
+    RELATIVE_HUMIDITY * water_vapor_pressure_bar(AMBIENT_TEMPERATURE_C)
+}
+
+fn remove_liquid_water_ml(dish: &mut SceneItem, loss_ml: f64) {
+    if loss_ml <= AMOUNT_EPS {
+        return;
+    }
+    let remain = (crate::solubility::liquid_water_ml(dish) - loss_ml).max(0.0);
+    if let Some(water) = dish
+        .properties
+        .composition
+        .iter_mut()
+        .find(|c| c.substance_id == "water" && c.phase == "liquid")
+    {
+        water.amount_ml = Some(remain);
+    }
+}
+
+fn apply_latent_cool(dish: &mut SceneItem, mass_g: f64, c_eff_before: f64) {
+    if mass_g <= AMOUNT_EPS || c_eff_before <= AMOUNT_EPS {
+        return;
+    }
+    let t = dish
+        .properties
+        .temperature_c
+        .unwrap_or(AMBIENT_TEMPERATURE_C);
+    dish.properties.temperature_c = Some(t - mass_g * WATER_LATENT_HEAT_J_PER_G / c_eff_before);
+}
+
+/// Sub-boil mass transfer: `m_dot = k A max(0, p_w − p_air) / P_atm` (ml/s), then latent cool.
+fn apply_sub_boil_mass_transfer(dish: &mut SceneItem, dt: f64) {
+    if dt <= AMOUNT_EPS || !crate::solubility::dish_has_liquid(dish) {
+        return;
+    }
+    let t = dish
+        .properties
+        .temperature_c
+        .unwrap_or(AMBIENT_TEMPERATURE_C);
+    let x_w = water_mole_fraction(dish);
+    if x_w <= AMOUNT_EPS {
+        return;
+    }
+    let p_w = x_w * water_vapor_pressure_bar(t);
+    let driving = (p_w - air_water_partial_pressure_bar()).max(0.0) / ATM_PRESSURE_BAR;
+    let m_dot =
+        DISH_MASS_TRANSFER_COEFF_ML_PER_S_M2 * DISH_EVAP_AREA_M2 * driving;
+    let loss = m_dot * dt;
+    if loss <= AMOUNT_EPS {
+        return;
+    }
+    let c_eff = effective_heat_capacity(dish).max(AMOUNT_EPS);
+    remove_liquid_water_ml(dish, loss);
+    apply_latent_cool(dish, loss, c_eff);
+}
+
+fn apply_heat_limited_boil(dish: &mut SceneItem, dt: f64, heating: bool) {
+    let x_w = water_mole_fraction(dish);
+    let t_boil = boiling_temperature_c(x_w);
+    // Plateau at T_boil while heat-limited boiling; do not also apply latent ΔT
+    // (Q_net already pays for vaporization).
+    dish.properties.temperature_c = Some(t_boil);
+    // While heating, Newton cool is skipped for the dish (see apply_elapsed), so
+    // Q_net = burner power only. Subtracting UA here would double-count loss that
+    // is not applied while heating, and with UA_DISH=4 / BURNER_POWER_W=80 would
+    // make Q_net negative near 100 °C. When the burner is off, Q_net ≤ 0.
+    let q_net = if heating {
+        BURNER_POWER_W
+    } else {
+        (0.0 - UA_DISH * (t_boil - AMBIENT_TEMPERATURE_C)).max(0.0)
+    };
+    let m_dot = (q_net / WATER_LATENT_HEAT_J_PER_G).max(0.0);
+    remove_liquid_water_ml(dish, m_dot * dt);
+}
+
+fn dish_is_boiling(temperature_c: f64, x_w: f64) -> bool {
+    // Vapor-pressure gate only. Do not use T >= T_boil alone: as the dish
+    // concentrates, T_boil can run away and a T comparison falsely trips.
+    const BOIL_P_EPS_BAR: f64 = 1e-4;
+    x_w * water_vapor_pressure_bar(temperature_c) + BOIL_P_EPS_BAR >= ATM_PRESSURE_BAR
+}
+
+fn apply_dish_evaporation(dish: &mut SceneItem, dt: f64, heating: bool) {
+    let mut remaining = dt;
+    if remaining <= AMOUNT_EPS || !crate::solubility::dish_has_liquid(dish) {
+        return;
+    }
+
+    let mut t = dish
+        .properties
+        .temperature_c
+        .unwrap_or(AMBIENT_TEMPERATURE_C);
+    let x_w = water_mole_fraction(dish);
+    if x_w <= AMOUNT_EPS {
+        return;
+    }
+    let t_boil = boiling_temperature_c(x_w);
+
+    if heating {
+        // While the burner heats: sensible heat until boil, then heat-limited
+        // evaporation. Skip sub-boil MT here — with Antoine-scaled driving force
+        // it would dry / concentrate the dish before p_w reaches P_atm and block
+        // the boil plateau. Ambient MT runs when the burner is off (below).
+        if dish_is_boiling(t, x_w) {
+            apply_heat_limited_boil(dish, remaining, true);
+            return;
+        }
+        let c_eff = effective_heat_capacity(dish).max(AMOUNT_EPS);
+        let time_to_boil = ((t_boil - t).max(0.0) * c_eff / BURNER_POWER_W).max(0.0);
+        if time_to_boil >= remaining {
+            t = (t + (BURNER_POWER_W / c_eff) * remaining).min(t_boil);
+            dish.properties.temperature_c = Some(t);
+            return;
+        }
+        dish.properties.temperature_c = Some(t_boil);
+        remaining -= time_to_boil;
+        if remaining <= AMOUNT_EPS {
+            return;
+        }
+        apply_heat_limited_boil(dish, remaining, true);
+        return;
+    }
+
+    // Burner off: slow ambient mass transfer (and latent cool). No heat-limited
+    // boil when Q_net ≤ 0.
+    if !dish_is_boiling(t, x_w) {
+        apply_sub_boil_mass_transfer(dish, remaining);
     }
 }
 
@@ -1419,19 +1619,6 @@ fn blend_temperature_capacity(target: &mut SceneItem, c_add: f64, source_t: f64)
         target.properties.temperature_c = Some(source_t);
     } else {
         target.properties.temperature_c = Some((c_dest * t0 + c_add * source_t) / (c_dest + c_add));
-    }
-}
-
-fn evaporate_water(dish: &mut SceneItem, dt: f64) {
-    let loss = EVAP_ML_PER_S * dt;
-    let remain = (crate::solubility::liquid_water_ml(dish) - loss).max(0.0);
-    if let Some(water) = dish
-        .properties
-        .composition
-        .iter_mut()
-        .find(|c| c.substance_id == "water" && c.phase == "liquid")
-    {
-        water.amount_ml = Some(remain);
     }
 }
 

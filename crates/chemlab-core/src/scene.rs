@@ -2256,7 +2256,8 @@ fn wash_paper_solids_into_fluid(
         let n_na = (fluid_aqueous_mol(fluid, "na+") - n_oh).max(0.0);
         let n_ca = fluid_aqueous_mol(fluid, "ca2+");
         let n_h = fluid_aqueous_mol(fluid, "h+");
-        let cap = crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, n_h, t_wash);
+        let cap =
+            crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, n_h, n_oh, t_wash);
         let m_diss = avail.min(cap) * frac;
         if m_diss <= AMOUNT_EPS {
             continue;

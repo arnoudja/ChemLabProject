@@ -159,11 +159,14 @@ fn filter_pour_caps_at_250_ml_and_moves_proportional_solids_to_paper() {
 
     let water_before = item(&scene, "beaker-water");
     let source_ml = water_ml(water_before);
+    let source_v = crate::hcl::solution_volume_ml(water_before);
     let na_before = aqueous_mol(water_before, "na+");
     let sand_before = solid_g(water_before, "sand");
     let source_t = water_before.properties.temperature_c.unwrap_or(20.0);
-    let transferred = 250.0 - 100.0;
-    let frac = transferred / source_ml;
+    let dest_v_before = 100.0;
+    let transferred_v = 250.0 - dest_v_before;
+    let frac = transferred_v / source_v;
+    let water_transferred = source_ml * frac;
 
     use_tongs(&mut scene, "beaker-water").unwrap();
     use_tongs(&mut scene, "filter-paper-1").unwrap();
@@ -171,14 +174,16 @@ fn filter_pour_caps_at_250_ml_and_moves_proportional_solids_to_paper() {
     let water = item(&scene, "beaker-water");
     let filtrate = item(&scene, "beaker-filtrate");
     let paper = item(&scene, "filter-paper-1");
-    assert!((water_ml(filtrate) - 250.0).abs() < 1e-9);
-    assert!((water_ml(water) - (source_ml - transferred)).abs() < 1e-9);
+    assert!((crate::hcl::solution_volume_ml(filtrate) - 250.0).abs() < 1e-6);
+    assert!((water_ml(filtrate) - (100.0 + water_transferred)).abs() < 1e-9);
+    assert!(water_ml(filtrate) < 250.0 - 1e-6);
+    assert!((water_ml(water) - (source_ml - water_transferred)).abs() < 1e-9);
     assert!((aqueous_mol(filtrate, "na+") - na_before * frac).abs() < 1e-12);
     assert!((solid_g(paper, "sand") - sand_before * frac).abs() < 1e-12);
     assert_eq!(solid_g(filtrate, "sand"), 0.0);
     assert!((solid_g(water, "sand") - sand_before * (1.0 - frac)).abs() < 1e-12);
     let c_dest = C_BEAKER + 100.0 * WATER_SPECIFIC_HEAT_J_PER_G_K;
-    let c_add = transferred * WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let c_add = water_transferred * WATER_SPECIFIC_HEAT_J_PER_G_K;
     let expected_t = (c_dest * 40.0 + c_add * source_t) / (c_dest + c_add);
     assert!((filtrate.properties.temperature_c.unwrap() - expected_t).abs() < 1e-9);
     assert_eq!(water.location, "held");
@@ -775,11 +780,15 @@ fn pipette_from_filtrate_leaves_solids_and_scales_ions() {
 
     fill_pipette_from(&mut scene, "beaker-filtrate");
     let pipette = item(&scene, "pipette-1");
+    let v_sol = 10.0 + 0.02 * crate::hcl::PHI_V_NACL_ML_PER_MOL;
+    let frac = PIPETTE_VOLUME_ML / v_sol;
     assert!((pipette_holding_liquid_ml(pipette) - 1.0).abs() < 1e-12);
-    assert!((aqueous_mol_holding(pipette, "na+") - 0.002).abs() < 1e-12);
+    assert!((aqueous_mol_holding(pipette, "na+") - 0.02 * frac).abs() < 1e-12);
     assert_eq!(solid_g(pipette, "sand"), 0.0);
     assert!((solid_g(item(&scene, "beaker-filtrate"), "sand") - 0.5).abs() < 1e-12);
-    assert!((aqueous_mol(item(&scene, "beaker-filtrate"), "na+") - 0.018).abs() < 1e-12);
+    assert!(
+        (aqueous_mol(item(&scene, "beaker-filtrate"), "na+") - 0.02 * (1.0 - frac)).abs() < 1e-12
+    );
 }
 
 fn put_solids_on_paper(scene: &mut Scene, solids: Vec<CompositionEntry>) {

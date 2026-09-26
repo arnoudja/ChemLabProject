@@ -376,6 +376,7 @@ fn hcl_common_ion_reduces_nacl_unsaturated_capacity() {
         0.0,
         0.0,
         0.0,
+        0.0,
         t,
     );
     let with_hcl = crate::solubility::unsaturated_capacity_g(
@@ -384,6 +385,7 @@ fn hcl_common_ion_reduces_nacl_unsaturated_capacity() {
         0.0,
         0.0,
         0.5, // 0.5 mol HCl in 0.1 L → 5 M Cl⁻
+        0.0,
         t,
     );
     assert!(

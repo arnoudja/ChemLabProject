@@ -114,16 +114,18 @@ describe('formatCompositionAmount', () => {
 })
 
 describe('solventVolumeLitres', () => {
-  it('derives litres from the water liquid amount_ml', () => {
+  it('uses solution volume including salt apparent molar volume', () => {
+    // 0.01 mol NaCl · 22 ml/mol → V = 200.22 ml
     expect(
       solventVolumeLitres([
         entry({ substance_id: 'water', phase: 'liquid', amount_ml: 200 }),
         entry({ substance_id: 'na+', phase: 'aqueous', amount_mol: 0.01 }),
+        entry({ substance_id: 'cl-', phase: 'aqueous', amount_mol: 0.01 }),
       ]),
-    ).toBe(0.2)
+    ).toBeCloseTo(0.20022, 5)
   })
 
-  it('uses solution volume when aqueous H+ is present', () => {
+  it('uses Φ_V solution volume for stock HCl (10.00 ml)', () => {
     expect(
       solventVolumeLitres([
         entry({ substance_id: 'water', phase: 'liquid', amount_ml: 8.043 }),
@@ -159,7 +161,8 @@ describe('phFromComposition', () => {
     ]
     const ph = phFromComposition(composition)
     expect(ph).not.toBeNull()
-    expect(ph!).toBeCloseTo(12.69897, 4)
+    // V = 100 + 0.005·4 ml/mol NaOH → [OH-] slightly below 0.05 M
+    expect(ph!).toBeCloseTo(14 + Math.log10(0.005 / 0.10002), 4)
   })
 })
 

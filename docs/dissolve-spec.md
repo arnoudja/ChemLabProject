@@ -29,7 +29,7 @@ Exact string ids, lowercase ASCII, matched as-is. Do not trim or case-fold (`NaC
 | `solvent_id` | `water` | Liquid water; no other solvents |
 | `temperature_c` | any integer °C | Beaker / solvent temperature passed into the lookup |
 
-Amounts, stirring, time, and saturation are not modeled for the qualitative dissolve flag. Scoop mass (0.2 g) drives ion moles and ΔT when a salt dissolves in the scene engine.
+Amounts, stirring, time, and saturation are not modeled for the qualitative dissolve flag. Scoop mass (0.2 g) drives ion moles and ΔT when a salt dissolves in the scene engine. Scene SI / unsaturated capacity stay on **litres of liquid water**; display, pipette, and vessel `fill_ml` use additive Φ_V **solution volume** (`docs/lab-scene-spec.md`).
 
 **Temperature / solubility simplification:** Known solids (`nacl`, `cacl2`, `naoh`, `sand`) succeed in aqueous water at the beaker’s **current** temperature (exothermic CaCl₂ / NaOH heating or endothermic NaCl cooling must not block further scoops, and pouring sand into warm water must not fail). The dissolve flag still uses the qualitative bench solubility table — there is no T-dependent solubility curve yet. Sand stays undissolved (`dissolved: false`); do not invent sand solubility.
 

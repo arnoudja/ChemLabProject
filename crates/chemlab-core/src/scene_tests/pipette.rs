@@ -50,14 +50,24 @@ fn pipette_extracts_one_ml_from_water_scaling_aqueous_and_leaving_sand() {
         .unwrap();
     let liquid_before = water_ml(water_before);
     assert!((liquid_before - 200.0).abs() < 1e-12);
+    let solution_before = crate::hcl::solution_volume_ml(water_before);
+    assert!(
+        solution_before > liquid_before + 1e-6,
+        "dissolved NaCl must increase solution volume above water ml"
+    );
 
     fill_pipette_from(&mut scene, "beaker-water");
 
     let water = item(&scene, "beaker-water");
-    assert!((water_ml(water) - 199.0).abs() < 1e-9);
-    let frac = 199.0 / 200.0;
-    assert!((aqueous_mol(water, "na+") - na_before * frac).abs() < 1e-12);
-    assert!((aqueous_mol(water, "cl-") - cl_before * frac).abs() < 1e-12);
+    let frac = PIPETTE_VOLUME_ML / solution_before;
+    let expected_water = liquid_before * (1.0 - frac);
+    assert!((water_ml(water) - expected_water).abs() < 1e-9);
+    assert!(
+        water_ml(water) > 199.0,
+        "1.00 ml solution aliquot must remove <1.00 ml water when V_solution > water"
+    );
+    assert!((aqueous_mol(water, "na+") - na_before * (1.0 - frac)).abs() < 1e-12);
+    assert!((aqueous_mol(water, "cl-") - cl_before * (1.0 - frac)).abs() < 1e-12);
     let sand_after = water
         .properties
         .composition
@@ -75,7 +85,7 @@ fn pipette_extracts_one_ml_from_water_scaling_aqueous_and_leaving_sand() {
         Some("beaker-water")
     );
     assert!((pipette_holding_liquid_ml(pipette) - PIPETTE_VOLUME_ML).abs() < 1e-12);
-    assert!((aqueous_mol_holding(pipette, "na+") - na_before / 200.0).abs() < 1e-12);
+    assert!((aqueous_mol_holding(pipette, "na+") - na_before * frac).abs() < 1e-12);
     assert!(pipette
         .properties
         .holding
@@ -445,4 +455,65 @@ fn pipette_and_tongs_reject_impure_put_back_into_beaker_h2o() {
     assert!((water_ml(item(&scene, "beaker-h2o")) - 99.0).abs() < 1e-9);
     assert_eq!(item(&scene, "beaker-water").location, "held");
     assert!(aqueous_mol(item(&scene, "beaker-water"), "na+") > AMOUNT_EPS);
+}
+
+#[test]
+fn pipette_from_saturated_nacl_removes_less_than_one_ml_water() {
+    let mut scene = bench_with_water("lab-test");
+    // ~35.89 g NaCl / 100 g water at 20 °C in 100 ml water → V_solution ≈ 113.5 ml.
+    let water = scene
+        .items
+        .iter_mut()
+        .find(|i| i.id == "beaker-water")
+        .expect("beaker-water");
+    water.properties.fill_ml = Some(100.0);
+    water.properties.composition = vec![CompositionEntry {
+        substance_id: "water".into(),
+        phase: "liquid".into(),
+        amount_ml: Some(100.0),
+        amount_scoop: None,
+        amount_g: None,
+        amount_mol: None,
+    }];
+    let n_sat = 35.89 / NACL_MOLAR_MASS_G_PER_MOL;
+    water.properties.composition.push(CompositionEntry {
+        substance_id: "na+".into(),
+        phase: "aqueous".into(),
+        amount_ml: None,
+        amount_scoop: None,
+        amount_g: None,
+        amount_mol: Some(n_sat),
+    });
+    water.properties.composition.push(CompositionEntry {
+        substance_id: "cl-".into(),
+        phase: "aqueous".into(),
+        amount_ml: None,
+        amount_scoop: None,
+        amount_g: None,
+        amount_mol: Some(n_sat),
+    });
+    crate::solubility::enforce_saturation(water);
+
+    let before = item(&scene, "beaker-water");
+    let water_before = water_ml(before);
+    let v_sol = crate::hcl::solution_volume_ml(before);
+    assert!(
+        (v_sol - 113.5).abs() < 1.0,
+        "sat NaCl solution volume expected ≈113.5 ml, got {v_sol}"
+    );
+    assert!(v_sol > water_before + 10.0);
+
+    fill_pipette_from(&mut scene, "beaker-water");
+
+    let after = item(&scene, "beaker-water");
+    let water_removed = water_before - water_ml(after);
+    assert!(
+        water_removed < 1.0 - 1e-3,
+        "1.00 ml aliquot from brine must remove <1.00 ml water, removed {water_removed}"
+    );
+    let expected_removed = water_before * (PIPETTE_VOLUME_ML / v_sol);
+    assert!((water_removed - expected_removed).abs() < 1e-9);
+    assert!(
+        (pipette_holding_liquid_ml(item(&scene, "pipette-1")) - PIPETTE_VOLUME_ML).abs() < 1e-6
+    );
 }

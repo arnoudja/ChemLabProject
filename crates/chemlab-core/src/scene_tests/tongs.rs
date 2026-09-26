@@ -124,10 +124,11 @@ fn tongs_pour_water_into_dish_fills_to_capacity_and_scales_ions_and_solids() {
 
     let water_before = item(&scene, "beaker-water");
     let source_ml = water_ml(water_before);
+    let source_v = crate::hcl::solution_volume_ml(water_before);
     let na_before = aqueous_mol(water_before, "na+");
     let cl_before = aqueous_mol(water_before, "cl-");
     let sand_before = solid_g(water_before, "sand");
-    let frac = DISH_CAPACITY_ML / source_ml;
+    let frac = DISH_CAPACITY_ML / source_v;
 
     use_tongs(&mut scene, "beaker-water").unwrap();
     use_tongs(&mut scene, "dish-1").unwrap();
@@ -135,8 +136,11 @@ fn tongs_pour_water_into_dish_fills_to_capacity_and_scales_ions_and_solids() {
     let water = item(&scene, "beaker-water");
     let dish = item(&scene, "dish-1");
     assert_eq!(water.location, "held");
-    assert!((water_ml(dish) - DISH_CAPACITY_ML).abs() < 1e-9);
-    assert!((water_ml(water) - (source_ml - DISH_CAPACITY_ML)).abs() < 1e-9);
+    assert!((crate::hcl::solution_volume_ml(dish) - DISH_CAPACITY_ML).abs() < 1e-9);
+    let water_transferred = source_ml * frac;
+    assert!((water_ml(dish) - water_transferred).abs() < 1e-9);
+    assert!(water_ml(dish) < DISH_CAPACITY_ML - 1e-6);
+    assert!((water_ml(water) - (source_ml - water_transferred)).abs() < 1e-9);
     assert!((aqueous_mol(dish, "na+") - na_before * frac).abs() < 1e-12);
     assert!((aqueous_mol(dish, "cl-") - cl_before * frac).abs() < 1e-12);
     assert!((solid_g(dish, "sand") - sand_before * frac).abs() < 1e-12);

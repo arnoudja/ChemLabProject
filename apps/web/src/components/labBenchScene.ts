@@ -2,8 +2,17 @@ import type { CompositionEntry, Item, LabScene } from '../generated/contracts'
 import { optionalArray } from '../lib/scene'
 import type { StockSolid } from './LabBenchIcons'
 
-const HCL_MOLAR_MASS_G_PER_MOL = 36.46
 const AMOUNT_EPS = 1e-12
+
+/** Apparent molar volumes (ml/mol) — mirrors chemlab-core `hcl::PHI_V_*`. */
+const HCL_STOCK_CAPACITY_ML = 10.0
+const HCL_STOCK_WATER_MASS_G = 8.043
+const HCL_STOCK_HCL_MOLES = 3.447 / 36.46
+const PHI_V_HCL_ML_PER_MOL =
+  (HCL_STOCK_CAPACITY_ML - HCL_STOCK_WATER_MASS_G) / HCL_STOCK_HCL_MOLES
+const PHI_V_NACL_ML_PER_MOL = 22.0
+const PHI_V_CACL2_ML_PER_MOL = 34.0
+const PHI_V_NAOH_ML_PER_MOL = 4.0
 
 export const SPOON_ID = 'spoon-1'
 export const PIPETTE_ID = 'pipette-1'
@@ -72,7 +81,8 @@ export function distilledWaterAmountMl(scene: LabScene): number | null {
   return entry?.amount_ml ?? null
 }
 
-/** Density of aqueous HCl (g/ml) from HCl mass fraction — piecewise linear through lab stock table. */
+/** Density of aqueous HCl (g/ml) from HCl mass fraction — piecewise linear through lab stock table.
+ * Kept for docs / continuity checks; solution volume uses Φ_V (see `solutionVolumeMl`). */
 export function hclAqDensityGPerMl(wHcl: number): number {
   const w = Math.min(0.4, Math.max(0, wHcl))
   const table: [number, number][] = [
@@ -92,19 +102,32 @@ export function hclAqDensityGPerMl(wHcl: number): number {
   return table[table.length - 1]![1]
 }
 
-/** Solution volume (ml) for water + aqueous H⁺; pure water stays at water ml. */
+function aqueousMol(composition: CompositionEntry[], substanceId: string): number {
+  const entry = composition.find((c) => c.substance_id === substanceId && c.phase === 'aqueous')
+  return Math.max(0, entry?.amount_mol ?? 0)
+}
+
+/** Solution volume (ml) = water ml + Σ n · Φ_V (HCl → NaOH → NaCl → CaCl₂ pairing). */
 export function solutionVolumeMl(composition: CompositionEntry[]): number {
   const waterEntry = composition.find(
     (c) => c.substance_id === 'water' && c.phase === 'liquid',
   )
   const waterMl = Math.max(0, waterEntry?.amount_ml ?? 0)
-  const hEntry = composition.find((c) => c.substance_id === 'h+' && c.phase === 'aqueous')
-  const nH = Math.max(0, hEntry?.amount_mol ?? 0)
-  if (nH <= AMOUNT_EPS) return waterMl
-  const mass = waterMl + nH * HCL_MOLAR_MASS_G_PER_MOL
-  if (mass <= AMOUNT_EPS) return 0
-  const wHcl = (nH * HCL_MOLAR_MASS_G_PER_MOL) / mass
-  return mass / hclAqDensityGPerMl(wHcl)
+  const nH = aqueousMol(composition, 'h+')
+  const nOh = aqueousMol(composition, 'oh-')
+  const nNa = aqueousMol(composition, 'na+')
+  const nCa = aqueousMol(composition, 'ca2+')
+  const nHcl = nH
+  const nNaoh = nOh
+  const nNacl = Math.max(0, nNa - nOh)
+  const nCacl2 = nCa
+  return (
+    waterMl +
+    nHcl * PHI_V_HCL_ML_PER_MOL +
+    nNaoh * PHI_V_NAOH_ML_PER_MOL +
+    nNacl * PHI_V_NACL_ML_PER_MOL +
+    nCacl2 * PHI_V_CACL2_ML_PER_MOL
+  )
 }
 
 export function hclStockAmountMl(scene: LabScene): number | null {

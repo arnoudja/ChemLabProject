@@ -26,6 +26,9 @@ import {
   WATER_SPECIFIC_HEAT_J_PER_G_K,
   CACL2_MOLAR_MASS_G_PER_MOL,
   CACL2_EXPLANATION,
+  NAOH_DELTA_H_SOLUTION_J_PER_MOL,
+  NAOH_MOLAR_MASS_G_PER_MOL,
+  NAOH_EXPLANATION,
   initialScene,
   cloneScene,
   filledScene,
@@ -360,6 +363,69 @@ describe('LabBench spoon', () => {
     const expectedT =
       20 -
       (moles * CACL2_DELTA_H_SOLUTION_J_PER_MOL) /
+        (C_BEAKER + 200 * WATER_SPECIFIC_HEAT_J_PER_G_K)
+    expect(panel).toHaveTextContent(`Temperature: ${expectedT.toFixed(2)}°C`)
+    expect(expectedT).toBeGreaterThan(20)
+  })
+
+  it('spoon then naoh then water dissolves with server ions, heating, and molarity on inspect', async () => {
+    const fetchMock = stubLabFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+
+    showStockInCarousel('Sodium hydroxide (NaOH)')
+    expect(document.querySelector('[data-stock-solid="naoh"]')).toHaveAttribute('data-stock-fill', '1.00')
+
+    clickSpoon()
+    fireEvent.click(screen.getByRole('button', { name: 'Sodium hydroxide (NaOH)' }))
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'naoh')
+    })
+    expect(document.querySelector('[data-stock-solid="naoh"]')).toHaveAttribute('data-stock-fill', '0.90')
+    expectCsrfLabAction(fetchMock, {
+      type: 'use_tool',
+      tool_item_id: 'spoon-1',
+      target_item_id: 'beaker-naoh',
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(NAOH_EXPLANATION)
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Dissolved')
+    expect(document.querySelector('[data-dissolve-cue="dissolved"]')).toBeTruthy()
+    expect(document.querySelector('[data-water-aqueous="true"]')).toBeTruthy()
+    expect(lastActionInit(fetchMock)).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({
+          'content-type': 'application/json',
+          'X-CSRF-Token': 'tok-123',
+        }),
+        body: JSON.stringify({
+          type: 'pour',
+          source_item_id: 'spoon-1',
+          target_item_id: 'beaker-water',
+        }),
+      }),
+    )
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/dissolve', expect.anything())
+
+    clickSpoon()
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Beaker' })
+    expect(panel).toHaveTextContent('Na')
+    expect(panel).toHaveTextContent('OH')
+    expect(panel).toHaveTextContent('(aq)')
+    const moles = SPOON_SCOOP_MASS_G / NAOH_MOLAR_MASS_G_PER_MOL
+    const expectedM = moles / 0.2
+    expect(panel).toHaveTextContent(`${expectedM.toPrecision(3)} M`)
+    const expectedT =
+      20 -
+      (moles * NAOH_DELTA_H_SOLUTION_J_PER_MOL) /
         (C_BEAKER + 200 * WATER_SPECIFIC_HEAT_J_PER_G_K)
     expect(panel).toHaveTextContent(`Temperature: ${expectedT.toFixed(2)}°C`)
     expect(expectedT).toBeGreaterThan(20)

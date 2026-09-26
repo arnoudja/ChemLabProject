@@ -450,6 +450,7 @@ describe('LabBench spoon', () => {
 
   it.each([
     ['nacl', 'Sodium chloride (NaCl)'] as const,
+    ['naoh', 'Sodium hydroxide (NaOH)'] as const,
     ['sand', 'Sand'] as const,
     ['cacl2', 'Calcium chloride (CaCl2)'] as const,
   ])(

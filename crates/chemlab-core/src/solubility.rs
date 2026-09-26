@@ -230,6 +230,10 @@ pub(crate) fn unsaturated_capacity_g(
 /// no aqueous ions, not an evaporation dish) are left untouched. Precipitating NaCl
 /// removes 1 Na⁺ + 1 Cl⁻; CaCl₂ removes 1 Ca²⁺ + 2 Cl⁻. Aqueous H⁺ from HCl is preserved
 /// and contributes its Cl⁻ (common ion) to the SI solver.
+///
+/// **NaOH / OH⁻:** aqueous Na⁺ paired 1:1 with OH⁻ is **not** counted as NaCl inventory
+/// (otherwise SI would invent matching Cl⁻ and can precipitate solid `nacl`). Callers must
+/// run H⁺+OH⁻ neutralization before this when both are present. Excess OH⁻ is preserved.
 pub fn enforce_saturation(item: &mut SceneItem) {
     let temperature_c = item.properties.temperature_c.unwrap_or(20.0);
     let water_ml = liquid_water_ml(item);
@@ -239,7 +243,11 @@ pub fn enforce_saturation(item: &mut SceneItem) {
         return;
     }
 
-    let total_nacl = aqueous_mol(item, "na+") + solid_mol(item, "nacl", NACL_MOLAR_MASS_G_PER_MOL);
+    let n_oh = aqueous_mol(item, "oh-");
+    let n_na_total = aqueous_mol(item, "na+");
+    // Na⁺ beyond OH⁻-paired inventory is the NaCl (and free Na⁺) pool for SI.
+    let n_na_salt = (n_na_total - n_oh).max(0.0);
+    let total_nacl = n_na_salt + solid_mol(item, "nacl", NACL_MOLAR_MASS_G_PER_MOL);
     let total_cacl2 =
         aqueous_mol(item, "ca2+") + solid_mol(item, "cacl2", CACL2_MOLAR_MASS_G_PER_MOL);
     let n_h = aqueous_mol(item, "h+");
@@ -250,11 +258,12 @@ pub fn enforce_saturation(item: &mut SceneItem) {
         mixed_equilibrium(total_nacl, total_cacl2, n_h, litres, temperature_c)
     };
 
-    set_aqueous_mol(item, "na+", aq_nacl);
+    set_aqueous_mol(item, "na+", aq_nacl + n_oh);
     set_aqueous_mol(item, "ca2+", aq_cacl2);
     set_aqueous_mol(item, "cl-", aq_nacl + 2.0 * aq_cacl2 + n_h);
-    // Preserve H⁺ (set explicitly so a wiped Cl⁻ line does not imply lost acid).
+    // Preserve H⁺ and OH⁻ (set explicitly so a wiped Cl⁻ line does not imply lost acid/base).
     set_aqueous_mol(item, "h+", n_h);
+    set_aqueous_mol(item, "oh-", n_oh);
     set_salt_solid(item, "nacl", solid_nacl, NACL_MOLAR_MASS_G_PER_MOL);
     set_salt_solid(item, "cacl2", solid_cacl2, CACL2_MOLAR_MASS_G_PER_MOL);
     remove_near_zero_water(item);
@@ -914,5 +923,20 @@ mod tests {
             .expect("stock solid");
         assert_eq!(solid.amount_scoop, Some(9));
         assert!((solid.amount_g.unwrap() - 1.8).abs() < 1e-12);
+    }
+
+    #[test]
+    fn naoh_na_plus_does_not_invent_chloride() {
+        let mut beaker = dish_at(20.0, 100.0);
+        beaker.id = "beaker-water".into();
+        beaker.kind = "beaker".into();
+        // Dissolved NaOH: na+ + oh- only — must not precipitate NaCl / invent cl-.
+        push_aq(&mut beaker, "na+", 0.05);
+        push_aq(&mut beaker, "oh-", 0.05);
+        enforce_saturation(&mut beaker);
+        assert!((aqueous_mol(&beaker, "na+") - 0.05).abs() < 1e-12);
+        assert!((aqueous_mol(&beaker, "oh-") - 0.05).abs() < 1e-12);
+        assert!(aqueous_mol(&beaker, "cl-") < 1e-12);
+        assert!(!has_solid(&beaker, "nacl"));
     }
 }

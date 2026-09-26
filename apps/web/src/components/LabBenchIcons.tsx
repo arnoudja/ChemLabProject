@@ -7,7 +7,7 @@ import {
   FILTRATE_CAPACITY_ML,
 } from '../lib/benchAmounts'
 
-export type StockSolid = 'nacl' | 'cacl2' | 'sand'
+export type StockSolid = 'nacl' | 'cacl2' | 'sand' | 'naoh'
 
 /** Fill fraction 0..1 from server amount_ml relative to initial water volume. */
 export function waterFillRatio(amountMl: number | null | undefined): number {
@@ -86,7 +86,13 @@ export function WaterBeakerSvg({
       {leftoverSolid ? (
         <g
           fill={
-            leftoverSolid === 'sand' ? '#C9B48A' : leftoverSolid === 'cacl2' ? '#F2F7FF' : '#F4FBFF'
+            leftoverSolid === 'sand'
+              ? '#C9B48A'
+              : leftoverSolid === 'cacl2'
+                ? '#F2F7FF'
+                : leftoverSolid === 'naoh'
+                  ? '#E8F5E9'
+                  : '#F4FBFF'
           }
           opacity="0.9"
         >
@@ -118,8 +124,22 @@ export function SolidBeakerSvg({
   amountG?: number | null
   floating?: boolean
 }) {
-  const pile = solid === 'sand' ? '#C9A36A' : solid === 'cacl2' ? '#EEF4FF' : '#F4FBFF'
-  const speck = solid === 'sand' ? '#8C6A3A' : solid === 'cacl2' ? '#C4D2ED' : '#DDF7FF'
+  const pile =
+    solid === 'sand'
+      ? '#C9A36A'
+      : solid === 'cacl2'
+        ? '#EEF4FF'
+        : solid === 'naoh'
+          ? '#C8E6C9'
+          : '#F4FBFF'
+  const speck =
+    solid === 'sand'
+      ? '#8C6A3A'
+      : solid === 'cacl2'
+        ? '#C4D2ED'
+        : solid === 'naoh'
+          ? '#81C784'
+          : '#DDF7FF'
   const fill = stockFillRatio(amountG)
   // Full pile top ~72; empty sits near the beaker floor (~100).
   const topY = 100 - 28 * fill
@@ -246,7 +266,15 @@ export function HclBeakerSvg({
 
 export function SpoonSvg({ fill, floating }: { fill: StockSolid | null; floating?: boolean }) {
   const bowl =
-    fill === 'nacl' ? '#F4FBFF' : fill === 'cacl2' ? '#EEF4FF' : fill === 'sand' ? '#C9A36A' : '#C4D2ED'
+    fill === 'nacl'
+      ? '#F4FBFF'
+      : fill === 'cacl2'
+        ? '#EEF4FF'
+        : fill === 'sand'
+          ? '#C9A36A'
+          : fill === 'naoh'
+            ? '#C8E6C9'
+            : '#C4D2ED'
   return (
     <svg
       viewBox="0 0 132 40"

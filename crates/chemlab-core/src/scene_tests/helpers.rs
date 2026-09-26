@@ -42,13 +42,14 @@ fn initial_bench_scene_has_thirteen_items_with_water_hcl_and_evaporation_bench()
     assert_eq!(scene.version, 0);
     assert!(scene.last_events.is_empty());
     assert_eq!(scene.last_applied_unix_ms, None);
-    assert_eq!(scene.items.len(), 13);
+    assert_eq!(scene.items.len(), 14);
 
     let ids: Vec<_> = scene.items.iter().map(|i| i.id.as_str()).collect();
     assert!(ids.contains(&"spoon-1"));
     assert!(ids.contains(&"beaker-h2o"));
     assert!(ids.contains(&"beaker-hcl"));
     assert!(ids.contains(&"beaker-nacl"));
+    assert!(ids.contains(&"beaker-naoh"));
     assert!(ids.contains(&"beaker-cacl2"));
     assert!(ids.contains(&"beaker-sand"));
     assert!(ids.contains(&"beaker-water"));
@@ -103,6 +104,15 @@ fn initial_bench_scene_has_thirteen_items_with_water_hcl_and_evaporation_bench()
         .composition
         .iter()
         .any(|c| c.substance_id == "nacl" && c.phase == "solid"));
+
+    let naoh = item(&scene, "beaker-naoh");
+    assert_eq!(naoh.label, "Sodium hydroxide");
+    assert!(naoh.properties.composition.iter().any(|c| {
+        c.substance_id == "naoh"
+            && c.phase == "solid"
+            && c.amount_g == Some(2.0)
+            && c.amount_scoop == Some(10)
+    }));
 
     let cacl2 = item(&scene, "beaker-cacl2");
     assert_eq!(cacl2.label, "Calcium chloride");

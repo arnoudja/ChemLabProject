@@ -1,4 +1,4 @@
-//! Qualitative dissolve lookup for this slice: NaCl / CaCl₂ / sand in water.
+//! Qualitative dissolve lookup for this slice: NaCl / CaCl₂ / NaOH / sand in water.
 //!
 //! Known solids in liquid water use the qualitative bench solubility table at the
 //! beaker's current temperature — there is no T-dependent solubility curve yet.
@@ -20,7 +20,7 @@ pub struct DissolveOutcome {
 /// These are not dissolve results: unknown materials must not be treated as insoluble.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum DissolveError {
-    /// `substance_id` is not `nacl`, `cacl2`, or `sand`.
+    /// `substance_id` is not `nacl`, `cacl2`, `naoh`, or `sand`.
     #[error("unknown substance")]
     UnknownSubstance,
     /// `solvent_id` is not `water`.
@@ -47,7 +47,7 @@ impl DissolveError {
 }
 
 fn is_known_substance(substance_id: &str) -> bool {
-    matches!(substance_id, "nacl" | "cacl2" | "sand")
+    matches!(substance_id, "nacl" | "cacl2" | "naoh" | "sand")
 }
 
 /// Predict whether a named solid dissolves under this slice's bench conditions.
@@ -82,6 +82,10 @@ pub fn dissolve(
             dissolved: true,
             explanation: "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
         }),
+        "naoh" => Ok(DissolveOutcome {
+            dissolved: true,
+            explanation: "Sodium hydroxide (NaOH) dissolves in water at bench temperature.",
+        }),
         "sand" => Ok(DissolveOutcome {
             dissolved: false,
             explanation: "Sand (silica) does not dissolve in water at bench temperature.",
@@ -114,6 +118,13 @@ mod tests {
                 20,
                 true,
                 "Calcium chloride (CaCl2) dissolves in water at bench temperature.",
+            ),
+            (
+                "naoh",
+                "water",
+                20,
+                true,
+                "Sodium hydroxide (NaOH) dissolves in water at bench temperature.",
             ),
             (
                 "sand",

@@ -48,6 +48,13 @@ const FORMULA_PARTS_BY_SUBSTANCE_ID: Record<string, FormulaPart[]> = {
     { kind: 'text', value: 'Cl' },
     { kind: 'sup', value: '−' },
   ],
+  naoh: [
+    { kind: 'text', value: 'NaOH' },
+  ],
+  'oh-': [
+    { kind: 'text', value: 'OH' },
+    { kind: 'sup', value: '−' },
+  ],
 }
 
 function formulaParts(substanceId: string): FormulaPart[] {
@@ -91,21 +98,31 @@ export function solventVolumeLitres(composition: CompositionEntry[]): number | n
   return volumeMl / 1000
 }
 
-/** Strong-acid approximate pH display (−log₁₀(n_h+/V_solution_L)). */
+/** Strong-acid / strong-base approximate pH display. */
 export function formatPh(ph: number): string {
   return ph.toFixed(2)
 }
 
 export function phFromComposition(composition: CompositionEntry[]): number | null {
   const hEntry = composition.find((c) => c.substance_id === 'h+' && c.phase === 'aqueous')
+  const ohEntry = composition.find((c) => c.substance_id === 'oh-' && c.phase === 'aqueous')
   const nH = hEntry?.amount_mol ?? 0
-  if (nH == null || nH <= 0) return null
+  const nOh = ohEntry?.amount_mol ?? 0
   const volumeMl = solutionVolumeMl(composition)
   if (volumeMl <= 0) return null
   const volumeL = volumeMl / 1000
-  const conc = nH / volumeL
-  if (conc <= 0) return null
-  return -Math.log10(conc)
+  if (nH > 0 && nOh > 0) return null
+  if (nH > 0) {
+    const conc = nH / volumeL
+    if (conc <= 0) return null
+    return -Math.log10(conc)
+  }
+  if (nOh > 0) {
+    const conc = nOh / volumeL
+    if (conc <= 0) return null
+    return 14 + Math.log10(conc)
+  }
+  return null
 }
 
 /** Format molarity, mass, or volume suffix from server amounts (display only). */
@@ -159,7 +176,7 @@ export function CompositionInspectLine({
 }
 
 /** Stock jar captions under salt / sand / distilled-water beakers (display only). */
-export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand' | 'water' | 'hcl'
+export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand' | 'naoh' | 'water' | 'hcl'
 
 const STOCK_SUBSTANCE_LABELS: Record<
   StockSubstanceId,
@@ -179,6 +196,11 @@ const STOCK_SUBSTANCE_LABELS: Record<
     chemicalName: 'Silicon dioxide',
     commonName: 'Sand',
     ariaName: 'Sand',
+  },
+  naoh: {
+    chemicalName: 'Sodium hydroxide',
+    commonName: 'Caustic soda',
+    ariaName: 'Sodium hydroxide (NaOH)',
   },
   water: {
     chemicalName: 'Water',

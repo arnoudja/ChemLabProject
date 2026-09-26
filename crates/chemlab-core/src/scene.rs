@@ -11,6 +11,9 @@ pub const SPOON_SCOOP_MASS_G: f64 = 0.2;
 /// Molar mass of NaCl used when converting scoop mass to aqueous ion moles.
 pub(crate) const NACL_MOLAR_MASS_G_PER_MOL: f64 = 58.44;
 
+/// Molar mass of NaOH (g/mol).
+pub(crate) const NAOH_MOLAR_MASS_G_PER_MOL: f64 = 40.00;
+
 /// Molar mass of anhydrous CaCl₂ (g/mol).
 pub(crate) const CACL2_MOLAR_MASS_G_PER_MOL: f64 = 110.98;
 
@@ -99,6 +102,9 @@ pub const CP_CACL2: f64 = 0.67;
 /// Specific heat of solid sand (SiO₂), J/(g·K).
 pub const CP_SAND: f64 = 0.74;
 
+/// Specific heat of solid NaOH (crystalline, order-of-magnitude), J/(g·K).
+pub const CP_NAOH: f64 = 1.49;
+
 /// Snap item temperature to ambient when closer than this (°C).
 /// Kept below a typical NaCl scoop ΔT (~0.014 °C with vessel C) so dissolve
 /// cooling is not erased on the next clock tick.
@@ -112,11 +118,17 @@ pub const NACL_DELTA_H_SOLUTION_J_PER_MOL: f64 = 3880.0;
 /// Enthalpy of solution of anhydrous CaCl₂ (exothermic), J/mol.
 pub const CACL2_DELTA_H_SOLUTION_J_PER_MOL: f64 = -81300.0;
 
+/// Enthalpy of solution of solid NaOH (exothermic), J/mol.
+pub const NAOH_DELTA_H_SOLUTION_J_PER_MOL: f64 = -44500.0;
+
+/// Enthalpy of neutralization H⁺ + OH⁻ → H₂O (exothermic), J/mol.
+pub const H_OH_NEUTRALIZATION_J_PER_MOL: f64 = -55800.0;
+
 /// Specific heat capacity of liquid water, J/(g·K). Mass of water ≈ volume in ml.
 pub const WATER_SPECIFIC_HEAT_J_PER_G_K: f64 = 4.184;
 
 fn is_stock_solid(substance_id: &str) -> bool {
-    matches!(substance_id, "nacl" | "cacl2" | "sand")
+    matches!(substance_id, "nacl" | "cacl2" | "sand" | "naoh")
 }
 
 /// One substance entry in an item's composition or holding list.
@@ -320,6 +332,29 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                     temperature_c: Some(20.0),
                     composition: vec![CompositionEntry {
                         substance_id: "nacl".into(),
+                        phase: "solid".into(),
+                        amount_ml: None,
+                        amount_scoop: Some(10),
+                        amount_g: Some(10.0 * SPOON_SCOOP_MASS_G),
+                        amount_mol: None,
+                    }],
+                    holding: Vec::new(),
+                    ..ItemProperties::default()
+                },
+            },
+            SceneItem {
+                id: "beaker-naoh".into(),
+                kind: "beaker".into(),
+                label: "Sodium hydroxide".into(),
+                location: "bench".into(),
+                properties: ItemProperties {
+                    volume_ml: Some(250.0),
+                    fill_ml: Some(100.0),
+                    transparent: Some(true),
+                    colourless: Some(true),
+                    temperature_c: Some(20.0),
+                    composition: vec![CompositionEntry {
+                        substance_id: "naoh".into(),
                         phase: "solid".into(),
                         amount_ml: None,
                         amount_scoop: Some(10),
@@ -1081,7 +1116,7 @@ fn apply_pour(
                 mass_g,
             );
         }
-        crate::solubility::enforce_saturation(&mut scene.items[target_idx]);
+        finalize_aqueous_vessel(&mut scene.items[target_idx]);
         return Ok(());
     }
 
@@ -1112,7 +1147,7 @@ fn apply_pour(
         });
     }
 
-    crate::solubility::enforce_saturation(&mut scene.items[target_idx]);
+    finalize_aqueous_vessel(&mut scene.items[target_idx]);
     Ok(())
 }
 
@@ -1156,8 +1191,8 @@ fn mix_held_solid_into_water(
     }
 }
 
-/// Author NaCl / CaCl₂ aqueous ions into a composition list (shared by spoon dissolve
-/// and filter-paper wash). Returns `(moles_of_salt, ΔH_sol)` for temperature update.
+/// Author NaCl / CaCl₂ / NaOH aqueous ions into a composition list (shared by spoon
+/// dissolve and filter-paper wash). Returns `(moles_of_salt, ΔH_sol)` for temperature update.
 fn author_dissolved_salt_ions(
     composition: &mut Vec<CompositionEntry>,
     substance_id: &str,
@@ -1179,8 +1214,86 @@ fn author_dissolved_salt_ions(
             add_or_increase_mol_in(composition, "cl-", "aqueous", 2.0 * moles);
             Some((moles, CACL2_DELTA_H_SOLUTION_J_PER_MOL))
         }
+        "naoh" => {
+            let moles = mass_g / NAOH_MOLAR_MASS_G_PER_MOL;
+            add_or_increase_mol_in(composition, "na+", "aqueous", moles);
+            add_or_increase_mol_in(composition, "oh-", "aqueous", moles);
+            Some((moles, NAOH_DELTA_H_SOLUTION_J_PER_MOL))
+        }
         _ => None,
     }
+}
+
+/// Consume equal moles of aqueous H⁺ and OH⁻ → H₂O, then apply neutralization heat.
+///
+/// Must run **before** [`crate::solubility::enforce_saturation`] so OH⁻-balanced Na⁺
+/// is not mis-classified as NaCl (which would invent Cl⁻).
+fn apply_neutralization(item: &mut SceneItem) {
+    let n_h = item
+        .properties
+        .composition
+        .iter()
+        .find(|c| c.substance_id == "h+" && c.phase == "aqueous")
+        .and_then(|c| c.amount_mol)
+        .unwrap_or(0.0)
+        .max(0.0);
+    let n_oh = item
+        .properties
+        .composition
+        .iter()
+        .find(|c| c.substance_id == "oh-" && c.phase == "aqueous")
+        .and_then(|c| c.amount_mol)
+        .unwrap_or(0.0)
+        .max(0.0);
+    let n_rxn = n_h.min(n_oh);
+    if n_rxn <= AMOUNT_EPS {
+        return;
+    }
+
+    set_aqueous_mol_on_item(item, "h+", n_h - n_rxn);
+    set_aqueous_mol_on_item(item, "oh-", n_oh - n_rxn);
+    add_or_increase_water(item, n_rxn * WATER_MOLAR_MASS_G_PER_MOL);
+
+    let c_eff = effective_heat_capacity(item);
+    if c_eff > AMOUNT_EPS {
+        let t = item
+            .properties
+            .temperature_c
+            .unwrap_or(AMBIENT_TEMPERATURE_C);
+        item.properties.temperature_c = Some(t - n_rxn * H_OH_NEUTRALIZATION_J_PER_MOL / c_eff);
+    }
+}
+
+fn set_aqueous_mol_on_item(item: &mut SceneItem, substance_id: &str, moles: f64) {
+    if moles <= AMOUNT_EPS {
+        item.properties
+            .composition
+            .retain(|c| !(c.substance_id == substance_id && c.phase == "aqueous"));
+        return;
+    }
+    if let Some(existing) = item
+        .properties
+        .composition
+        .iter_mut()
+        .find(|c| c.substance_id == substance_id && c.phase == "aqueous")
+    {
+        existing.amount_mol = Some(moles);
+        return;
+    }
+    item.properties.composition.push(CompositionEntry {
+        substance_id: substance_id.into(),
+        phase: "aqueous".into(),
+        amount_ml: None,
+        amount_scoop: None,
+        amount_g: None,
+        amount_mol: Some(moles),
+    });
+}
+
+/// Neutralize acid/base, then run mixed-salt saturation.
+fn finalize_aqueous_vessel(item: &mut SceneItem) {
+    apply_neutralization(item);
+    crate::solubility::enforce_saturation(item);
 }
 
 /// Apply dissolution heat to the solvent vessel: ΔT = −(n·ΔH_sol) / C_eff.
@@ -1383,7 +1496,7 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
             && crate::solubility::dish_has_liquid(&scene.items[dish_idx])
         {
             apply_dish_evaporation(&mut scene.items[dish_idx], dt, heating_dish);
-            crate::solubility::enforce_saturation(&mut scene.items[dish_idx]);
+            finalize_aqueous_vessel(&mut scene.items[dish_idx]);
             if let Some(burner_idx) = burner_idx {
                 if scene.items[burner_idx].properties.on == Some(true)
                     && !crate::solubility::dish_has_liquid(&scene.items[dish_idx])
@@ -1605,6 +1718,7 @@ fn solid_specific_heat(substance_id: &str) -> Option<f64> {
         "nacl" => Some(CP_NACL),
         "cacl2" => Some(CP_CACL2),
         "sand" => Some(CP_SAND),
+        "naoh" => Some(CP_NAOH),
         _ => None,
     }
 }
@@ -1755,7 +1869,7 @@ fn apply_pipette_fill(
         .temperature_c
         .unwrap_or(scene.temperature_c);
     let aliquot = take_liquid_aliquot(&mut scene.items[target_idx], PIPETTE_VOLUME_ML)?;
-    crate::solubility::enforce_saturation(&mut scene.items[target_idx]);
+    finalize_aqueous_vessel(&mut scene.items[target_idx]);
 
     let pipette = &mut scene.items[tool_idx];
     pipette.location = "hand".into();
@@ -1830,7 +1944,7 @@ fn apply_pipette_empty(
         .temperature_c
         .unwrap_or(scene.temperature_c);
     mix_aliquot_into(&mut scene.items[target_idx], &aliquot, aliquot_t);
-    crate::solubility::enforce_saturation(&mut scene.items[target_idx]);
+    finalize_aqueous_vessel(&mut scene.items[target_idx]);
 
     let pipette = &mut scene.items[tool_idx];
     pipette.properties.holding.clear();
@@ -1862,7 +1976,7 @@ fn apply_pipette_put_away(scene: &mut Scene, tool_idx: usize) -> Result<(), Scen
 fn is_solid_stock_beaker(item: &SceneItem) -> bool {
     matches!(
         item.id.as_str(),
-        "beaker-nacl" | "beaker-cacl2" | "beaker-sand"
+        "beaker-nacl" | "beaker-cacl2" | "beaker-sand" | "beaker-naoh"
     )
 }
 
@@ -1927,6 +2041,7 @@ fn stock_species_for_beaker(item: &SceneItem) -> Option<&'static str> {
         "beaker-nacl" => Some("nacl"),
         "beaker-cacl2" => Some("cacl2"),
         "beaker-sand" => Some("sand"),
+        "beaker-naoh" => Some("naoh"),
         _ => None,
     }
 }
@@ -2027,8 +2142,8 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
     let mut fluid_t = source_t;
     wash_paper_solids_into_fluid(&mut scene.items[paper_idx], &mut fluid, &mut fluid_t);
     mix_transfer_into(&mut scene.items[dest_idx], &fluid, Some(fluid_t));
-    crate::solubility::enforce_saturation(&mut scene.items[source_idx]);
-    crate::solubility::enforce_saturation(&mut scene.items[dest_idx]);
+    finalize_aqueous_vessel(&mut scene.items[source_idx]);
+    finalize_aqueous_vessel(&mut scene.items[dest_idx]);
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Filtered into the filtrate beaker.".into(),
@@ -2093,7 +2208,8 @@ fn wash_paper_solids_into_fluid(
         if avail <= AMOUNT_EPS {
             continue;
         }
-        let n_na = fluid_aqueous_mol(fluid, "na+");
+        let n_oh = fluid_aqueous_mol(fluid, "oh-");
+        let n_na = (fluid_aqueous_mol(fluid, "na+") - n_oh).max(0.0);
         let n_ca = fluid_aqueous_mol(fluid, "ca2+");
         let n_h = fluid_aqueous_mol(fluid, "h+");
         let cap = crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, n_h, t_wash);
@@ -2144,6 +2260,8 @@ fn remove_solid_mass(item: &mut SceneItem, substance_id: &str, mass_g: f64) {
         existing.amount_mol = Some(remain / NACL_MOLAR_MASS_G_PER_MOL);
     } else if substance_id == "cacl2" {
         existing.amount_mol = Some(remain / CACL2_MOLAR_MASS_G_PER_MOL);
+    } else if substance_id == "naoh" {
+        existing.amount_mol = Some(remain / NAOH_MOLAR_MASS_G_PER_MOL);
     }
 }
 
@@ -2242,8 +2360,8 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
         .unwrap_or(scene.temperature_c);
     let taken = take_composition_fraction(&mut scene.items[source_idx], frac);
     mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
-    crate::solubility::enforce_saturation(&mut scene.items[source_idx]);
-    crate::solubility::enforce_saturation(&mut scene.items[dest_idx]);
+    finalize_aqueous_vessel(&mut scene.items[source_idx]);
+    finalize_aqueous_vessel(&mut scene.items[dest_idx]);
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Poured from the held vessel.".into(),
@@ -2262,8 +2380,8 @@ fn dump_all_solids(
         .unwrap_or(scene.temperature_c);
     let taken = take_all_solids(&mut scene.items[source_idx]);
     mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
-    crate::solubility::enforce_saturation(&mut scene.items[source_idx]);
-    crate::solubility::enforce_saturation(&mut scene.items[dest_idx]);
+    finalize_aqueous_vessel(&mut scene.items[source_idx]);
+    finalize_aqueous_vessel(&mut scene.items[dest_idx]);
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Poured solids into the vessel.".into(),

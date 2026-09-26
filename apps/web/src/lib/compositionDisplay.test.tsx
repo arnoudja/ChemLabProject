@@ -8,7 +8,9 @@ import {
   formatCompositionLabel,
   formatFormulaNodes,
   formatFormulaPlain,
+  formatPh,
   formatTemperatureC,
+  phFromComposition,
   solventVolumeLitres,
   StockSubstanceLabel,
   stockSubstanceAriaLabel,
@@ -39,6 +41,7 @@ describe('formatCompositionLabel', () => {
     expect(formatCompositionLabel('na+', 'aqueous')).toBe('Na+ (aq)')
     expect(formatCompositionLabel('ca2+', 'aqueous')).toBe('Ca2+ (aq)')
     expect(formatCompositionLabel('cl-', 'aqueous')).toBe('Cl- (aq)')
+    expect(formatCompositionLabel('h+', 'aqueous')).toBe('H+ (aq)')
   })
 
   it('falls back to the raw server ids when unknown', () => {
@@ -116,6 +119,34 @@ describe('solventVolumeLitres', () => {
         entry({ substance_id: 'na+', phase: 'aqueous', amount_mol: 0.01 }),
       ]),
     ).toBe(0.2)
+  })
+
+  it('uses solution volume when aqueous H+ is present', () => {
+    expect(
+      solventVolumeLitres([
+        entry({ substance_id: 'water', phase: 'liquid', amount_ml: 8.043 }),
+        entry({ substance_id: 'h+', phase: 'aqueous', amount_mol: 3.447 / 36.46 }),
+        entry({ substance_id: 'cl-', phase: 'aqueous', amount_mol: 3.447 / 36.46 }),
+      ]),
+    ).toBeCloseTo(0.01, 5)
+  })
+})
+
+describe('phFromComposition', () => {
+  it('returns strongly acidic pH for the stock HCl composition', () => {
+    const composition = [
+      entry({ substance_id: 'water', phase: 'liquid', amount_ml: 8.043 }),
+      entry({ substance_id: 'h+', phase: 'aqueous', amount_mol: 3.447 / 36.46 }),
+      entry({ substance_id: 'cl-', phase: 'aqueous', amount_mol: 3.447 / 36.46 }),
+    ]
+    const ph = phFromComposition(composition)
+    expect(ph).not.toBeNull()
+    expect(ph!).toBeLessThan(0)
+    expect(formatPh(ph!)).toBe('-0.98')
+  })
+
+  it('returns null without aqueous H+', () => {
+    expect(phFromComposition([entry({ substance_id: 'water', phase: 'liquid', amount_ml: 100 })])).toBeNull()
   })
 })
 
@@ -196,5 +227,12 @@ describe('StockSubstanceLabel', () => {
     expect(water.container.textContent).toContain('(Water)')
     expect(water.container.textContent).toContain('(distilled water)')
     expect(stockSubstanceAriaLabel('water')).toBe('Distilled water (H2O)')
+
+    cleanup()
+    const hcl = render(<StockSubstanceLabel substanceId="hcl" />)
+    expect(hcl.container.textContent).toContain('HCl')
+    expect(hcl.container.textContent).toContain('(Hydrochloric acid)')
+    expect(hcl.container.textContent).toContain('(30% w/w)')
+    expect(stockSubstanceAriaLabel('hcl')).toBe('Hydrochloric acid (30%)')
   })
 })

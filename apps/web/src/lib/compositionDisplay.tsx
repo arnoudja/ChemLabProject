@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { CompositionEntry } from '../generated/contracts'
+import { solutionVolumeMl } from '../components/labBenchScene'
 
 const PHASE_ABBREV: Record<string, string> = {
   solid: 's',
@@ -29,6 +30,11 @@ const FORMULA_PARTS_BY_SUBSTANCE_ID: Record<string, FormulaPart[]> = {
   sand: [
     { kind: 'text', value: 'SiO' },
     { kind: 'sub', value: '2' },
+  ],
+  hcl: [{ kind: 'text', value: 'HCl' }],
+  'h+': [
+    { kind: 'text', value: 'H' },
+    { kind: 'sup', value: '+' },
   ],
   'na+': [
     { kind: 'text', value: 'Na' },
@@ -78,13 +84,28 @@ export function formatCompositionLabel(substanceId: string, phase: string): stri
   return `${formula} (${phaseLabel})`
 }
 
-/** Solvent volume in litres from a composition list (water liquid amount_ml). */
+/** Solvent volume in litres from composition (solution volume when aqueous H⁺ is present). */
 export function solventVolumeLitres(composition: CompositionEntry[]): number | null {
-  const water = composition.find(
-    (entry) => entry.substance_id === 'water' && entry.phase === 'liquid' && entry.amount_ml != null,
-  )
-  if (!water || water.amount_ml == null || water.amount_ml <= 0) return null
-  return water.amount_ml / 1000
+  const volumeMl = solutionVolumeMl(composition)
+  if (volumeMl <= 0) return null
+  return volumeMl / 1000
+}
+
+/** Strong-acid approximate pH display (−log₁₀(n_h+/V_solution_L)). */
+export function formatPh(ph: number): string {
+  return ph.toFixed(2)
+}
+
+export function phFromComposition(composition: CompositionEntry[]): number | null {
+  const hEntry = composition.find((c) => c.substance_id === 'h+' && c.phase === 'aqueous')
+  const nH = hEntry?.amount_mol ?? 0
+  if (nH == null || nH <= 0) return null
+  const volumeMl = solutionVolumeMl(composition)
+  if (volumeMl <= 0) return null
+  const volumeL = volumeMl / 1000
+  const conc = nH / volumeL
+  if (conc <= 0) return null
+  return -Math.log10(conc)
 }
 
 /** Format molarity, mass, or volume suffix from server amounts (display only). */
@@ -138,7 +159,7 @@ export function CompositionInspectLine({
 }
 
 /** Stock jar captions under salt / sand / distilled-water beakers (display only). */
-export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand' | 'water'
+export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand' | 'water' | 'hcl'
 
 const STOCK_SUBSTANCE_LABELS: Record<
   StockSubstanceId,
@@ -163,6 +184,11 @@ const STOCK_SUBSTANCE_LABELS: Record<
     chemicalName: 'Water',
     commonName: 'distilled water',
     ariaName: 'Distilled water (H2O)',
+  },
+  hcl: {
+    chemicalName: 'Hydrochloric acid',
+    commonName: '30% w/w',
+    ariaName: 'Hydrochloric acid (30%)',
   },
 }
 

@@ -238,7 +238,7 @@ export function clickCarousel(direction: 'next' | 'previous') {
 }
 
 export function showStockInCarousel(name: string) {
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     if (screen.queryByRole('button', { name })) return
     clickCarousel('next')
   }

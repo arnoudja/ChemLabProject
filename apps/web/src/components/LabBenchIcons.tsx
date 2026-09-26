@@ -2,6 +2,7 @@ import {
   STOCK_FULL_MASS_G,
   WATER_FULL_ML,
   DISTILLED_WATER_CAPACITY_ML,
+  HCL_STOCK_CAPACITY_ML,
   DISH_CAPACITY_ML,
   FILTRATE_CAPACITY_ML,
 } from '../lib/benchAmounts'
@@ -195,6 +196,48 @@ export function DistilledWaterBeakerSvg({
           d={`M28 ${topY} H52 L56 ${floorY - 7} C56 ${floorY - 3} 53 ${floorY} 49 ${floorY} H31 C27 ${floorY} 24 ${floorY - 3} 24 ${floorY - 7} Z`}
           fill="#7CF8F7"
           fillOpacity="0.62"
+        />
+      ) : null}
+    </svg>
+  )
+}
+
+/** Fill fraction 0..1 from solution volume relative to the HCl stock beaker. */
+export function hclFillRatio(amountMl: number | null | undefined): number {
+  if (amountMl == null || amountMl <= 0) return 0
+  return Math.min(1, amountMl / HCL_STOCK_CAPACITY_ML)
+}
+
+export function HclBeakerSvg({
+  amountMl,
+  floating,
+}: {
+  amountMl?: number | null
+  floating?: boolean
+}) {
+  const fill = hclFillRatio(amountMl)
+  const floorY = 105
+  const topY = 100 - 28 * fill
+  return (
+    <svg
+      viewBox="0 0 80 118"
+      className={floating ? 'h-16 w-12' : 'h-28 w-20'}
+      aria-hidden
+      data-hcl-fill={fill.toFixed(2)}
+    >
+      <path d="M22 10h36v8H22z" fill="#86A7DF" opacity="0.8" />
+      <path
+        d="M24 18h32l8 80c1 6-3 10-9 10H25c-6 0-10-4-9-10l8-80z"
+        fill="#3E4058"
+        fillOpacity="0.35"
+        stroke="#C4D2ED"
+        strokeWidth="2"
+      />
+      {fill > 0 ? (
+        <path
+          d={`M28 ${topY} H52 L56 ${floorY - 7} C56 ${floorY - 3} 53 ${floorY} 49 ${floorY} H31 C27 ${floorY} 24 ${floorY - 3} 24 ${floorY - 7} Z`}
+          fill="#D4E8A8"
+          fillOpacity="0.72"
         />
       ) : null}
     </svg>

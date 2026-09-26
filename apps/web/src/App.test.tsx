@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { clearCsrfTokenCache } from './lib/api'
-import { STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS } from './lib/benchAmounts'
+import { STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS, HCL_STOCK_CAPACITY_ML, HCL_STOCK_WATER_ML, HCL_STOCK_HCL_MOLES } from './lib/benchAmounts'
 
 const userPayload = {
   id: 'u1',
@@ -56,6 +56,25 @@ const EMPTY_LAB_SCENE = {
         temperature_c: 20,
         composition: [
           { substance_id: 'water', phase: 'liquid', amount_ml: 100, amount_scoop: null, amount_g: null, amount_mol: null},
+        ],
+        holding: [],
+      },
+    },
+    {
+      id: 'beaker-hcl',
+      kind: 'beaker',
+      label: 'Hydrochloric acid (30%)',
+      location: 'bench',
+      properties: {
+        volume_ml: HCL_STOCK_CAPACITY_ML,
+        fill_ml: HCL_STOCK_CAPACITY_ML,
+        transparent: true,
+        colourless: true,
+        temperature_c: 20,
+        composition: [
+          { substance_id: 'water', phase: 'liquid', amount_ml: HCL_STOCK_WATER_ML, amount_scoop: null, amount_g: null, amount_mol: null},
+          { substance_id: 'h+', phase: 'aqueous', amount_ml: null, amount_scoop: null, amount_g: null, amount_mol: HCL_STOCK_HCL_MOLES},
+          { substance_id: 'cl-', phase: 'aqueous', amount_ml: null, amount_scoop: null, amount_g: null, amount_mol: HCL_STOCK_HCL_MOLES},
         ],
         holding: [],
       },
@@ -133,7 +152,9 @@ function sceneForMode(mode: string) {
     items:
       mode === 'free'
         ? EMPTY_LAB_SCENE.items
-        : EMPTY_LAB_SCENE.items.filter((item) => item.id !== 'beaker-cacl2'),
+        : EMPTY_LAB_SCENE.items.filter(
+            (item) => item.id !== 'beaker-cacl2' && item.id !== 'beaker-hcl',
+          ),
   }
 }
 

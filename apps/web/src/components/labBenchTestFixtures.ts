@@ -5,6 +5,9 @@ import {
   STOCK_FULL_SCOOPS,
   WATER_FULL_ML,
   DISTILLED_WATER_CAPACITY_ML,
+  HCL_STOCK_CAPACITY_ML,
+  HCL_STOCK_WATER_ML,
+  HCL_STOCK_HCL_MOLES,
   PIPETTE_VOLUME_ML,
   FILTRATE_CAPACITY_ML,
 } from './LabBench'
@@ -68,6 +71,46 @@ export function initialScene(): LabScene {
           temperature_c: 20,
           composition: [
             { substance_id: 'water', phase: 'liquid', amount_ml: DISTILLED_WATER_CAPACITY_ML, amount_scoop: null, amount_g: null, amount_mol: null},
+          ],
+          holding: [],
+        },
+      },
+      {
+        id: 'beaker-hcl',
+        kind: 'beaker',
+        label: 'Hydrochloric acid (30%)',
+        location: 'bench',
+        properties: {
+          volume_ml: HCL_STOCK_CAPACITY_ML,
+          fill_ml: HCL_STOCK_CAPACITY_ML,
+          transparent: true,
+          colourless: true,
+          temperature_c: 20,
+          composition: [
+            {
+              substance_id: 'water',
+              phase: 'liquid',
+              amount_ml: HCL_STOCK_WATER_ML,
+              amount_scoop: null,
+              amount_g: null,
+              amount_mol: null,
+            },
+            {
+              substance_id: 'h+',
+              phase: 'aqueous',
+              amount_ml: null,
+              amount_scoop: null,
+              amount_g: null,
+              amount_mol: HCL_STOCK_HCL_MOLES,
+            },
+            {
+              substance_id: 'cl-',
+              phase: 'aqueous',
+              amount_ml: null,
+              amount_scoop: null,
+              amount_g: null,
+              amount_mol: HCL_STOCK_HCL_MOLES,
+            },
           ],
           holding: [],
         },
@@ -248,7 +291,7 @@ export const SEPARATE_CHALLENGE = findChallenge('separate-nacl-sio2')!
 export function challengeScene(): LabScene {
   const next = initialScene()
   next.mode = SEPARATE_CHALLENGE.id
-  next.items = next.items.filter((item) => item.id !== 'beaker-cacl2')
+  next.items = next.items.filter((item) => item.id !== 'beaker-cacl2' && item.id !== 'beaker-hcl')
   for (const stockId of ['beaker-nacl', 'beaker-sand']) {
     const stock = next.items.find((item) => item.id === stockId)!
     stock.properties.composition = stock.properties.composition!.map((entry) => ({

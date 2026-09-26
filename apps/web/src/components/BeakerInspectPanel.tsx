@@ -2,6 +2,8 @@ import type { Item, LabScene } from '../generated/contracts'
 import {
   CompositionInspectLine,
   formatTemperatureC,
+  formatPh,
+  phFromComposition,
   solventVolumeLitres,
 } from '../lib/compositionDisplay'
 import { optionalArray } from '../lib/scene'
@@ -19,6 +21,7 @@ export function BeakerInspectPanel({
   const composition = optionalArray(item.properties.composition)
   const temperatureC = itemTemperatureC(scene, item)
   const solventL = solventVolumeLitres(composition)
+  const ph = phFromComposition(composition)
 
   return (
     <aside
@@ -31,6 +34,9 @@ export function BeakerInspectPanel({
         <div>
           <p className="font-medium text-[var(--ink)]">{item.label}</p>
           <p className="mt-1 text-[var(--ink-soft)]">Temperature: {formatTemperatureC(temperatureC)}°C</p>
+          {ph != null ? (
+            <p className="text-[var(--ink-soft)]">pH: {formatPh(ph)}</p>
+          ) : null}
         </div>
         <button
           type="button"

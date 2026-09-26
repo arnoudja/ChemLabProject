@@ -13,6 +13,18 @@ export const WATER_FULL_ML = 200
 /** Distilled-water stock beaker capacity (ml). */
 export const DISTILLED_WATER_CAPACITY_ML = 100
 
+/** HCl stock beaker capacity (ml of solution) — mirrors `chemlab_core::hcl::HCL_STOCK_CAPACITY_ML`. */
+export const HCL_STOCK_CAPACITY_ML = 10
+
+/** Water mass (g / ml) in the filled Free-mode HCl stock. */
+export const HCL_STOCK_WATER_ML = 8.043
+
+/** Solution density at 30% w/w HCl (g/ml). */
+export const HCL_STOCK_DENSITY_G_PER_ML = 1.149
+
+/** Moles of HCl (= H⁺ = Cl⁻) in the filled Free-mode stock. */
+export const HCL_STOCK_HCL_MOLES = 3.447 / 36.46
+
 /** Pipette aliquot volume (ml). */
 export const PIPETTE_VOLUME_ML = 1
 

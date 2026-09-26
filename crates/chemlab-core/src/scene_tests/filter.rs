@@ -781,3 +781,258 @@ fn pipette_from_filtrate_leaves_solids_and_scales_ions() {
     assert!((solid_g(item(&scene, "beaker-filtrate"), "sand") - 0.5).abs() < 1e-12);
     assert!((aqueous_mol(item(&scene, "beaker-filtrate"), "na+") - 0.018).abs() < 1e-12);
 }
+
+fn put_solids_on_paper(scene: &mut Scene, solids: Vec<CompositionEntry>) {
+    let paper = scene
+        .items
+        .iter_mut()
+        .find(|i| i.id == "filter-paper-1")
+        .unwrap();
+    paper.properties.composition = solids;
+}
+
+fn set_source_water(scene: &mut Scene, ml: f64, temperature_c: f64) {
+    let water = scene
+        .items
+        .iter_mut()
+        .find(|i| i.id == "beaker-water")
+        .unwrap();
+    water.properties.composition = vec![CompositionEntry {
+        substance_id: "water".into(),
+        phase: "liquid".into(),
+        amount_ml: Some(ml),
+        amount_scoop: None,
+        amount_g: None,
+        amount_mol: None,
+    }];
+    water.properties.temperature_c = Some(temperature_c);
+    crate::solubility::sync_fill_ml(water);
+}
+
+fn filter_pour_water_through_paper(scene: &mut Scene) {
+    use_tongs(scene, "beaker-water").unwrap();
+    use_tongs(scene, "filter-paper-1").unwrap();
+}
+
+#[test]
+fn filter_pour_washes_unsaturated_nacl_from_paper_into_filtrate() {
+    let mut scene = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut scene, vec![solid("nacl", 0.5), solid("sand", 0.3)]);
+    set_source_water(&mut scene, 50.0, 20.0);
+
+    filter_pour_water_through_paper(&mut scene);
+
+    let filtrate = item(&scene, "beaker-filtrate");
+    let paper = item(&scene, "filter-paper-1");
+    let na = aqueous_mol(filtrate, "na+");
+    let cl = aqueous_mol(filtrate, "cl-");
+    assert!(
+        na > 1e-6,
+        "expected some NaCl washed into filtrate, got na+={na}"
+    );
+    assert!((cl - na).abs() < 1e-12);
+    assert!(solid_g(paper, "nacl") < 0.5 - 1e-6);
+    assert!((solid_g(paper, "nacl") + na * NACL_MOLAR_MASS_G_PER_MOL - 0.5).abs() < 1e-9);
+    assert!((solid_g(paper, "sand") - 0.3).abs() < 1e-12);
+    assert_eq!(solid_g(filtrate, "sand"), 0.0);
+    assert_eq!(solid_g(filtrate, "nacl"), 0.0);
+}
+
+#[test]
+fn filter_pour_wash_dissolves_nothing_when_fluid_already_saturated() {
+    let mut scene = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut scene, vec![solid("nacl", 0.5)]);
+    let s20 = crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, 20.0);
+    let water_ml = 20.0;
+    let sat_mol = s20 * (water_ml / 1000.0);
+    let water = scene
+        .items
+        .iter_mut()
+        .find(|i| i.id == "beaker-water")
+        .unwrap();
+    water.properties.composition = vec![
+        CompositionEntry {
+            substance_id: "water".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(water_ml),
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: None,
+        },
+        CompositionEntry {
+            substance_id: "na+".into(),
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: Some(sat_mol),
+        },
+        CompositionEntry {
+            substance_id: "cl-".into(),
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: Some(sat_mol),
+        },
+    ];
+    water.properties.temperature_c = Some(20.0);
+    crate::solubility::sync_fill_ml(water);
+    crate::solubility::enforce_saturation(water);
+
+    let paper_nacl_before = solid_g(item(&scene, "filter-paper-1"), "nacl");
+    filter_pour_water_through_paper(&mut scene);
+
+    let filtrate = item(&scene, "beaker-filtrate");
+    let paper = item(&scene, "filter-paper-1");
+    // Saturated rinse: wash adds ~0 solid; filtrate may still hold the poured ions.
+    assert!((solid_g(paper, "nacl") - paper_nacl_before).abs() < 1e-6);
+    let na_from_source = aqueous_mol(filtrate, "na+");
+    // No extra Na from paper beyond what the saturated source already carried.
+    assert!((na_from_source - sat_mol).abs() < 1e-4);
+}
+
+#[test]
+fn filter_pour_wash_leaves_sand_on_paper() {
+    let mut scene = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut scene, vec![solid("sand", 0.8)]);
+    set_source_water(&mut scene, 40.0, 20.0);
+    filter_pour_water_through_paper(&mut scene);
+    assert!((solid_g(item(&scene, "filter-paper-1"), "sand") - 0.8).abs() < 1e-12);
+    assert_eq!(solid_g(item(&scene, "beaker-filtrate"), "sand"), 0.0);
+    assert_eq!(aqueous_mol(item(&scene, "beaker-filtrate"), "na+"), 0.0);
+}
+
+#[test]
+fn filter_pour_larger_volume_washes_more_nacl_than_smaller() {
+    let paper_nacl = 1.0;
+    let mut small = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut small, vec![solid("nacl", paper_nacl)]);
+    set_source_water(&mut small, 10.0, 20.0);
+    filter_pour_water_through_paper(&mut small);
+    let washed_small = paper_nacl - solid_g(item(&small, "filter-paper-1"), "nacl");
+
+    let mut large = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut large, vec![solid("nacl", paper_nacl)]);
+    set_source_water(&mut large, 200.0, 20.0);
+    filter_pour_water_through_paper(&mut large);
+    let washed_large = paper_nacl - solid_g(item(&large, "filter-paper-1"), "nacl");
+
+    assert!(washed_small > 1e-6, "small rinse should dissolve some salt");
+    assert!(
+        washed_large > washed_small + 1e-4,
+        "larger pour should wash more: small={washed_small} large={washed_large}"
+    );
+}
+
+#[test]
+fn filter_pour_hot_rinse_has_higher_nacl_wash_capacity_than_cold() {
+    // Near-saturation solid load so capacity (not kinetics alone) differs with T.
+    let paper_nacl = 8.0;
+    let rinse_ml = 20.0;
+
+    let mut cold = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut cold, vec![solid("nacl", paper_nacl)]);
+    set_source_water(&mut cold, rinse_ml, 20.0);
+    filter_pour_water_through_paper(&mut cold);
+    let washed_cold = paper_nacl - solid_g(item(&cold, "filter-paper-1"), "nacl");
+
+    let mut hot = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut hot, vec![solid("nacl", paper_nacl)]);
+    set_source_water(&mut hot, rinse_ml, 80.0);
+    filter_pour_water_through_paper(&mut hot);
+    let washed_hot = paper_nacl - solid_g(item(&hot, "filter-paper-1"), "nacl");
+
+    assert!(
+        washed_hot > washed_cold + 1e-4,
+        "hot rinse should dissolve more when capacity-limited: cold={washed_cold} hot={washed_hot}"
+    );
+}
+
+#[test]
+fn filter_pour_washes_soluble_solids_arriving_in_same_pour() {
+    let mut scene = initial_bench_scene("lab-test");
+    let source_nacl = 0.4;
+    let water = scene
+        .items
+        .iter_mut()
+        .find(|i| i.id == "beaker-water")
+        .unwrap();
+    water.properties.composition = vec![
+        CompositionEntry {
+            substance_id: "water".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(50.0),
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: None,
+        },
+        solid("nacl", source_nacl),
+    ];
+    water.properties.temperature_c = Some(20.0);
+    crate::solubility::sync_fill_ml(water);
+
+    filter_pour_water_through_paper(&mut scene);
+
+    let filtrate = item(&scene, "beaker-filtrate");
+    let paper = item(&scene, "filter-paper-1");
+    let na = aqueous_mol(filtrate, "na+");
+    assert!(
+        na > 1e-6,
+        "same-pour solid NaCl should partially wash into filtrate, na+={na}"
+    );
+    assert!(solid_g(paper, "nacl") < source_nacl - 1e-6);
+    assert!((solid_g(paper, "nacl") + na * NACL_MOLAR_MASS_G_PER_MOL - source_nacl).abs() < 1e-9);
+    assert_eq!(solid_g(item(&scene, "beaker-water"), "nacl"), 0.0);
+}
+
+#[test]
+fn filter_pour_washes_unsaturated_cacl2_from_paper_into_filtrate() {
+    let mut scene = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut scene, vec![solid("cacl2", 0.5)]);
+    set_source_water(&mut scene, 50.0, 20.0);
+
+    filter_pour_water_through_paper(&mut scene);
+
+    let filtrate = item(&scene, "beaker-filtrate");
+    let paper = item(&scene, "filter-paper-1");
+    let ca = aqueous_mol(filtrate, "ca2+");
+    let cl = aqueous_mol(filtrate, "cl-");
+    assert!(
+        ca > 1e-6,
+        "expected some CaCl2 washed into filtrate, ca2+={ca}"
+    );
+    assert!((cl - 2.0 * ca).abs() < 1e-12);
+    assert!(solid_g(paper, "cacl2") < 0.5 - 1e-6);
+    assert!((solid_g(paper, "cacl2") + ca * CACL2_MOLAR_MASS_G_PER_MOL - 0.5).abs() < 1e-9);
+    assert_eq!(solid_g(filtrate, "cacl2"), 0.0);
+}
+
+#[test]
+fn filter_pour_wash_cools_filtrate_when_nacl_dissolves() {
+    let mut with_salt = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut with_salt, vec![solid("nacl", 1.0)]);
+    set_source_water(&mut with_salt, 50.0, 20.0);
+    filter_pour_water_through_paper(&mut with_salt);
+    let t_with = item(&with_salt, "beaker-filtrate")
+        .properties
+        .temperature_c
+        .unwrap();
+
+    let mut plain = initial_bench_scene("lab-test");
+    set_source_water(&mut plain, 50.0, 20.0);
+    filter_pour_water_through_paper(&mut plain);
+    let t_plain = item(&plain, "beaker-filtrate")
+        .properties
+        .temperature_c
+        .unwrap();
+
+    assert!(
+        aqueous_mol(item(&with_salt, "beaker-filtrate"), "na+") > 1e-6,
+        "wash must dissolve some NaCl for ΔT check"
+    );
+    assert!(
+        t_with < t_plain - 1e-6,
+        "endothermic NaCl wash should cool filtrate vs plain rinse: with={t_with} plain={t_plain}"
+    );
+}

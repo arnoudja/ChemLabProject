@@ -171,6 +171,8 @@ export function applyFilterPour(scene: LabScene): LabScene | { error: string; co
   source.properties.composition = optionalArray(source.properties.composition).filter(
     (entry) => entry.phase !== 'solid' || (entry.amount_g ?? 0) > 1e-12,
   )
+  // Phase-split only for FE layout tests. Wash dissolve of paper salts into the
+  // filtrate fluid is owned by chemlab-core `apply_filter_pour` (partial / τ∝V).
   next.last_events = [{ kind: 'poured', message: 'Filtered into the filtrate beaker.' }]
   next.version += 1
   return next

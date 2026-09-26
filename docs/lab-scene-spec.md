@@ -125,6 +125,8 @@ Transfers (pipette empty, tongs liquid/solid pour, filter fluid → filtrate, sp
 
 where `C_dest` is the destination's effective heat capacity **before** the add. A **spoon** holding solids carries `temperature_c` from the source vessel and clears it on empty / put-away.
 
+**Filter pour wash:** after the phase split (solids → paper, liquid+aqueous → fluid parcel) and before mixing into the filtrate, fine soluble salts on the paper (`nacl`, `cacl2`) partially dissolve into the fluid with contact time `τ ∝ V_fluid` at the energy-weighted blend T of fluid + paper solids. `m_diss = min(avail, unsaturated_cap) · (1 − exp(−k·τ))` (common-ion capacity from `solubility`); sand never dissolves. Dissolve ΔH adjusts the fluid parcel temperature before the filtrate blend.
+
 ### Burner heat, ambient cooling, clock
 
 A **pipette** transfers **1.00 ml** of mixed solution (water + aqueous ions in proportion). The source vessel must hold at least **3.00 ml** of liquid, so a vessel can never be pipetted dry: a fill from a dry vessel fails with `no_fluid_available` ("No fluid available.") and a fill from a vessel below 3.00 ml fails with `not_enough_fluid_available` ("Not enough fluid available."). Solid SiO₂ / other solids stay in the vessel. The evaporation dish holds at most **25.00 ml**.

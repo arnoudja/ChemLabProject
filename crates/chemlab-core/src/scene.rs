@@ -32,6 +32,14 @@ pub const DISTILLED_WATER_CAPACITY_ML: f64 = 100.00;
 /// Filtrate beaker liquid capacity (ml).
 pub const FILTRATE_CAPACITY_ML: f64 = 250.00;
 
+/// Filter-paper wash contact time per ml of transferred fluid (s/ml).
+/// A 10 ml rinse → τ ≈ 0.5 s; a 200 ml pour → τ ≈ 10 s.
+const FILTER_WASH_TAU_S_PER_ML: f64 = 0.05;
+
+/// First-order wash rate (1/s). Fine grains dissolve relatively fast, but small
+/// rinses stay partial (`frac = 1 − exp(−k·τ)`).
+const FILTER_WASH_K: f64 = 0.8;
+
 /// Ambient bench / reset temperature (°C).
 pub const AMBIENT_TEMPERATURE_C: f64 = 20.0;
 
@@ -1074,26 +1082,12 @@ fn mix_held_solid_into_water(
 ) {
     if dissolved {
         let mass_g = held.amount_g.unwrap_or(SPOON_SCOOP_MASS_G);
-        if held.substance_id == "nacl" {
-            let moles = mass_g / NACL_MOLAR_MASS_G_PER_MOL;
-            add_or_increase_mol(target, "na+", "aqueous", moles);
-            add_or_increase_mol(target, "cl-", "aqueous", moles);
-            apply_dissolution_temperature_change(
-                target,
-                moles,
-                NACL_DELTA_H_SOLUTION_J_PER_MOL,
-                temperature_c,
-            );
-        } else if held.substance_id == "cacl2" {
-            let moles = mass_g / CACL2_MOLAR_MASS_G_PER_MOL;
-            add_or_increase_mol(target, "ca2+", "aqueous", moles);
-            add_or_increase_mol(target, "cl-", "aqueous", 2.0 * moles);
-            apply_dissolution_temperature_change(
-                target,
-                moles,
-                CACL2_DELTA_H_SOLUTION_J_PER_MOL,
-                temperature_c,
-            );
+        if let Some((moles, delta_h)) = author_dissolved_salt_ions(
+            &mut target.properties.composition,
+            &held.substance_id,
+            mass_g,
+        ) {
+            apply_dissolution_temperature_change(target, moles, delta_h, temperature_c);
         } else if let Some(existing) = target
             .properties
             .composition
@@ -1117,6 +1111,33 @@ fn mix_held_solid_into_water(
         let scoops = held.amount_scoop.or(Some(1));
         let mass_g = held.amount_g.or(Some(SPOON_SCOOP_MASS_G));
         add_or_increase_solid(target, &held.substance_id, scoops, mass_g);
+    }
+}
+
+/// Author NaCl / CaCl₂ aqueous ions into a composition list (shared by spoon dissolve
+/// and filter-paper wash). Returns `(moles_of_salt, ΔH_sol)` for temperature update.
+fn author_dissolved_salt_ions(
+    composition: &mut Vec<CompositionEntry>,
+    substance_id: &str,
+    mass_g: f64,
+) -> Option<(f64, f64)> {
+    if mass_g <= AMOUNT_EPS {
+        return None;
+    }
+    match substance_id {
+        "nacl" => {
+            let moles = mass_g / NACL_MOLAR_MASS_G_PER_MOL;
+            add_or_increase_mol_in(composition, "na+", "aqueous", moles);
+            add_or_increase_mol_in(composition, "cl-", "aqueous", moles);
+            Some((moles, NACL_DELTA_H_SOLUTION_J_PER_MOL))
+        }
+        "cacl2" => {
+            let moles = mass_g / CACL2_MOLAR_MASS_G_PER_MOL;
+            add_or_increase_mol_in(composition, "ca2+", "aqueous", moles);
+            add_or_increase_mol_in(composition, "cl-", "aqueous", 2.0 * moles);
+            Some((moles, CACL2_DELTA_H_SOLUTION_J_PER_MOL))
+        }
+        _ => None,
     }
 }
 
@@ -1150,16 +1171,28 @@ fn apply_dissolution_temperature_change(
 }
 
 fn add_or_increase_mol(target: &mut SceneItem, substance_id: &str, phase: &str, moles: f64) {
-    if let Some(existing) = target
-        .properties
-        .composition
+    add_or_increase_mol_in(
+        &mut target.properties.composition,
+        substance_id,
+        phase,
+        moles,
+    );
+}
+
+fn add_or_increase_mol_in(
+    composition: &mut Vec<CompositionEntry>,
+    substance_id: &str,
+    phase: &str,
+    moles: f64,
+) {
+    if let Some(existing) = composition
         .iter_mut()
         .find(|c| c.substance_id == substance_id && c.phase == phase)
     {
         existing.amount_mol = Some(existing.amount_mol.unwrap_or(0.0) + moles);
         return;
     }
-    target.properties.composition.push(CompositionEntry {
+    composition.push(CompositionEntry {
         substance_id: substance_id.into(),
         phase: phase.into(),
         amount_ml: None,
@@ -1904,8 +1937,12 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
             fluid.push(entry);
         }
     }
-    mix_transfer_into(&mut scene.items[dest_idx], &fluid, Some(source_t));
+    // Deposit source solids onto paper first so this pour's soluble fraction is
+    // eligible for wash with the fluid still about to enter the filtrate.
     mix_transfer_into(&mut scene.items[paper_idx], &solids, None);
+    let mut fluid_t = source_t;
+    wash_paper_solids_into_fluid(&mut scene.items[paper_idx], &mut fluid, &mut fluid_t);
+    mix_transfer_into(&mut scene.items[dest_idx], &fluid, Some(fluid_t));
     crate::solubility::enforce_saturation(&mut scene.items[source_idx]);
     crate::solubility::enforce_saturation(&mut scene.items[dest_idx]);
     scene.last_events.push(SceneEvent {
@@ -1913,6 +1950,116 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
         message: "Filtered into the filtrate beaker.".into(),
     });
     Ok(())
+}
+
+/// Partial contact-time wash: dissolve fine soluble salts on the paper into the
+/// fluid parcel before it mixes into the filtrate. Sand stays solid on the paper.
+///
+/// `τ = FILTER_WASH_TAU_S_PER_ML · V_fluid`; `m_diss = min(avail, cap) · (1 − exp(−k·τ))`
+/// at energy-weighted blend T of fluid + paper solids.
+///
+/// Each salt uses its own unsaturated capacity in sequence (NaCl then CaCl₂),
+/// updating fluid ions between salts. That can slightly overshoot simultaneous
+/// mixed SI=1 when both solids are abundant; callers run `enforce_saturation` on
+/// the filtrate after mix, which may leave a small precipitate in the beaker
+/// rather than restoring paper solids.
+fn wash_paper_solids_into_fluid(
+    paper: &mut SceneItem,
+    fluid: &mut Vec<CompositionEntry>,
+    fluid_t: &mut f64,
+) {
+    let v_fluid = fluid
+        .iter()
+        .find(|c| c.substance_id == "water" && c.phase == "liquid")
+        .and_then(|c| c.amount_ml)
+        .unwrap_or(0.0);
+    if v_fluid <= AMOUNT_EPS {
+        return;
+    }
+
+    let c_fluid = heat_capacity_of_entries(fluid);
+    let c_paper = heat_capacity_of_entries(&paper.properties.composition);
+    let paper_t = paper
+        .properties
+        .temperature_c
+        .unwrap_or(AMBIENT_TEMPERATURE_C);
+    let t_wash = if c_fluid + c_paper > AMOUNT_EPS {
+        (c_fluid * *fluid_t + c_paper * paper_t) / (c_fluid + c_paper)
+    } else {
+        *fluid_t
+    };
+
+    let tau = FILTER_WASH_TAU_S_PER_ML * v_fluid;
+    let frac = 1.0 - (-FILTER_WASH_K * tau).exp();
+    if frac <= AMOUNT_EPS {
+        return;
+    }
+
+    for (salt_id, salt) in [
+        ("nacl", crate::solubility::Salt::Nacl),
+        ("cacl2", crate::solubility::Salt::Cacl2),
+    ] {
+        let avail = paper
+            .properties
+            .composition
+            .iter()
+            .find(|c| c.substance_id == salt_id && c.phase == "solid")
+            .map(solid_amount_g)
+            .unwrap_or(0.0);
+        if avail <= AMOUNT_EPS {
+            continue;
+        }
+        let n_na = fluid_aqueous_mol(fluid, "na+");
+        let n_ca = fluid_aqueous_mol(fluid, "ca2+");
+        let cap = crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, t_wash);
+        let m_diss = avail.min(cap) * frac;
+        if m_diss <= AMOUNT_EPS {
+            continue;
+        }
+        remove_solid_mass(paper, salt_id, m_diss);
+        if let Some((moles, delta_h)) = author_dissolved_salt_ions(fluid, salt_id, m_diss) {
+            let c_eff = heat_capacity_of_entries(fluid);
+            if c_eff > AMOUNT_EPS {
+                *fluid_t -= moles * delta_h / c_eff;
+            }
+        }
+    }
+}
+
+fn fluid_aqueous_mol(fluid: &[CompositionEntry], substance_id: &str) -> f64 {
+    fluid
+        .iter()
+        .find(|c| c.substance_id == substance_id && c.phase == "aqueous")
+        .and_then(|c| c.amount_mol)
+        .unwrap_or(0.0)
+        .max(0.0)
+}
+
+fn remove_solid_mass(item: &mut SceneItem, substance_id: &str, mass_g: f64) {
+    if mass_g <= AMOUNT_EPS {
+        return;
+    }
+    let Some(existing) = item
+        .properties
+        .composition
+        .iter_mut()
+        .find(|c| c.substance_id == substance_id && c.phase == "solid")
+    else {
+        return;
+    };
+    let remain = (solid_amount_g(existing) - mass_g).max(0.0);
+    if remain <= AMOUNT_EPS {
+        item.properties
+            .composition
+            .retain(|c| !(c.substance_id == substance_id && c.phase == "solid"));
+        return;
+    }
+    existing.amount_g = Some(remain);
+    if substance_id == "nacl" {
+        existing.amount_mol = Some(remain / NACL_MOLAR_MASS_G_PER_MOL);
+    } else if substance_id == "cacl2" {
+        existing.amount_mol = Some(remain / CACL2_MOLAR_MASS_G_PER_MOL);
+    }
 }
 
 fn apply_tongs_pick_up(

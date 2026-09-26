@@ -188,6 +188,38 @@ fn has_aqueous_ions(item: &SceneItem) -> bool {
         .any(|c| c.phase == "aqueous")
 }
 
+/// Additional grams of `salt` that could dissolve into water with the given aqueous
+/// Na⁺ / Ca²⁺ inventory at `temperature_c` before mixed SI = 1 (0 if already saturated).
+///
+/// Holds the other cation fixed (no precipitation sidelight during the probe) so filter
+/// wash capacity matches common-ion suppression without mutating the fluid.
+pub(crate) fn unsaturated_capacity_g(
+    salt: Salt,
+    water_ml: f64,
+    n_na_aq: f64,
+    n_ca_aq: f64,
+    temperature_c: f64,
+) -> f64 {
+    let litres = water_ml / 1000.0;
+    if litres <= AMOUNT_EPS {
+        return 0.0;
+    }
+    match salt {
+        Salt::Nacl => {
+            let pure_max = solubility_mol_per_l(Salt::Nacl, temperature_c) * litres;
+            let probe = n_na_aq.max(0.0) + pure_max * 2.0 + 1.0;
+            let max_aq = dissolved_nacl_at_si1(probe, n_ca_aq.max(0.0), litres, temperature_c);
+            (max_aq - n_na_aq).max(0.0) * NACL_MOLAR_MASS_G_PER_MOL
+        }
+        Salt::Cacl2 => {
+            let pure_max = solubility_mol_per_l(Salt::Cacl2, temperature_c) * litres;
+            let probe = n_ca_aq.max(0.0) + pure_max * 2.0 + 1.0;
+            let max_aq = dissolved_cacl2_at_si1(probe, n_na_aq.max(0.0), litres, temperature_c);
+            (max_aq - n_ca_aq).max(0.0) * CACL2_MOLAR_MASS_G_PER_MOL
+        }
+    }
+}
+
 /// Convert aqueous ↔ solid so both saturation indices are ≤ 1 at the item's current T.
 ///
 /// Same mixed NaCl/CaCl₂ equilibrium on every aqueous vessel. Dry stock solids (no water,
@@ -464,6 +496,20 @@ mod tests {
         let s50 = nacl_s(50.0);
         assert!((s50 - 0.5 * (s40 + s60)).abs() < 1e-12);
         assert!(s100 > s20);
+    }
+
+    #[test]
+    fn unsaturated_capacity_is_zero_when_already_at_si1_and_positive_in_pure_water() {
+        let water_ml = 10.0;
+        let litres = water_ml / 1000.0;
+        let t = 20.0;
+        let pure_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, t);
+        let expected = solubility_mol_per_l(Salt::Nacl, t) * litres * NACL_MOLAR_MASS_G_PER_MOL;
+        assert!((pure_cap - expected).abs() < 1e-6);
+        let sat_mol = solubility_mol_per_l(Salt::Nacl, t) * litres;
+        let sat_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, sat_mol, 0.0, t);
+        assert!(sat_cap < 1e-6);
+        assert!(unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 80.0) > pure_cap + 1e-4);
     }
 
     #[test]

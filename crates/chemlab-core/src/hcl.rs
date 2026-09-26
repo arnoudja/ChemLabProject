@@ -252,6 +252,20 @@ pub fn solution_volume_ml(item: &SceneItem) -> f64 {
     solution_volume_ml_of_entries(&item.properties.composition)
 }
 
+/// Φ_V solution volume for pipette, tongs, filter pour, `fill_ml`, and vessel capacity checks.
+///
+/// Same value as [`solution_volume_ml`]; not liquid-water ml (see [`crate::composition::solvent_water_ml_for_si`]).
+#[inline]
+pub fn transfer_volume_ml(item: &SceneItem) -> f64 {
+    solution_volume_ml(item)
+}
+
+/// Φ_V solution volume from a composition slice (transfer / capacity boundaries).
+#[inline]
+pub fn transfer_volume_ml_of_entries(entries: &[CompositionEntry]) -> f64 {
+    solution_volume_ml_of_entries(entries)
+}
+
 /// Strong-acid / strong-base approximate pH from composition.
 ///
 /// - Acid (`h+` present, no `oh-`): pH = −log₁₀([H⁺]) with [H⁺] = n_h+ / V_solution_L.

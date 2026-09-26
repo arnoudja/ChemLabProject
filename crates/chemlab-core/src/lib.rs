@@ -11,13 +11,16 @@ mod solubility;
 
 pub use dissolve::{dissolve, DissolveError, DissolveOutcome};
 pub use scene::{
-    apply_action, apply_elapsed, effective_heat_capacity, ensure_default_bench_items,
-    initial_bench_scene, initial_scene_for_mode, Action, CompositionEntry, ItemProperties, Scene,
-    SceneError, SceneEvent, SceneItem, AMBIENT_TEMPERATURE_C, BOILING_TEMPERATURE_C,
+    apply_action, apply_elapsed, boiling_temperature_c, effective_heat_capacity,
+    ensure_default_bench_items, initial_bench_scene, initial_scene_for_mode, water_mole_fraction,
+    water_vapor_pressure_bar, Action, CompositionEntry, ItemProperties, Scene, SceneError,
+    SceneEvent, SceneItem, AMBIENT_TEMPERATURE_C, ATM_PRESSURE_BAR, BOILING_TEMPERATURE_C,
     BURNER_POWER_W, CP_CACL2, CP_NACL, CP_SAND, C_BEAKER, C_DISH, DISH_CAPACITY_ML,
-    DISTILLED_WATER_CAPACITY_ML, EVAP_ML_PER_S, FILTRATE_CAPACITY_ML,
-    NACL_DELTA_H_SOLUTION_J_PER_MOL, PIPETTE_MIN_SOURCE_ML, PIPETTE_VOLUME_ML, SPOON_SCOOP_MASS_G,
-    UA_BEAKER, UA_DISH, WATER_CAPACITY_ML, WATER_SPECIFIC_HEAT_J_PER_G_K,
+    DISH_EVAP_AREA_M2, DISH_MASS_TRANSFER_COEFF_ML_PER_S_M2, DISTILLED_WATER_CAPACITY_ML,
+    FILTRATE_CAPACITY_ML, NACL_DELTA_H_SOLUTION_J_PER_MOL, PIPETTE_MIN_SOURCE_ML,
+    PIPETTE_VOLUME_ML, RELATIVE_HUMIDITY, SPOON_SCOOP_MASS_G, UA_BEAKER, UA_DISH, WATER_ANTOINE_A,
+    WATER_ANTOINE_B, WATER_ANTOINE_C, WATER_CAPACITY_ML, WATER_LATENT_HEAT_J_PER_G,
+    WATER_MOLAR_MASS_G_PER_MOL, WATER_SPECIFIC_HEAT_J_PER_G_K,
 };
 
 /// Semantic version of the ChemLab core crate.

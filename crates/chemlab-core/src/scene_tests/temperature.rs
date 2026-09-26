@@ -24,12 +24,18 @@ fn set_dish_water(scene: &mut Scene, ml: f64, temperature_c: f64) {
 }
 
 #[test]
-fn ambient_cool_moves_hot_dish_toward_20_when_burner_off() {
+fn ambient_cool_moves_hot_dry_dish_toward_20_when_burner_off() {
     let mut scene = initial_bench_scene("lab-test");
-    set_dish_water(&mut scene, 5.0, 80.0);
+    // Dry dish: Newton cool only (no evaporative latent).
+    {
+        let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+        dish.properties.temperature_c = Some(80.0);
+        dish.properties.composition.clear();
+        crate::solubility::sync_fill_ml(dish);
+    }
     assert_eq!(item(&scene, "burner-1").properties.on, Some(false));
 
-    let c_eff = dish_c_eff(5.0);
+    let c_eff = C_DISH;
     let expected = 80.0 - (UA_DISH / c_eff) * (80.0 - AMBIENT_TEMPERATURE_C) * 2.0;
     apply_elapsed(&mut scene, 2.0);
     let actual = item(&scene, "dish-1").properties.temperature_c.unwrap();
@@ -44,7 +50,13 @@ fn ambient_cool_moves_hot_dish_toward_20_when_burner_off() {
 #[test]
 fn ambient_cool_snaps_near_ambient() {
     let mut scene = initial_bench_scene("lab-test");
-    set_dish_water(&mut scene, 5.0, 20.004);
+    // Dry dish so ambient MT / latent does not pull T away from the snap.
+    {
+        let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+        dish.properties.temperature_c = Some(20.004);
+        dish.properties.composition.clear();
+        crate::solubility::sync_fill_ml(dish);
+    }
     apply_elapsed(&mut scene, 1.0);
     assert_eq!(
         item(&scene, "dish-1").properties.temperature_c,
@@ -65,11 +77,15 @@ fn dish_does_not_ambient_cool_while_burner_heats() {
     .unwrap();
 
     let c_eff = dish_c_eff(5.0);
-    let expected = (50.0 + (BURNER_POWER_W / c_eff) * 1.0).min(BOILING_TEMPERATURE_C);
+    let expected = (50.0 + (BURNER_POWER_W / c_eff) * 1.0).min(boiling_temperature_c(1.0));
     apply_elapsed(&mut scene, 1.0);
     let actual = item(&scene, "dish-1").properties.temperature_c.unwrap();
     assert!((actual - expected).abs() < 1e-9);
     assert!(actual > 50.0);
+    assert!(
+        (water_ml(item(&scene, "dish-1")) - 5.0).abs() < 1e-9,
+        "no mass-transfer while burner heats below boil"
+    );
 }
 
 #[test]
@@ -132,7 +148,7 @@ fn capacity_aware_heat_reaches_100_slower_with_more_water() {
     assert!(t_light > t_heavy + 1.0, "light={t_light} heavy={t_heavy}");
 
     let c_light = dish_c_eff(1.0);
-    let expected_light = (20.0 + (BURNER_POWER_W / c_light) * 10.0).min(BOILING_TEMPERATURE_C);
+    let expected_light = (20.0 + (BURNER_POWER_W / c_light) * 10.0).min(boiling_temperature_c(1.0));
     assert!((t_light - expected_light).abs() < 1e-9);
 }
 

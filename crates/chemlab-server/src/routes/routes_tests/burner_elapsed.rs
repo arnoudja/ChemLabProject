@@ -89,6 +89,19 @@ async fn get_scene_applies_elapsed_heat_while_burner_on() {
     let mut scene = body_json(scene_response).await;
     let past_ms = chrono::Utc::now().timestamp_millis() - 1500;
     scene["last_applied_unix_ms"] = serde_json::json!(past_ms);
+    // Pin water to 1.0 so any ambient ms before burner-on do not pollute this
+    // assert (covers heat-up only: no mass-transfer while heating).
+    if let Some(entries) = scene["items"]
+        .as_array_mut()
+        .and_then(|items| items.iter_mut().find(|item| item["id"] == "dish-1"))
+        .and_then(|dish| dish["properties"]["composition"].as_array_mut())
+    {
+        for entry in entries {
+            if entry["substance_id"] == "water" {
+                entry["amount_ml"] = serde_json::json!(1.0);
+            }
+        }
+    }
     let lab_id = scene["lab_id"].as_str().expect("lab_id").to_string();
     let version = scene["version"].as_u64().expect("version") as i64;
     let blob = serde_json::to_vec(&scene).expect("serialize scene");
@@ -121,8 +134,8 @@ async fn get_scene_applies_elapsed_heat_while_burner_on() {
         .and_then(|c| c["amount_ml"].as_f64())
         .unwrap_or(0.0);
     assert!(
-        (water_ml - 1.0).abs() < 1e-6,
-        "no evaporation below 100 °C, got {water_ml} ml"
+        (water_ml - 1.0).abs() < 1e-9,
+        "no mass-transfer while burner heats below boil, got {water_ml} ml"
     );
 }
 

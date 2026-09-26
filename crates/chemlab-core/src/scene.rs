@@ -1250,8 +1250,8 @@ fn apply_neutralization(item: &mut SceneItem) {
         return;
     }
 
-    set_aqueous_mol_on_item(item, "h+", n_h - n_rxn);
-    set_aqueous_mol_on_item(item, "oh-", n_oh - n_rxn);
+    crate::composition::set_aqueous_mol(item, "h+", n_h - n_rxn);
+    crate::composition::set_aqueous_mol(item, "oh-", n_oh - n_rxn);
     add_or_increase_water(item, n_rxn * WATER_MOLAR_MASS_G_PER_MOL);
 
     let c_eff = effective_heat_capacity(item);
@@ -1262,32 +1262,6 @@ fn apply_neutralization(item: &mut SceneItem) {
             .unwrap_or(AMBIENT_TEMPERATURE_C);
         item.properties.temperature_c = Some(t - n_rxn * H_OH_NEUTRALIZATION_J_PER_MOL / c_eff);
     }
-}
-
-fn set_aqueous_mol_on_item(item: &mut SceneItem, substance_id: &str, moles: f64) {
-    if moles <= AMOUNT_EPS {
-        item.properties
-            .composition
-            .retain(|c| !(c.substance_id == substance_id && c.phase == "aqueous"));
-        return;
-    }
-    if let Some(existing) = item
-        .properties
-        .composition
-        .iter_mut()
-        .find(|c| c.substance_id == substance_id && c.phase == "aqueous")
-    {
-        existing.amount_mol = Some(moles);
-        return;
-    }
-    item.properties.composition.push(CompositionEntry {
-        substance_id: substance_id.into(),
-        phase: "aqueous".into(),
-        amount_ml: None,
-        amount_scoop: None,
-        amount_g: None,
-        amount_mol: Some(moles),
-    });
 }
 
 /// Dissolve any solid NaOH into aqueous `na+`/`oh-` when liquid water is present,
@@ -2252,10 +2226,10 @@ fn wash_paper_solids_into_fluid(
         if avail <= AMOUNT_EPS {
             continue;
         }
-        let n_oh = fluid_aqueous_mol(fluid, "oh-");
-        let n_na = (fluid_aqueous_mol(fluid, "na+") - n_oh).max(0.0);
-        let n_ca = fluid_aqueous_mol(fluid, "ca2+");
-        let n_h = fluid_aqueous_mol(fluid, "h+");
+        let n_oh = crate::composition::aqueous_mol_entries(fluid, "oh-");
+        let n_na = (crate::composition::aqueous_mol_entries(fluid, "na+") - n_oh).max(0.0);
+        let n_ca = crate::composition::aqueous_mol_entries(fluid, "ca2+");
+        let n_h = crate::composition::aqueous_mol_entries(fluid, "h+");
         let cap =
             crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, n_h, n_oh, t_wash);
         let m_diss = avail.min(cap) * frac;
@@ -2291,15 +2265,6 @@ fn wash_paper_solids_into_fluid(
             }
         }
     }
-}
-
-fn fluid_aqueous_mol(fluid: &[CompositionEntry], substance_id: &str) -> f64 {
-    fluid
-        .iter()
-        .find(|c| c.substance_id == substance_id && c.phase == "aqueous")
-        .and_then(|c| c.amount_mol)
-        .unwrap_or(0.0)
-        .max(0.0)
 }
 
 fn remove_solid_mass(item: &mut SceneItem, substance_id: &str, mass_g: f64) {

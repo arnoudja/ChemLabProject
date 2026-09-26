@@ -18,6 +18,7 @@
 //! by the ion product (extra Cl⁻ suppresses NaCl in the correct direction).
 //! Solvent basis for SI stays **water litres**, not solution volume.
 
+use crate::composition::{aqueous_mol, set_aqueous_mol};
 use crate::scene::{
     CompositionEntry, SceneItem, CACL2_MOLAR_MASS_G_PER_MOL, NACL_MOLAR_MASS_G_PER_MOL,
 };
@@ -80,15 +81,7 @@ fn interpolate_g_per_100g(table: &[(f64, f64)], temperature_c: f64) -> f64 {
     last.1
 }
 
-pub fn liquid_water_ml(item: &SceneItem) -> f64 {
-    item.properties
-        .composition
-        .iter()
-        .find(|c| c.substance_id == "water" && c.phase == "liquid")
-        .and_then(|c| c.amount_ml)
-        .unwrap_or(0.0)
-        .max(0.0)
-}
+pub use crate::composition::liquid_water_ml;
 
 pub fn dish_has_liquid(item: &SceneItem) -> bool {
     liquid_water_ml(item) > AMOUNT_EPS
@@ -100,16 +93,6 @@ pub fn sync_fill_ml(item: &mut SceneItem) {
     }
 }
 
-fn aqueous_mol(item: &SceneItem, substance_id: &str) -> f64 {
-    item.properties
-        .composition
-        .iter()
-        .find(|c| c.substance_id == substance_id && c.phase == "aqueous")
-        .and_then(|c| c.amount_mol)
-        .unwrap_or(0.0)
-        .max(0.0)
-}
-
 fn solid_mol(item: &SceneItem, substance_id: &str, molar_mass: f64) -> f64 {
     item.properties
         .composition
@@ -118,32 +101,6 @@ fn solid_mol(item: &SceneItem, substance_id: &str, molar_mass: f64) -> f64 {
         .and_then(|c| c.amount_g)
         .map(|g| (g.max(0.0)) / molar_mass)
         .unwrap_or(0.0)
-}
-
-fn set_aqueous_mol(item: &mut SceneItem, substance_id: &str, moles: f64) {
-    if moles <= AMOUNT_EPS {
-        item.properties
-            .composition
-            .retain(|c| !(c.substance_id == substance_id && c.phase == "aqueous"));
-        return;
-    }
-    if let Some(existing) = item
-        .properties
-        .composition
-        .iter_mut()
-        .find(|c| c.substance_id == substance_id && c.phase == "aqueous")
-    {
-        existing.amount_mol = Some(moles);
-        return;
-    }
-    item.properties.composition.push(CompositionEntry {
-        substance_id: substance_id.into(),
-        phase: "aqueous".into(),
-        amount_ml: None,
-        amount_scoop: None,
-        amount_g: None,
-        amount_mol: Some(moles),
-    });
 }
 
 fn set_salt_solid(item: &mut SceneItem, substance_id: &str, moles: f64, molar_mass: f64) {

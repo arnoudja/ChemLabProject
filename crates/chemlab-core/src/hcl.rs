@@ -1,6 +1,7 @@
 //! Free-mode aqueous HCl stock helpers: density, solution volume, dilution enthalpy,
 //! pH, and azeotrope-style evaporation.
 
+use crate::composition::{aqueous_mol_entries, liquid_water_ml_entries};
 use crate::scene::{CompositionEntry, SceneItem, WATER_MOLAR_MASS_G_PER_MOL};
 
 const AMOUNT_EPS: f64 = 1e-12;
@@ -97,24 +98,6 @@ pub fn hcl_aq_density_g_per_ml(w_hcl: f64) -> f64 {
         }
     }
     TABLE[TABLE.len() - 1].1
-}
-
-fn aqueous_mol_entries(entries: &[CompositionEntry], substance_id: &str) -> f64 {
-    entries
-        .iter()
-        .find(|c| c.substance_id == substance_id && c.phase == "aqueous")
-        .and_then(|c| c.amount_mol)
-        .unwrap_or(0.0)
-        .max(0.0)
-}
-
-fn liquid_water_ml_entries(entries: &[CompositionEntry]) -> f64 {
-    entries
-        .iter()
-        .find(|c| c.substance_id == "water" && c.phase == "liquid")
-        .and_then(|c| c.amount_ml)
-        .unwrap_or(0.0)
-        .max(0.0)
 }
 
 /// Inventory of water + aqueous HCl in a composition list.

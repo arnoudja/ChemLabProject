@@ -86,6 +86,7 @@ async fn select_mode_switches_to_the_challenge_setup_and_persists_it() {
     let ids = scene_ids(&scene);
     assert!(!ids.contains(&"beaker-cacl2".to_string()));
     assert!(!ids.contains(&"beaker-hcl".to_string()));
+    assert!(!ids.contains(&"beaker-naoh".to_string()));
     assert!(ids.contains(&"beaker-h2o".to_string()));
     assert_eq!(
         scene_item(&scene, "beaker-h2o")["properties"]["fill_ml"],

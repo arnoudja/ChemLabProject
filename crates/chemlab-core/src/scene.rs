@@ -2096,8 +2096,7 @@ fn wash_paper_solids_into_fluid(
         let n_na = fluid_aqueous_mol(fluid, "na+");
         let n_ca = fluid_aqueous_mol(fluid, "ca2+");
         let n_h = fluid_aqueous_mol(fluid, "h+");
-        let cap =
-            crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, n_h, t_wash);
+        let cap = crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, n_h, t_wash);
         let m_diss = avail.min(cap) * frac;
         if m_diss <= AMOUNT_EPS {
             continue;
@@ -2216,8 +2215,7 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
         if dest_room <= AMOUNT_EPS {
             return Err(SceneError::InvalidAction);
         }
-        if !crate::hcl::composition_is_stock_hcl(&scene.items[source_idx].properties.composition)
-        {
+        if !crate::hcl::composition_is_stock_hcl(&scene.items[source_idx].properties.composition) {
             return Err(SceneError::InvalidAction);
         }
     }

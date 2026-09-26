@@ -211,8 +211,7 @@ pub(crate) fn unsaturated_capacity_g(
         Salt::Nacl => {
             let pure_max = solubility_mol_per_l(Salt::Nacl, temperature_c) * litres;
             let probe = n_na_aq.max(0.0) + pure_max * 2.0 + 1.0;
-            let max_aq =
-                dissolved_nacl_at_si1(probe, n_ca_aq.max(0.0), n_h, litres, temperature_c);
+            let max_aq = dissolved_nacl_at_si1(probe, n_ca_aq.max(0.0), n_h, litres, temperature_c);
             (max_aq - n_na_aq).max(0.0) * NACL_MOLAR_MASS_G_PER_MOL
         }
         Salt::Cacl2 => {
@@ -342,15 +341,29 @@ fn log10_iap_cacl2(mix: Mixture, a_dh: f64) -> Option<f64> {
 fn log10_k_nacl(temperature_c: f64) -> f64 {
     let s = solubility_mol_per_l(Salt::Nacl, temperature_c);
     let a_dh = debye_huckel_a(temperature_c);
-    log10_iap_nacl(Mixture { m_na: s, m_ca: 0.0, m_h: 0.0 }, a_dh)
-        .expect("pure NaCl solubility is positive")
+    log10_iap_nacl(
+        Mixture {
+            m_na: s,
+            m_ca: 0.0,
+            m_h: 0.0,
+        },
+        a_dh,
+    )
+    .expect("pure NaCl solubility is positive")
 }
 
 fn log10_k_cacl2(temperature_c: f64) -> f64 {
     let s = solubility_mol_per_l(Salt::Cacl2, temperature_c);
     let a_dh = debye_huckel_a(temperature_c);
-    log10_iap_cacl2(Mixture { m_na: 0.0, m_ca: s, m_h: 0.0 }, a_dh)
-        .expect("pure CaCl2 solubility is positive")
+    log10_iap_cacl2(
+        Mixture {
+            m_na: 0.0,
+            m_ca: s,
+            m_h: 0.0,
+        },
+        a_dh,
+    )
+    .expect("pure CaCl2 solubility is positive")
 }
 
 fn log10_si_nacl(mix: Mixture, temperature_c: f64) -> f64 {
@@ -537,7 +550,9 @@ mod tests {
         let sat_mol = solubility_mol_per_l(Salt::Nacl, t) * litres;
         let sat_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, sat_mol, 0.0, 0.0, t);
         assert!(sat_cap < 1e-6);
-        assert!(unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.0, 80.0) > pure_cap + 1e-4);
+        assert!(
+            unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.0, 80.0) > pure_cap + 1e-4
+        );
     }
 
     #[test]

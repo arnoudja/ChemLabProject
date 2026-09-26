@@ -101,7 +101,9 @@ fn tongs_pour_hcl_into_water_and_put_back_stock() {
 
     // Pour the intact stock-composition acid back into the empty HCl stock.
     use_tongs_pour(&mut scene, "beaker-water", "beaker-hcl");
-    assert!((hcl::solution_volume_ml(item(&scene, "beaker-hcl")) - HCL_STOCK_CAPACITY_ML).abs() < 1e-4);
+    assert!(
+        (hcl::solution_volume_ml(item(&scene, "beaker-hcl")) - HCL_STOCK_CAPACITY_ML).abs() < 1e-4
+    );
 }
 
 #[test]
@@ -259,7 +261,10 @@ fn hcl_common_ion_reduces_nacl_unsaturated_capacity() {
         0.5, // 0.5 mol HCl in 0.1 L → 5 M Cl⁻
         t,
     );
-    assert!(with_hcl < pure - 0.5, "common-ion should suppress NaCl: pure={pure} acid={with_hcl}");
+    assert!(
+        with_hcl < pure - 0.5,
+        "common-ion should suppress NaCl: pure={pure} acid={with_hcl}"
+    );
 }
 
 #[test]

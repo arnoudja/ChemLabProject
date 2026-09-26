@@ -51,12 +51,7 @@ const AZEOTROPE_VAPOR_BIAS: f64 = 0.55;
 /// Piecewise linear through (0, 1.000), (0.202, 1.098), (0.30, 1.149), (0.37, 1.184).
 pub fn hcl_aq_density_g_per_ml(w_hcl: f64) -> f64 {
     let w = w_hcl.clamp(0.0, 0.40);
-    const TABLE: [(f64, f64); 4] = [
-        (0.0, 1.000),
-        (0.202, 1.098),
-        (0.30, 1.149),
-        (0.37, 1.184),
-    ];
+    const TABLE: [(f64, f64); 4] = [(0.0, 1.000), (0.202, 1.098), (0.30, 1.149), (0.37, 1.184)];
     for pair in TABLE.windows(2) {
         let (w0, d0) = pair[0];
         let (w1, d1) = pair[1];
@@ -262,10 +257,7 @@ pub fn composition_is_stock_hcl(entries: &[CompositionEntry]) -> bool {
     if (n_h - n_cl).abs() > 1e-6 {
         return false;
     }
-    let inv = HclInventory {
-        water_ml,
-        n_h,
-    };
+    let inv = HclInventory { water_ml, n_h };
     (inv.w_hcl() - HCL_STOCK_W_W).abs() <= HCL_STOCK_W_W_EPS
 }
 

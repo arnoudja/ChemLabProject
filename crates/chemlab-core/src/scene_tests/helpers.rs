@@ -75,7 +75,10 @@ fn initial_bench_scene_has_thirteen_items_with_water_hcl_and_evaporation_bench()
 
     let hcl = item(&scene, "beaker-hcl");
     assert_eq!(hcl.label, "Hydrochloric acid (30%)");
-    assert_eq!(hcl.properties.volume_ml, Some(crate::hcl::HCL_STOCK_CAPACITY_ML));
+    assert_eq!(
+        hcl.properties.volume_ml,
+        Some(crate::hcl::HCL_STOCK_CAPACITY_ML)
+    );
     assert!((crate::hcl::solution_volume_ml(hcl) - 10.0).abs() < 1e-6);
     assert!((water_ml(hcl) - crate::hcl::HCL_STOCK_WATER_MASS_G).abs() < 1e-9);
     assert!((aqueous_mol(hcl, "h+") - crate::hcl::HCL_STOCK_HCL_MOLES).abs() < 1e-12);

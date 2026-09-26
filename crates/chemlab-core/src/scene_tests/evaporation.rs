@@ -216,7 +216,7 @@ fn burner_heats_to_boil_then_heat_limited_evaporates_and_turns_off() {
     );
 
     let rate = heat_limited_evap_ml_per_s();
-    assert!(rate > 0.01 && rate < 0.1, "lab-scale boil rate {rate}");
+    assert!(rate > 0.4 && rate < 0.6, "lab-scale boil rate {rate}");
     apply_elapsed(&mut scene, 1.0 / rate);
     let dish = item(&scene, "dish-1");
     assert!((water_ml(dish) - (water_at_boil - 1.0)).abs() < 0.08);
@@ -289,12 +289,13 @@ fn heating_below_boil_redissolves_nacl_as_solubility_rises() {
         },
     )
     .unwrap();
-    for _ in 0..500 {
+    // Fine ticks so 1100 W heat-up does not overshoot the 60 °C assert window.
+    for _ in 0..5000 {
         let t = item(&scene, "dish-1").properties.temperature_c.unwrap();
         if t >= 60.0 - 1e-6 {
             break;
         }
-        apply_elapsed(&mut scene, 0.25);
+        apply_elapsed(&mut scene, 0.02);
     }
 
     let dish = item(&scene, "dish-1");
@@ -384,13 +385,14 @@ fn evaporating_mixed_dish_precipitates_nacl_before_independent_caps() {
         },
     )
     .unwrap();
-    // Evaporate until ~2 ml remain (heat-limited ~0.035 ml/s → ~370 s for 13 ml).
+    // Evaporate until ~2 ml remain (heat-limited ~0.487 ml/s → ~27 s for 13 ml).
+    // Small ticks keep overshoot within the ±0.15 ml assert at 1100 W.
     let target = 2.0;
     for _ in 0..20_000 {
         if water_ml(item(&scene, "dish-1")) <= target + 1e-6 {
             break;
         }
-        apply_elapsed(&mut scene, 0.5);
+        apply_elapsed(&mut scene, 0.05);
     }
     let dish = item(&scene, "dish-1");
     assert!(

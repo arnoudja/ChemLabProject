@@ -407,7 +407,7 @@ fn use_tool_spoon_returns_evaporated_nacl_to_emptied_stock() {
         },
     )
     .unwrap();
-    // Heat-limited boil is ~0.035 ml/s; loop until dry (salt elevates T_boil).
+    // Heat-limited boil is ~0.487 ml/s; loop until dry (salt elevates T_boil).
     for _ in 0..10_000 {
         if water_ml(item(&scene, "dish-1")) < 1e-9 {
             break;

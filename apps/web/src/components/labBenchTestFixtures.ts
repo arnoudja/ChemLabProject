@@ -21,14 +21,19 @@ export const SAND_EXPLANATION =
 export const NACL_DELTA_H_SOLUTION_J_PER_MOL = 3880
 /** Mirror `chemlab-core::scene::CACL2_DELTA_H_SOLUTION_J_PER_MOL` — keep in sync. */
 export const CACL2_DELTA_H_SOLUTION_J_PER_MOL = -81300
+/** Mirror `chemlab-core::scene::NAOH_DELTA_H_SOLUTION_J_PER_MOL` — keep in sync. */
+export const NAOH_DELTA_H_SOLUTION_J_PER_MOL = -44500
 /** Mirror `chemlab-core::scene::WATER_SPECIFIC_HEAT_J_PER_G_K` — keep in sync. */
 export const WATER_SPECIFIC_HEAT_J_PER_G_K = 4.184
 /** Mirror `chemlab-core::scene::C_BEAKER` — keep in sync. */
 export const C_BEAKER = 150
 export const NACL_MOLAR_MASS_G_PER_MOL = 58.44
 export const CACL2_MOLAR_MASS_G_PER_MOL = 110.98
+export const NAOH_MOLAR_MASS_G_PER_MOL = 40.0
 export const CACL2_EXPLANATION =
   'Calcium chloride (CaCl2) dissolves in water at bench temperature.'
+export const NAOH_EXPLANATION =
+  'Sodium hydroxide (NaOH) dissolves in water at bench temperature.'
 
 export function emptyProps() {
   return {
@@ -127,6 +132,21 @@ export function initialScene(): LabScene {
           colourless: true,
           temperature_c: 20,
           composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
+          holding: [],
+        },
+      },
+      {
+        id: 'beaker-naoh',
+        kind: 'beaker',
+        label: 'Sodium hydroxide',
+        location: 'bench',
+        properties: {
+          volume_ml: 250,
+          fill_ml: 100,
+          transparent: true,
+          colourless: true,
+          temperature_c: 20,
+          composition: [{ substance_id: 'naoh', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
           holding: [],
         },
       },
@@ -291,7 +311,9 @@ export const SEPARATE_CHALLENGE = findChallenge('separate-nacl-sio2')!
 export function challengeScene(): LabScene {
   const next = initialScene()
   next.mode = SEPARATE_CHALLENGE.id
-  next.items = next.items.filter((item) => item.id !== 'beaker-cacl2' && item.id !== 'beaker-hcl')
+  next.items = next.items.filter(
+    (item) => item.id !== 'beaker-cacl2' && item.id !== 'beaker-hcl' && item.id !== 'beaker-naoh',
+  )
   for (const stockId of ['beaker-nacl', 'beaker-sand']) {
     const stock = next.items.find((item) => item.id === stockId)!
     stock.properties.composition = stock.properties.composition!.map((entry) => ({
@@ -321,7 +343,7 @@ export function challengeScene(): LabScene {
 
 export function withDryDishSolids(
   scene: LabScene,
-  solids: { substance_id: 'nacl' | 'cacl2' | 'sand'; amount_g: number }[],
+  solids: { substance_id: 'nacl' | 'cacl2' | 'sand' | 'naoh'; amount_g: number }[],
 ): LabScene {
   const next = cloneScene(scene)
   const dish = next.items.find((item) => item.id === 'dish-1')!

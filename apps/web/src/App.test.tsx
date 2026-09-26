@@ -95,6 +95,21 @@ const EMPTY_LAB_SCENE = {
       },
     },
     {
+      id: 'beaker-naoh',
+      kind: 'beaker',
+      label: 'Sodium hydroxide',
+      location: 'bench',
+      properties: {
+        volume_ml: 250,
+        fill_ml: 100,
+        transparent: true,
+        colourless: true,
+        temperature_c: 20,
+        composition: [{ substance_id: 'naoh', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
+        holding: [],
+      },
+    },
+    {
       id: 'beaker-cacl2',
       kind: 'beaker',
       label: 'Calcium chloride',
@@ -153,7 +168,8 @@ function sceneForMode(mode: string) {
       mode === 'free'
         ? EMPTY_LAB_SCENE.items
         : EMPTY_LAB_SCENE.items.filter(
-            (item) => item.id !== 'beaker-cacl2' && item.id !== 'beaker-hcl',
+            (item) =>
+              item.id !== 'beaker-cacl2' && item.id !== 'beaker-hcl' && item.id !== 'beaker-naoh',
           ),
   }
 }

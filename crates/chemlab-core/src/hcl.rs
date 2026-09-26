@@ -199,23 +199,37 @@ pub fn solution_volume_ml(item: &SceneItem) -> f64 {
     solution_volume_ml_of_entries(&item.properties.composition)
 }
 
-/// Strong-acid approximate pH = −log₁₀([H⁺]) with [H⁺] = n_h+ / V_solution_L.
+/// Strong-acid / strong-base approximate pH from composition.
 ///
-/// Returns `None` when there is no aqueous acid or no measurable solution volume.
+/// - Acid (`h+` present, no `oh-`): pH = −log₁₀([H⁺]) with [H⁺] = n_h+ / V_solution_L.
+/// - Base (`oh-` present, no `h+`): pH ≈ 14 + log₁₀([OH⁻]).
+/// - Both present: returns `None` (callers should neutralize first).
+/// - Neither / empty volume: `None`.
 pub fn ph_of_entries(entries: &[CompositionEntry]) -> Option<f64> {
-    let inv = HclInventory::from_entries(entries);
-    if inv.n_h <= AMOUNT_EPS {
-        return None;
-    }
+    let n_h = aqueous_mol_entries(entries, "h+");
+    let n_oh = aqueous_mol_entries(entries, "oh-");
     let v_l = solution_volume_ml_of_entries(entries) / 1000.0;
     if v_l <= AMOUNT_EPS {
         return None;
     }
-    let conc = inv.n_h / v_l;
-    if conc <= AMOUNT_EPS {
+    if n_h > AMOUNT_EPS && n_oh > AMOUNT_EPS {
         return None;
     }
-    Some(-conc.log10())
+    if n_h > AMOUNT_EPS {
+        let conc = n_h / v_l;
+        if conc <= AMOUNT_EPS {
+            return None;
+        }
+        return Some(-conc.log10());
+    }
+    if n_oh > AMOUNT_EPS {
+        let conc = n_oh / v_l;
+        if conc <= AMOUNT_EPS {
+            return None;
+        }
+        return Some(14.0 + conc.log10());
+    }
+    None
 }
 
 pub fn ph_of_item(item: &SceneItem) -> Option<f64> {

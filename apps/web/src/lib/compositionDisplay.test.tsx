@@ -38,6 +38,8 @@ describe('formatCompositionLabel', () => {
     expect(formatCompositionLabel('nacl', 'solid')).toBe('NaCl (s)')
     expect(formatCompositionLabel('cacl2', 'solid')).toBe('CaCl2 (s)')
     expect(formatCompositionLabel('sand', 'solid')).toBe('SiO2 (s)')
+    expect(formatCompositionLabel('naoh', 'solid')).toBe('NaOH (s)')
+    expect(formatCompositionLabel('oh-', 'aqueous')).toBe('OH- (aq)')
     expect(formatCompositionLabel('na+', 'aqueous')).toBe('Na+ (aq)')
     expect(formatCompositionLabel('ca2+', 'aqueous')).toBe('Ca2+ (aq)')
     expect(formatCompositionLabel('cl-', 'aqueous')).toBe('Cl- (aq)')
@@ -148,6 +150,17 @@ describe('phFromComposition', () => {
   it('returns null without aqueous H+', () => {
     expect(phFromComposition([entry({ substance_id: 'water', phase: 'liquid', amount_ml: 100 })])).toBeNull()
   })
+
+  it('returns alkaline pH for aqueous OH-', () => {
+    const composition = [
+      entry({ substance_id: 'water', phase: 'liquid', amount_ml: 100 }),
+      entry({ substance_id: 'na+', phase: 'aqueous', amount_mol: 0.005 }),
+      entry({ substance_id: 'oh-', phase: 'aqueous', amount_mol: 0.005 }),
+    ]
+    const ph = phFromComposition(composition)
+    expect(ph).not.toBeNull()
+    expect(ph!).toBeCloseTo(12.69897, 4)
+  })
 })
 
 describe('formatTemperatureC', () => {
@@ -219,6 +232,7 @@ describe('StockSubstanceLabel', () => {
     expect(sand.container.textContent).toContain('(Silicon dioxide)')
     expect(sand.container.textContent).toContain('(Sand)')
     expect(stockSubstanceAriaLabel('sand')).toBe('Sand')
+    expect(stockSubstanceAriaLabel('naoh')).toBe('Sodium hydroxide (NaOH)')
 
     cleanup()
     const water = render(<StockSubstanceLabel substanceId="water" />)

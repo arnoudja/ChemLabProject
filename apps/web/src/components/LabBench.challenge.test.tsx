@@ -54,6 +54,7 @@ describe('LabBench challenge mode', () => {
       'Distilled water (H2O)',
       'Hydrochloric acid (30%)',
       'Sodium chloride (NaCl)',
+      'Sodium hydroxide (NaOH)',
       'Calcium chloride (CaCl2)',
       'Sand',
     ]
@@ -70,11 +71,12 @@ describe('LabBench challenge mode', () => {
     expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
 
     const seen: string[] = []
-    for (let i = 0; i < 5; i += 1) {
+    for (let i = 0; i < 6; i += 1) {
       for (const stock of [
         'Distilled water (H2O)',
         'Hydrochloric acid (30%)',
         'Sodium chloride (NaCl)',
+        'Sodium hydroxide (NaOH)',
         'Calcium chloride (CaCl2)',
         'Sand',
       ]) {
@@ -85,6 +87,7 @@ describe('LabBench challenge mode', () => {
 
     expect(new Set(seen)).toEqual(new Set(['Distilled water (H2O)', 'Sodium chloride (NaCl)', 'Sand']))
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
+    expect(seen).not.toContain('Sodium hydroxide (NaOH)')
     expect(seen).not.toContain('Hydrochloric acid (30%)')
   })
 

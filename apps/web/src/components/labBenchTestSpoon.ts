@@ -10,6 +10,9 @@ import {
   NACL_DELTA_H_SOLUTION_J_PER_MOL,
   NACL_EXPLANATION,
   NACL_MOLAR_MASS_G_PER_MOL,
+  NAOH_DELTA_H_SOLUTION_J_PER_MOL,
+  NAOH_EXPLANATION,
+  NAOH_MOLAR_MASS_G_PER_MOL,
   SAND_EXPLANATION,
   WATER_SPECIFIC_HEAT_J_PER_G_K,
 } from './labBenchTestFixtures'
@@ -108,11 +111,17 @@ export function applySolidsPutAway(scene: LabScene, sourceId: string): LabScene 
   return next
 }
 
-export function withScoop(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand'): LabScene {
+export function withScoop(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand' | 'naoh'): LabScene {
   const next = cloneScene(scene)
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
   const stockId =
-    substance === 'nacl' ? 'beaker-nacl' : substance === 'cacl2' ? 'beaker-cacl2' : 'beaker-sand'
+    substance === 'nacl'
+      ? 'beaker-nacl'
+      : substance === 'cacl2'
+        ? 'beaker-cacl2'
+        : substance === 'naoh'
+          ? 'beaker-naoh'
+          : 'beaker-sand'
   const stock = next.items.find((item) => item.id === stockId)!
   const solid = optionalArray(stock.properties.composition).find(
     (entry) => entry.substance_id === substance && entry.phase === 'solid',
@@ -138,11 +147,17 @@ export function withScoop(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand')
   return next
 }
 
-export function withPutBack(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand'): LabScene {
+export function withPutBack(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand' | 'naoh'): LabScene {
   const next = cloneScene(scene)
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
   const stockId =
-    substance === 'nacl' ? 'beaker-nacl' : substance === 'cacl2' ? 'beaker-cacl2' : 'beaker-sand'
+    substance === 'nacl'
+      ? 'beaker-nacl'
+      : substance === 'cacl2'
+        ? 'beaker-cacl2'
+        : substance === 'naoh'
+          ? 'beaker-naoh'
+          : 'beaker-sand'
   const stock = next.items.find((item) => item.id === stockId)!
   const solid = optionalArray(stock.properties.composition).find(
     (entry) => entry.substance_id === substance && entry.phase === 'solid',
@@ -265,6 +280,47 @@ export function afterSandPour(scene: LabScene): LabScene {
   next.last_events = [
     { kind: 'poured', message: 'Poured onto water.' },
     { kind: 'did_not_dissolve', message: SAND_EXPLANATION },
+  ]
+  next.version += 1
+  return next
+}
+
+export function afterNaohPour(scene: LabScene): LabScene {
+  const next = cloneScene(scene)
+  const spoon = next.items.find((item) => item.id === 'spoon-1')!
+  const water = next.items.find((item) => item.id === 'beaker-water')!
+  spoon.properties.holding = []
+  const moles = SPOON_SCOOP_MASS_G / NAOH_MOLAR_MASS_G_PER_MOL
+  water.properties.composition = [
+    ...optionalArray(water.properties.composition),
+    {
+      substance_id: 'na+',
+      phase: 'aqueous',
+      amount_ml: null,
+      amount_scoop: null,
+      amount_g: null,
+      amount_mol: moles,
+    },
+    {
+      substance_id: 'oh-',
+      phase: 'aqueous',
+      amount_ml: null,
+      amount_scoop: null,
+      amount_g: null,
+      amount_mol: moles,
+    },
+  ]
+  const waterMassG =
+    optionalArray(water.properties.composition).find(
+      (entry) => entry.substance_id === 'water' && entry.phase === 'liquid',
+    )?.amount_ml ?? 0
+  const heatJ = moles * NAOH_DELTA_H_SOLUTION_J_PER_MOL
+  const currentT = water.properties.temperature_c ?? next.temperature_c
+  const cEff = C_BEAKER + waterMassG * WATER_SPECIFIC_HEAT_J_PER_G_K
+  water.properties.temperature_c = currentT - heatJ / cEff
+  next.last_events = [
+    { kind: 'poured', message: 'Poured onto water.' },
+    { kind: 'dissolved', message: NAOH_EXPLANATION },
   ]
   next.version += 1
   return next

@@ -15,12 +15,13 @@ export const PAPER_ID = 'filter-paper-1'
 export const NACL_ID = 'beaker-nacl'
 export const CACL2_ID = 'beaker-cacl2'
 export const SAND_ID = 'beaker-sand'
+export const NAOH_ID = 'beaker-naoh'
 export const H2O_ID = 'beaker-h2o'
 export const HCL_ID = 'beaker-hcl'
 export const WATER_ID = 'beaker-water'
 
 export function isStockSolid(id: string): id is StockSolid {
-  return id === 'nacl' || id === 'cacl2' || id === 'sand'
+  return id === 'nacl' || id === 'cacl2' || id === 'sand' || id === 'naoh'
 }
 
 export function findItem(scene: LabScene, id: string): Item | undefined {
@@ -201,6 +202,7 @@ export function tongsHeldVesselId(
   | typeof NACL_ID
   | typeof CACL2_ID
   | typeof SAND_ID
+  | typeof NAOH_ID
   | null {
   const held = findItem(scene, TONGS_ID)?.properties.source_item_id
   if (
@@ -212,7 +214,8 @@ export function tongsHeldVesselId(
     held === PAPER_ID ||
     held === NACL_ID ||
     held === CACL2_ID ||
-    held === SAND_ID
+    held === SAND_ID ||
+    held === NAOH_ID
   ) {
     return held
   }
@@ -223,6 +226,7 @@ export function solidStockKind(itemId: string): StockSolid | null {
   if (itemId === NACL_ID) return 'nacl'
   if (itemId === CACL2_ID) return 'cacl2'
   if (itemId === SAND_ID) return 'sand'
+  if (itemId === NAOH_ID) return 'naoh'
   return null
 }
 

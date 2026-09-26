@@ -5,6 +5,7 @@ mod evaporation;
 mod filter;
 mod hcl;
 mod helpers;
+mod naoh;
 mod pipette;
 mod spoon;
 mod temperature;

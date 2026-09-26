@@ -12,6 +12,7 @@ import {
 import {
   afterCacl2Pour,
   afterNaclPour,
+  afterNaohPour,
   afterSandPour,
   applySolidsDeposit,
   applySolidsPutAway,
@@ -127,13 +128,15 @@ export function stubLabFetch(options?: {
         scene = applyTongsPutAway(scene)
         return jsonResponse({ scene })
       }
-      if (action.type === 'use_tool' && (action.target_item_id === 'beaker-nacl' || action.target_item_id === 'beaker-cacl2' || action.target_item_id === 'beaker-sand')) {
+      if (action.type === 'use_tool' && (action.target_item_id === 'beaker-nacl' || action.target_item_id === 'beaker-cacl2' || action.target_item_id === 'beaker-sand' || action.target_item_id === 'beaker-naoh')) {
         const targetSubstance =
           action.target_item_id === 'beaker-nacl'
             ? 'nacl'
             : action.target_item_id === 'beaker-cacl2'
               ? 'cacl2'
-              : 'sand'
+              : action.target_item_id === 'beaker-naoh'
+                ? 'naoh'
+                : 'sand'
         const held = optionalArray(
           scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
         )
@@ -163,7 +166,7 @@ export function stubLabFetch(options?: {
           return jsonResponse({ scene })
         }
         const held = optionalArray(spoon?.properties.holding)[0]
-        if (held && (held.substance_id === 'nacl' || held.substance_id === 'cacl2' || held.substance_id === 'sand')) {
+        if (held && (held.substance_id === 'nacl' || held.substance_id === 'cacl2' || held.substance_id === 'sand' || held.substance_id === 'naoh')) {
           scene = withPutBack(scene, held.substance_id)
           return jsonResponse({ scene })
         }
@@ -185,6 +188,10 @@ export function stubLabFetch(options?: {
         }
         if (held?.substance_id === 'cacl2') {
           scene = afterCacl2Pour(scene)
+          return jsonResponse({ scene })
+        }
+        if (held?.substance_id === 'naoh') {
+          scene = afterNaohPour(scene)
           return jsonResponse({ scene })
         }
         if (held?.substance_id === 'sand') {

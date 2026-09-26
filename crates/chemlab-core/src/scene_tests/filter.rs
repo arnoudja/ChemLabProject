@@ -1009,6 +1009,31 @@ fn filter_pour_washes_unsaturated_cacl2_from_paper_into_filtrate() {
 }
 
 #[test]
+fn filter_pour_washes_naoh_from_paper_into_filtrate() {
+    let mut scene = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut scene, vec![solid("naoh", 0.5), solid("sand", 0.2)]);
+    set_source_water(&mut scene, 50.0, 20.0);
+
+    filter_pour_water_through_paper(&mut scene);
+
+    let filtrate = item(&scene, "beaker-filtrate");
+    let paper = item(&scene, "filter-paper-1");
+    let na = aqueous_mol(filtrate, "na+");
+    let oh = aqueous_mol(filtrate, "oh-");
+    assert!(
+        oh > 1e-6,
+        "expected some NaOH washed into filtrate, oh-={oh}"
+    );
+    assert!((na - oh).abs() < 1e-12);
+    assert!(solid_g(paper, "naoh") < 0.5 - 1e-6);
+    assert!((solid_g(paper, "naoh") + oh * 40.0 - 0.5).abs() < 1e-9);
+    assert!((solid_g(paper, "sand") - 0.2).abs() < 1e-12);
+    assert_eq!(solid_g(filtrate, "sand"), 0.0);
+    assert_eq!(solid_g(filtrate, "naoh"), 0.0);
+    assert!(aqueous_mol(filtrate, "cl-") < 1e-12);
+}
+
+#[test]
 fn filter_pour_wash_cools_filtrate_when_nacl_dissolves() {
     let mut with_salt = initial_bench_scene("lab-test");
     put_solids_on_paper(&mut with_salt, vec![solid("nacl", 1.0)]);

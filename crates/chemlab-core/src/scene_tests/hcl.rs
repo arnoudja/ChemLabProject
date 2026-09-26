@@ -3,8 +3,7 @@
 use super::super::*;
 use super::helpers::*;
 use crate::hcl::{
-    self, HCL_AZEOTROPE_BOIL_C, HCL_AZEOTROPE_W_W, HCL_STOCK_CAPACITY_ML, HCL_STOCK_HCL_MOLES,
-    HCL_STOCK_WATER_MASS_G,
+    self, HCL_AZEOTROPE_W_W, HCL_STOCK_CAPACITY_ML, HCL_STOCK_HCL_MOLES, HCL_STOCK_WATER_MASS_G,
 };
 
 fn hcl_w_w(item: &SceneItem) -> f64 {
@@ -202,6 +201,11 @@ fn dish_boil_with_hcl_uses_azeotrope_temperature_and_removes_acid() {
 
     let dish = item(&scene, "dish-1");
     assert!(hcl_w_w(dish) > 0.25); // stock is 30% w/w
+    let t_expected = hcl::hcl_boil_temperature_c(hcl_w_w(dish));
+    assert!(
+        (t_expected - 105.0).abs() < 1.0,
+        "stock knot should be ~105 °C, got {t_expected}"
+    );
 
     apply_action(
         &mut scene,
@@ -210,13 +214,13 @@ fn dish_boil_with_hcl_uses_azeotrope_temperature_and_removes_acid() {
         },
     )
     .unwrap();
-    // Heat to the azeotrope plateau, then evaporate a short boil interval.
+    // Heat to the concentration-dependent plateau, then evaporate a short boil interval.
     apply_elapsed(&mut scene, 12.0);
     let dish = item(&scene, "dish-1");
     let t = dish.properties.temperature_c.unwrap_or(0.0);
     assert!(
-        (t - HCL_AZEOTROPE_BOIL_C).abs() < 1.0,
-        "expected azeotrope boil plateau near {HCL_AZEOTROPE_BOIL_C}, got {t}"
+        (t - 105.0).abs() < 2.0,
+        "expected stock ~30% boil plateau near 105 °C, got {t}"
     );
     let n_h0 = aqueous_mol(dish, "h+");
     let water0 = water_ml(dish);
@@ -232,6 +236,59 @@ fn dish_boil_with_hcl_uses_azeotrope_temperature_and_removes_acid() {
     assert!(
         w1 < w0 || (w1 - HCL_AZEOTROPE_W_W).abs() < (w0 - HCL_AZEOTROPE_W_W).abs(),
         "liquid should move toward azeotrope: w0={w0} w1={w1}"
+    );
+}
+
+#[test]
+fn dish_boil_with_dilute_hcl_near_water_and_concentrates_toward_azeotrope() {
+    let mut scene = initial_bench_scene("lab-test");
+    // ~5% w/w: 6 ml water + 1 ml stock HCl aliquot.
+    fill_main_beaker(&mut scene, 6.0);
+    fill_pipette_from(&mut scene, "beaker-hcl");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+
+    let dish = item(&scene, "dish-1");
+    let w0 = hcl_w_w(dish);
+    assert!(
+        (0.03..=0.08).contains(&w0),
+        "expected dilute ~5% w/w, got {w0}"
+    );
+    let t_knot = hcl::hcl_boil_temperature_c(w0);
+    assert!(
+        (100.0..=102.0).contains(&t_knot),
+        "dilute knot should be ~100–102 °C, got {t_knot}"
+    );
+
+    apply_action(
+        &mut scene,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    apply_elapsed(&mut scene, 12.0);
+    let dish = item(&scene, "dish-1");
+    let t = dish.properties.temperature_c.unwrap_or(0.0);
+    assert!(
+        (100.0..=103.0).contains(&t),
+        "dilute dish should plateau near water (~100–102 °C), got {t}"
+    );
+    let w_before = hcl_w_w(dish);
+    apply_elapsed(&mut scene, 2.0);
+    let dish = item(&scene, "dish-1");
+    let w_after = hcl_w_w(dish);
+    assert!(
+        w_after > w_before
+            || (w_after - HCL_AZEOTROPE_W_W).abs() < (w_before - HCL_AZEOTROPE_W_W).abs(),
+        "lean liquid should concentrate toward azeotrope: before={w_before} after={w_after}"
     );
 }
 

@@ -35,16 +35,48 @@ pub const HCL_STOCK_W_W_EPS: f64 = 0.005;
 /// HCl–water azeotrope mass fraction (~20.2% w/w HCl).
 pub const HCL_AZEOTROPE_W_W: f64 = 0.202;
 
-/// **Documented boil rule:** when aqueous HCl (`h+`) is present in the dish, the
-/// dish boils at the HCl–water azeotrope temperature **108.6 °C** (not Raoult /
-/// Antoine elevation alone). Without aqueous acid, boiling stays on the existing
-/// water mole-fraction Antoine curve.
+/// Azeotrope boiling temperature (°C) — the **peak** knot of
+/// [`hcl_boil_temperature_c`], not a universal dish plateau.
 pub const HCL_AZEOTROPE_BOIL_C: f64 = 108.6;
 
-/// How strongly vapor composition is biased toward the azeotrope relative to the
-/// liquid (0 = vapor = liquid, 1 = vapor jumps fully past liquid toward the
-/// qualitative azeotrope side).
+/// Max relative pull of vapor vs liquid far from the azeotrope (0 = y = w_l).
+/// Strength is scaled by distance from [`HCL_AZEOTROPE_W_W`] so `|y − w_l|`
+/// shrinks continuously as the liquid approaches the azeotrope.
 const AZEOTROPE_VAPOR_BIAS: f64 = 0.55;
+
+/// School-grade HCl–water boiling curve (°C) vs HCl mass fraction.
+///
+/// Piecewise linear through dilute (near pure-water Antoine), azeotrope peak
+/// [`HCL_AZEOTROPE_BOIL_C`] at [`HCL_AZEOTROPE_W_W`], and rich-side fall
+/// (stock ~30% w/w → ~105 °C).
+pub fn hcl_boil_temperature_c(w_hcl: f64) -> f64 {
+    use crate::scene::BOILING_TEMPERATURE_C;
+    let w = w_hcl.clamp(0.0, 0.40);
+    // Knots: (w, T_boil °C). w=0 matches pure-water Antoine boil.
+    const TABLE: [(f64, f64); 8] = [
+        (0.0, BOILING_TEMPERATURE_C),
+        (0.05, 101.0),
+        (0.10, 103.0),
+        (0.15, 106.0),
+        (0.202, HCL_AZEOTROPE_BOIL_C),
+        (0.25, 107.0),
+        (0.30, 105.0),
+        (0.37, 98.0),
+    ];
+    for pair in TABLE.windows(2) {
+        let (w0, t0) = pair[0];
+        let (w1, t1) = pair[1];
+        if w <= w1 {
+            let frac = if (w1 - w0).abs() <= AMOUNT_EPS {
+                0.0
+            } else {
+                (w - w0) / (w1 - w0)
+            };
+            return t0 + frac * (t1 - t0);
+        }
+    }
+    TABLE[TABLE.len() - 1].1
+}
 
 /// Density of aqueous HCl (g/ml) from HCl mass fraction.
 ///
@@ -289,6 +321,9 @@ pub fn hcl_dilution_heat_j(dest: HclInventory, added: HclInventory, after: HclIn
 ///   (richer in water) so the liquid concentrates toward the azeotrope;
 /// - liquid richer than az: vapor **richer** in HCl than liquid so the liquid
 ///   leans toward the azeotrope.
+///
+/// Pull strength is scaled by relative distance from the azeotrope so
+/// `|y − w_l|` shrinks continuously as `w_l → w_az`.
 pub fn azeotrope_vapor_w_hcl(w_liquid: f64) -> f64 {
     let w_l = w_liquid.clamp(0.0, 1.0);
     let w_az = HCL_AZEOTROPE_W_W;
@@ -296,12 +331,16 @@ pub fn azeotrope_vapor_w_hcl(w_liquid: f64) -> f64 {
         return w_az;
     }
     if w_l < w_az {
-        // Bias vapor toward water (lower HCl fraction than liquid).
-        let w_v = w_l * (1.0 - AZEOTROPE_VAPOR_BIAS);
+        // Bias vapor toward water; pull → 0 as w_l → w_az.
+        let rel = ((w_az - w_l) / w_az).clamp(0.0, 1.0);
+        let pull = AZEOTROPE_VAPOR_BIAS * rel;
+        let w_v = w_l * (1.0 - pull);
         w_v.clamp(0.0, w_l)
     } else {
-        // Bias vapor toward richer HCl than liquid.
-        let w_v = w_l + AZEOTROPE_VAPOR_BIAS * (1.0 - w_l);
+        // Bias vapor toward richer HCl; pull → 0 as w_l → w_az.
+        let rel = ((w_l - w_az) / (1.0 - w_az)).clamp(0.0, 1.0);
+        let pull = AZEOTROPE_VAPOR_BIAS * rel;
+        let w_v = w_l + pull * (1.0 - w_l);
         w_v.clamp(w_l, 1.0)
     }
 }
@@ -405,6 +444,48 @@ mod tests {
         assert!(rich > 0.30);
         let at = azeotrope_vapor_w_hcl(HCL_AZEOTROPE_W_W);
         assert!((at - HCL_AZEOTROPE_W_W).abs() < 1e-6);
+    }
+
+    #[test]
+    fn vapor_bias_shrinks_toward_azeotrope() {
+        let far_lean = (azeotrope_vapor_w_hcl(0.05) - 0.05).abs();
+        let near_lean = (azeotrope_vapor_w_hcl(0.18) - 0.18).abs();
+        assert!(
+            near_lean < far_lean,
+            "lean |y-w| should shrink near az: far={far_lean} near={near_lean}"
+        );
+        let far_rich = (azeotrope_vapor_w_hcl(0.35) - 0.35).abs();
+        let near_rich = (azeotrope_vapor_w_hcl(0.22) - 0.22).abs();
+        assert!(
+            near_rich < far_rich,
+            "rich |y-w| should shrink near az: far={far_rich} near={near_rich}"
+        );
+    }
+
+    #[test]
+    fn hcl_boil_temperature_peaks_at_azeotrope() {
+        use crate::scene::BOILING_TEMPERATURE_C;
+        let t0 = hcl_boil_temperature_c(0.0);
+        assert!(
+            (t0 - BOILING_TEMPERATURE_C).abs() < 0.05,
+            "w=0 should match pure-water Antoine boil: {t0} vs {BOILING_TEMPERATURE_C}"
+        );
+        let t_az = hcl_boil_temperature_c(HCL_AZEOTROPE_W_W);
+        assert!(
+            (t_az - HCL_AZEOTROPE_BOIL_C).abs() < 1e-9,
+            "azeotrope knot must be {HCL_AZEOTROPE_BOIL_C}, got {t_az}"
+        );
+        let t_stock = hcl_boil_temperature_c(0.30);
+        assert!(
+            (t_stock - 105.0).abs() < 0.05,
+            "stock ~30% w/w should boil near 105 °C, got {t_stock}"
+        );
+        let t_dilute = hcl_boil_temperature_c(0.05);
+        assert!(
+            (100.0..=102.0).contains(&t_dilute),
+            "dilute ~5% should boil ~100–102 °C, got {t_dilute}"
+        );
+        assert!(t_az > t_stock && t_az > t_dilute && t_az > t0);
     }
 
     #[test]

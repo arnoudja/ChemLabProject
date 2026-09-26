@@ -1634,12 +1634,12 @@ fn remove_evaporated_mass(dish: &mut SceneItem, loss_mass_g: f64) {
     }
 }
 
-/// Dish boil temperature: fixed azeotrope 108.6 °C when aqueous HCl is present;
-/// otherwise Raoult + Antoine from water mole fraction.
+/// Dish boil temperature: tabulated `T_boil(w_HCl)` when aqueous HCl is present
+/// (peaks at azeotrope 108.6 °C); otherwise Raoult + Antoine from water mole fraction.
 fn dish_boil_temperature_c(item: &SceneItem) -> f64 {
     let inv = crate::hcl::HclInventory::from_item(item);
     if inv.n_h > AMOUNT_EPS {
-        return crate::hcl::HCL_AZEOTROPE_BOIL_C;
+        return crate::hcl::hcl_boil_temperature_c(inv.w_hcl());
     }
     boiling_temperature_c(water_mole_fraction(item))
 }
@@ -1697,8 +1697,8 @@ fn apply_heat_limited_boil(dish: &mut SceneItem, dt: f64) {
 fn dish_is_boiling(temperature_c: f64, item: &SceneItem) -> bool {
     let inv = crate::hcl::HclInventory::from_item(item);
     if inv.n_h > AMOUNT_EPS {
-        // Documented azeotrope boil rule: acid present → boil at 108.6 °C.
-        return temperature_c + 1e-3 >= crate::hcl::HCL_AZEOTROPE_BOIL_C;
+        // Concentration-dependent acid boil: T vs tabulated T_boil(w_HCl).
+        return temperature_c + 1e-3 >= dish_boil_temperature_c(item);
     }
     // Vapor-pressure gate only. Do not use T >= T_boil alone: as the dish
     // concentrates, T_boil can run away and a T comparison falsely trips.

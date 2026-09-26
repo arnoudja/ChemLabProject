@@ -1955,8 +1955,14 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
 /// Partial contact-time wash: dissolve fine soluble salts on the paper into the
 /// fluid parcel before it mixes into the filtrate. Sand stays solid on the paper.
 ///
-/// `τ = FILTER_WASH_TAU_S_PER_ML · V_fluid`; `m_diss = min(avail, cap) · (1 − e^(−k·τ))`
+/// `τ = FILTER_WASH_TAU_S_PER_ML · V_fluid`; `m_diss = min(avail, cap) · (1 − exp(−k·τ))`
 /// at energy-weighted blend T of fluid + paper solids.
+///
+/// Each salt uses its own unsaturated capacity in sequence (NaCl then CaCl₂),
+/// updating fluid ions between salts. That can slightly overshoot simultaneous
+/// mixed SI=1 when both solids are abundant; callers run `enforce_saturation` on
+/// the filtrate after mix, which may leave a small precipitate in the beaker
+/// rather than restoring paper solids.
 fn wash_paper_solids_into_fluid(
     paper: &mut SceneItem,
     fluid: &mut Vec<CompositionEntry>,

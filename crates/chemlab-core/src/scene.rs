@@ -1417,8 +1417,7 @@ fn apply_sub_boil_mass_transfer(dish: &mut SceneItem, dt: f64) {
     }
     let p_w = x_w * water_vapor_pressure_bar(t);
     let driving = (p_w - air_water_partial_pressure_bar()).max(0.0) / ATM_PRESSURE_BAR;
-    let m_dot =
-        DISH_MASS_TRANSFER_COEFF_ML_PER_S_M2 * DISH_EVAP_AREA_M2 * driving;
+    let m_dot = DISH_MASS_TRANSFER_COEFF_ML_PER_S_M2 * DISH_EVAP_AREA_M2 * driving;
     let loss = m_dot * dt;
     if loss <= AMOUNT_EPS {
         return;

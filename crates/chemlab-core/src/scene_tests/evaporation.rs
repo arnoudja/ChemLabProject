@@ -207,13 +207,13 @@ fn burner_heats_to_boil_then_heat_limited_evaporates_and_turns_off() {
     let t = dish.properties.temperature_c.unwrap();
     let x = water_mole_fraction(dish);
     let tb = boiling_temperature_c(x);
-    assert!(
-        (t - tb).abs() < 0.15,
-        "expected near T_boil {tb}, got {t}"
-    );
+    assert!((t - tb).abs() < 0.15, "expected near T_boil {tb}, got {t}");
     assert!(tb > BOILING_TEMPERATURE_C, "salt should elevate T_boil");
     let water_at_boil = water_ml(dish);
-    assert!(water_at_boil > 2.0, "should still have liquid at first boil");
+    assert!(
+        water_at_boil > 2.0,
+        "should still have liquid at first boil"
+    );
 
     let rate = heat_limited_evap_ml_per_s();
     assert!(rate > 0.01 && rate < 0.1, "lab-scale boil rate {rate}");
@@ -321,9 +321,9 @@ fn heating_below_boil_redissolves_nacl_as_solubility_rises() {
     );
     assert!(solid_after < solid_before - 1e-6);
     let t_now = dish.properties.temperature_c.unwrap();
-    let max_now =
-        crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, t_now) * water_ml(dish)
-            / 1000.0;
+    let max_now = crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, t_now)
+        * water_ml(dish)
+        / 1000.0;
     assert!((na_after - max_now).abs() < 1e-6);
 }
 

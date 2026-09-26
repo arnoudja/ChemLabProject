@@ -148,8 +148,7 @@ fn capacity_aware_heat_reaches_100_slower_with_more_water() {
     assert!(t_light > t_heavy + 1.0, "light={t_light} heavy={t_heavy}");
 
     let c_light = dish_c_eff(1.0);
-    let expected_light =
-        (20.0 + (BURNER_POWER_W / c_light) * 10.0).min(boiling_temperature_c(1.0));
+    let expected_light = (20.0 + (BURNER_POWER_W / c_light) * 10.0).min(boiling_temperature_c(1.0));
     assert!((t_light - expected_light).abs() < 1e-9);
 }
 

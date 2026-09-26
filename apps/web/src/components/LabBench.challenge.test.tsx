@@ -50,7 +50,13 @@ describe('LabBench challenge mode', () => {
     render(<LabBench />)
 
     expect(await screen.findByText(/Pick up the spoon/i)).toBeInTheDocument()
-    const stocks = ['Distilled water (H2O)', 'Sodium chloride (NaCl)', 'Calcium chloride (CaCl2)', 'Sand']
+    const stocks = [
+      'Distilled water (H2O)',
+      'Hydrochloric acid (30%)',
+      'Sodium chloride (NaCl)',
+      'Calcium chloride (CaCl2)',
+      'Sand',
+    ]
     for (const stock of stocks) {
       expect(screen.getByRole('button', { name: stock })).toBeInTheDocument()
       clickCarousel('next')
@@ -64,8 +70,14 @@ describe('LabBench challenge mode', () => {
     expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
 
     const seen: string[] = []
-    for (let i = 0; i < 4; i += 1) {
-      for (const stock of ['Distilled water (H2O)', 'Sodium chloride (NaCl)', 'Calcium chloride (CaCl2)', 'Sand']) {
+    for (let i = 0; i < 5; i += 1) {
+      for (const stock of [
+        'Distilled water (H2O)',
+        'Hydrochloric acid (30%)',
+        'Sodium chloride (NaCl)',
+        'Calcium chloride (CaCl2)',
+        'Sand',
+      ]) {
         if (screen.queryByRole('button', { name: stock })) seen.push(stock)
       }
       clickCarousel('next')
@@ -73,6 +85,7 @@ describe('LabBench challenge mode', () => {
 
     expect(new Set(seen)).toEqual(new Set(['Distilled water (H2O)', 'Sodium chloride (NaCl)', 'Sand']))
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
+    expect(seen).not.toContain('Hydrochloric acid (30%)')
   })
 
   it('starts the challenge distilled-water stock at 10 ml', () => {

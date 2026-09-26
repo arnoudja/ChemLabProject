@@ -1,6 +1,9 @@
-import type { Item, LabScene } from '../generated/contracts'
+import type { CompositionEntry, Item, LabScene } from '../generated/contracts'
 import { optionalArray } from '../lib/scene'
 import type { StockSolid } from './LabBenchIcons'
+
+const HCL_MOLAR_MASS_G_PER_MOL = 36.46
+const AMOUNT_EPS = 1e-12
 
 export const SPOON_ID = 'spoon-1'
 export const PIPETTE_ID = 'pipette-1'
@@ -13,6 +16,7 @@ export const NACL_ID = 'beaker-nacl'
 export const CACL2_ID = 'beaker-cacl2'
 export const SAND_ID = 'beaker-sand'
 export const H2O_ID = 'beaker-h2o'
+export const HCL_ID = 'beaker-hcl'
 export const WATER_ID = 'beaker-water'
 
 export function isStockSolid(id: string): id is StockSolid {
@@ -65,6 +69,49 @@ export function distilledWaterAmountMl(scene: LabScene): number | null {
     (c) => c.substance_id === 'water' && c.phase === 'liquid',
   )
   return entry?.amount_ml ?? null
+}
+
+/** Density of aqueous HCl (g/ml) from HCl mass fraction — piecewise linear through lab stock table. */
+export function hclAqDensityGPerMl(wHcl: number): number {
+  const w = Math.min(0.4, Math.max(0, wHcl))
+  const table: [number, number][] = [
+    [0, 1.0],
+    [0.202, 1.098],
+    [0.3, 1.149],
+    [0.37, 1.184],
+  ]
+  for (let i = 0; i < table.length - 1; i += 1) {
+    const [w0, d0] = table[i]!
+    const [w1, d1] = table[i + 1]!
+    if (w <= w1) {
+      const frac = Math.abs(w1 - w0) <= AMOUNT_EPS ? 0 : (w - w0) / (w1 - w0)
+      return d0 + frac * (d1 - d0)
+    }
+  }
+  return table[table.length - 1]![1]
+}
+
+/** Solution volume (ml) for water + aqueous H⁺; pure water stays at water ml. */
+export function solutionVolumeMl(composition: CompositionEntry[]): number {
+  const waterEntry = composition.find(
+    (c) => c.substance_id === 'water' && c.phase === 'liquid',
+  )
+  const waterMl = Math.max(0, waterEntry?.amount_ml ?? 0)
+  const hEntry = composition.find((c) => c.substance_id === 'h+' && c.phase === 'aqueous')
+  const nH = Math.max(0, hEntry?.amount_mol ?? 0)
+  if (nH <= AMOUNT_EPS) return waterMl
+  const mass = waterMl + nH * HCL_MOLAR_MASS_G_PER_MOL
+  if (mass <= AMOUNT_EPS) return 0
+  const wHcl = (nH * HCL_MOLAR_MASS_G_PER_MOL) / mass
+  return mass / hclAqDensityGPerMl(wHcl)
+}
+
+export function hclStockAmountMl(scene: LabScene): number | null {
+  const item = findItem(scene, HCL_ID)
+  if (!item) return null
+  const composition = optionalArray(item.properties.composition)
+  if (composition.length === 0) return null
+  return solutionVolumeMl(composition)
 }
 
 export function waterAmountMl(scene: LabScene): number | null {
@@ -148,6 +195,7 @@ export function tongsHeldVesselId(
   | typeof WATER_ID
   | typeof DISH_ID
   | typeof H2O_ID
+  | typeof HCL_ID
   | typeof FILTRATE_ID
   | typeof PAPER_ID
   | typeof NACL_ID
@@ -159,6 +207,7 @@ export function tongsHeldVesselId(
     held === WATER_ID ||
     held === DISH_ID ||
     held === H2O_ID ||
+    held === HCL_ID ||
     held === FILTRATE_ID ||
     held === PAPER_ID ||
     held === NACL_ID ||

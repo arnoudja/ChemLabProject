@@ -3,6 +3,7 @@
 mod challenges;
 mod evaporation;
 mod filter;
+mod hcl;
 mod helpers;
 mod pipette;
 mod spoon;

@@ -71,6 +71,7 @@ fn separate_challenge_starts_with_mixed_beaker_and_empty_stocks() {
 
     let ids: Vec<_> = scene.items.iter().map(|i| i.id.as_str()).collect();
     assert!(!ids.contains(&"beaker-cacl2"));
+    assert!(!ids.contains(&"beaker-hcl"));
     assert!(ids.contains(&"beaker-h2o"));
     assert!(ids.contains(&"beaker-nacl"));
     assert!(ids.contains(&"beaker-sand"));

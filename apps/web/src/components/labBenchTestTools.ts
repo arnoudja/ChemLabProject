@@ -2,6 +2,7 @@ import type { LabScene } from '../generated/contracts'
 import {
   DISH_CAPACITY_ML,
   DISTILLED_WATER_CAPACITY_ML,
+  HCL_STOCK_CAPACITY_ML,
   FILTRATE_CAPACITY_ML,
   PIPETTE_MIN_SOURCE_ML,
   PIPETTE_VOLUME_ML,
@@ -41,6 +42,7 @@ export function applyTongsPickUp(scene: LabScene, targetId: string): LabScene {
 export function liquidCapacityMl(itemId: string): number {
   if (itemId === 'dish-1') return DISH_CAPACITY_ML
   if (itemId === 'beaker-h2o') return DISTILLED_WATER_CAPACITY_ML
+  if (itemId === 'beaker-hcl') return HCL_STOCK_CAPACITY_ML
   if (itemId === 'beaker-filtrate') return FILTRATE_CAPACITY_ML
   return 250
 }

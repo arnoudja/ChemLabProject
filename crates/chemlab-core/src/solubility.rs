@@ -94,7 +94,7 @@ pub fn dish_has_liquid(item: &SceneItem) -> bool {
 
 pub fn sync_fill_ml(item: &mut SceneItem) {
     if item.kind == "beaker" || item.kind == "evaporation_dish" || item.kind == "pipette" {
-        item.properties.fill_ml = Some(liquid_water_ml(item));
+        item.properties.fill_ml = Some(crate::hcl::solution_volume_ml(item));
     }
 }
 
@@ -189,32 +189,36 @@ fn has_aqueous_ions(item: &SceneItem) -> bool {
 }
 
 /// Additional grams of `salt` that could dissolve into water with the given aqueous
-/// Na⁺ / Ca²⁺ inventory at `temperature_c` before mixed SI = 1 (0 if already saturated).
+/// Na⁺ / Ca²⁺ / H⁺ inventory at `temperature_c` before mixed SI = 1 (0 if already saturated).
 ///
-/// Holds the other cation fixed (no precipitation sidelight during the probe) so filter
-/// wash capacity matches common-ion suppression without mutating the fluid.
+/// `n_h_aq` contributes Cl⁻ common-ion (and ionic strength) from aqueous HCl without
+/// mutating the fluid. Holds the other cation fixed (no precipitation sidelight during
+/// the probe) so filter wash capacity matches common-ion suppression.
 pub(crate) fn unsaturated_capacity_g(
     salt: Salt,
     water_ml: f64,
     n_na_aq: f64,
     n_ca_aq: f64,
+    n_h_aq: f64,
     temperature_c: f64,
 ) -> f64 {
     let litres = water_ml / 1000.0;
     if litres <= AMOUNT_EPS {
         return 0.0;
     }
+    let n_h = n_h_aq.max(0.0);
     match salt {
         Salt::Nacl => {
             let pure_max = solubility_mol_per_l(Salt::Nacl, temperature_c) * litres;
             let probe = n_na_aq.max(0.0) + pure_max * 2.0 + 1.0;
-            let max_aq = dissolved_nacl_at_si1(probe, n_ca_aq.max(0.0), litres, temperature_c);
+            let max_aq = dissolved_nacl_at_si1(probe, n_ca_aq.max(0.0), n_h, litres, temperature_c);
             (max_aq - n_na_aq).max(0.0) * NACL_MOLAR_MASS_G_PER_MOL
         }
         Salt::Cacl2 => {
             let pure_max = solubility_mol_per_l(Salt::Cacl2, temperature_c) * litres;
             let probe = n_ca_aq.max(0.0) + pure_max * 2.0 + 1.0;
-            let max_aq = dissolved_cacl2_at_si1(probe, n_na_aq.max(0.0), litres, temperature_c);
+            let max_aq =
+                dissolved_cacl2_at_si1(probe, n_na_aq.max(0.0), n_h, litres, temperature_c);
             (max_aq - n_ca_aq).max(0.0) * CACL2_MOLAR_MASS_G_PER_MOL
         }
     }
@@ -224,7 +228,8 @@ pub(crate) fn unsaturated_capacity_g(
 ///
 /// Same mixed NaCl/CaCl₂ equilibrium on every aqueous vessel. Dry stock solids (no water,
 /// no aqueous ions, not an evaporation dish) are left untouched. Precipitating NaCl
-/// removes 1 Na⁺ + 1 Cl⁻; CaCl₂ removes 1 Ca²⁺ + 2 Cl⁻.
+/// removes 1 Na⁺ + 1 Cl⁻; CaCl₂ removes 1 Ca²⁺ + 2 Cl⁻. Aqueous H⁺ from HCl is preserved
+/// and contributes its Cl⁻ (common ion) to the SI solver.
 pub fn enforce_saturation(item: &mut SceneItem) {
     let temperature_c = item.properties.temperature_c.unwrap_or(20.0);
     let water_ml = liquid_water_ml(item);
@@ -237,16 +242,19 @@ pub fn enforce_saturation(item: &mut SceneItem) {
     let total_nacl = aqueous_mol(item, "na+") + solid_mol(item, "nacl", NACL_MOLAR_MASS_G_PER_MOL);
     let total_cacl2 =
         aqueous_mol(item, "ca2+") + solid_mol(item, "cacl2", CACL2_MOLAR_MASS_G_PER_MOL);
+    let n_h = aqueous_mol(item, "h+");
 
     let (aq_nacl, solid_nacl, aq_cacl2, solid_cacl2) = if litres <= AMOUNT_EPS {
         (0.0, total_nacl, 0.0, total_cacl2)
     } else {
-        mixed_equilibrium(total_nacl, total_cacl2, litres, temperature_c)
+        mixed_equilibrium(total_nacl, total_cacl2, n_h, litres, temperature_c)
     };
 
     set_aqueous_mol(item, "na+", aq_nacl);
     set_aqueous_mol(item, "ca2+", aq_cacl2);
-    set_aqueous_mol(item, "cl-", aq_nacl + 2.0 * aq_cacl2);
+    set_aqueous_mol(item, "cl-", aq_nacl + 2.0 * aq_cacl2 + n_h);
+    // Preserve H⁺ (set explicitly so a wiped Cl⁻ line does not imply lost acid).
+    set_aqueous_mol(item, "h+", n_h);
     set_salt_solid(item, "nacl", solid_nacl, NACL_MOLAR_MASS_G_PER_MOL);
     set_salt_solid(item, "cacl2", solid_cacl2, CACL2_MOLAR_MASS_G_PER_MOL);
     remove_near_zero_water(item);
@@ -262,23 +270,27 @@ const MIXED_BISECT_ITERS: usize = 80;
 struct Mixture {
     m_na: f64,
     m_ca: f64,
+    /// Molality of H⁺ from aqueous HCl (paired Cl⁻ included in `m_cl`).
+    m_h: f64,
 }
 
 impl Mixture {
-    fn from_moles(n_na: f64, n_ca: f64, litres: f64) -> Self {
+    fn from_moles(n_na: f64, n_ca: f64, n_h: f64, litres: f64) -> Self {
         Self {
             m_na: (n_na / litres).max(0.0),
             m_ca: (n_ca / litres).max(0.0),
+            m_h: (n_h / litres).max(0.0),
         }
     }
 
     fn m_cl(self) -> f64 {
-        self.m_na + 2.0 * self.m_ca
+        self.m_na + 2.0 * self.m_ca + self.m_h
     }
 
     fn ionic_strength(self) -> f64 {
-        // I = ½ (m_Na + 4 m_Ca + m_Cl) with m_Cl = m_Na + 2 m_Ca → m_Na + 3 m_Ca.
-        self.m_na + 3.0 * self.m_ca
+        // I = ½ (m_Na + 4 m_Ca + m_H + m_Cl) with m_Cl = m_Na + 2 m_Ca + m_H
+        // → m_Na + 3 m_Ca + m_H.
+        self.m_na + 3.0 * self.m_ca + self.m_h
     }
 }
 
@@ -329,14 +341,29 @@ fn log10_iap_cacl2(mix: Mixture, a_dh: f64) -> Option<f64> {
 fn log10_k_nacl(temperature_c: f64) -> f64 {
     let s = solubility_mol_per_l(Salt::Nacl, temperature_c);
     let a_dh = debye_huckel_a(temperature_c);
-    log10_iap_nacl(Mixture { m_na: s, m_ca: 0.0 }, a_dh).expect("pure NaCl solubility is positive")
+    log10_iap_nacl(
+        Mixture {
+            m_na: s,
+            m_ca: 0.0,
+            m_h: 0.0,
+        },
+        a_dh,
+    )
+    .expect("pure NaCl solubility is positive")
 }
 
 fn log10_k_cacl2(temperature_c: f64) -> f64 {
     let s = solubility_mol_per_l(Salt::Cacl2, temperature_c);
     let a_dh = debye_huckel_a(temperature_c);
-    log10_iap_cacl2(Mixture { m_na: 0.0, m_ca: s }, a_dh)
-        .expect("pure CaCl2 solubility is positive")
+    log10_iap_cacl2(
+        Mixture {
+            m_na: 0.0,
+            m_ca: s,
+            m_h: 0.0,
+        },
+        a_dh,
+    )
+    .expect("pure CaCl2 solubility is positive")
 }
 
 fn log10_si_nacl(mix: Mixture, temperature_c: f64) -> f64 {
@@ -353,11 +380,17 @@ fn log10_si_cacl2(mix: Mixture, temperature_c: f64) -> f64 {
     }
 }
 
-fn dissolved_nacl_at_si1(n_na_tot: f64, n_ca: f64, litres: f64, temperature_c: f64) -> f64 {
+fn dissolved_nacl_at_si1(
+    n_na_tot: f64,
+    n_ca: f64,
+    n_h: f64,
+    litres: f64,
+    temperature_c: f64,
+) -> f64 {
     let a_dh = debye_huckel_a(temperature_c);
     let log_k = log10_k_nacl(temperature_c);
     let log_si = |n_na: f64| {
-        log10_iap_nacl(Mixture::from_moles(n_na, n_ca, litres), a_dh)
+        log10_iap_nacl(Mixture::from_moles(n_na, n_ca, n_h, litres), a_dh)
             .map(|log_iap| log_iap - log_k)
             .unwrap_or(f64::NEG_INFINITY)
     };
@@ -377,11 +410,17 @@ fn dissolved_nacl_at_si1(n_na_tot: f64, n_ca: f64, litres: f64, temperature_c: f
     0.5 * (lo + hi)
 }
 
-fn dissolved_cacl2_at_si1(n_ca_tot: f64, n_na: f64, litres: f64, temperature_c: f64) -> f64 {
+fn dissolved_cacl2_at_si1(
+    n_ca_tot: f64,
+    n_na: f64,
+    n_h: f64,
+    litres: f64,
+    temperature_c: f64,
+) -> f64 {
     let a_dh = debye_huckel_a(temperature_c);
     let log_k = log10_k_cacl2(temperature_c);
     let log_si = |n_ca: f64| {
-        log10_iap_cacl2(Mixture::from_moles(n_na, n_ca, litres), a_dh)
+        log10_iap_cacl2(Mixture::from_moles(n_na, n_ca, n_h, litres), a_dh)
             .map(|log_iap| log_iap - log_k)
             .unwrap_or(f64::NEG_INFINITY)
     };
@@ -404,13 +443,15 @@ fn dissolved_cacl2_at_si1(n_ca_tot: f64, n_na: f64, litres: f64, temperature_c: 
 fn mixed_equilibrium(
     total_nacl: f64,
     total_cacl2: f64,
+    n_h: f64,
     litres: f64,
     temperature_c: f64,
 ) -> (f64, f64, f64, f64) {
     let mut n_na = total_nacl.max(0.0);
     let mut n_ca = total_cacl2.max(0.0);
+    let n_h = n_h.max(0.0);
     for _ in 0..MIXED_OUTER_ITERS {
-        let mix = Mixture::from_moles(n_na, n_ca, litres);
+        let mix = Mixture::from_moles(n_na, n_ca, n_h, litres);
         let log_si_n = log10_si_nacl(mix, temperature_c);
         let log_si_c = log10_si_cacl2(mix, temperature_c);
         let over_n = log_si_n > LOG10_SI_TOL;
@@ -422,14 +463,14 @@ fn mixed_equilibrium(
         }
         if over_n && over_c {
             if log_si_n >= log_si_c {
-                n_na = dissolved_nacl_at_si1(total_nacl, n_ca, litres, temperature_c);
+                n_na = dissolved_nacl_at_si1(total_nacl, n_ca, n_h, litres, temperature_c);
             } else {
-                n_ca = dissolved_cacl2_at_si1(total_cacl2, n_na, litres, temperature_c);
+                n_ca = dissolved_cacl2_at_si1(total_cacl2, n_na, n_h, litres, temperature_c);
             }
         } else if over_n || under_n {
-            n_na = dissolved_nacl_at_si1(total_nacl, n_ca, litres, temperature_c);
+            n_na = dissolved_nacl_at_si1(total_nacl, n_ca, n_h, litres, temperature_c);
         } else {
-            n_ca = dissolved_cacl2_at_si1(total_cacl2, n_na, litres, temperature_c);
+            n_ca = dissolved_cacl2_at_si1(total_cacl2, n_na, n_h, litres, temperature_c);
         }
     }
     n_na = n_na.clamp(0.0, total_nacl);
@@ -503,13 +544,15 @@ mod tests {
         let water_ml = 10.0;
         let litres = water_ml / 1000.0;
         let t = 20.0;
-        let pure_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, t);
+        let pure_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.0, t);
         let expected = solubility_mol_per_l(Salt::Nacl, t) * litres * NACL_MOLAR_MASS_G_PER_MOL;
         assert!((pure_cap - expected).abs() < 1e-6);
         let sat_mol = solubility_mol_per_l(Salt::Nacl, t) * litres;
-        let sat_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, sat_mol, 0.0, t);
+        let sat_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, sat_mol, 0.0, 0.0, t);
         assert!(sat_cap < 1e-6);
-        assert!(unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 80.0) > pure_cap + 1e-4);
+        assert!(
+            unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.0, 80.0) > pure_cap + 1e-4
+        );
     }
 
     #[test]

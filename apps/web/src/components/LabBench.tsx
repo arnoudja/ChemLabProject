@@ -13,6 +13,9 @@ import {
   STOCK_FULL_SCOOPS,
   WATER_FULL_ML,
   DISTILLED_WATER_CAPACITY_ML,
+  HCL_STOCK_CAPACITY_ML,
+  HCL_STOCK_WATER_ML,
+  HCL_STOCK_HCL_MOLES,
   DISH_CAPACITY_ML,
   PIPETTE_VOLUME_ML,
   PIPETTE_MIN_SOURCE_ML,
@@ -22,6 +25,7 @@ import { BeakerInspectPanel } from './BeakerInspectPanel'
 import {
   BurnerSvg,
   DistilledWaterBeakerSvg,
+  HclBeakerSvg,
   EvaporationDishSvg,
   FiltrateBeakerSvg,
   FunnelPaperSvg,
@@ -32,6 +36,7 @@ import {
   WaterBeakerSvg,
   dishFillRatio,
   distilledWaterFillRatio,
+  hclFillRatio,
   filtrateFillRatio,
   stockFillRatio,
   waterFillRatio,
@@ -43,6 +48,7 @@ import {
   DISH_ID,
   FILTRATE_ID,
   H2O_ID,
+  HCL_ID,
   NACL_ID,
   PAPER_ID,
   PIPETTE_ID,
@@ -54,6 +60,7 @@ import {
   dishAmountMl,
   dissolveCueFromEvents,
   distilledWaterAmountMl,
+  hclStockAmountMl,
   filtrateAmountMl,
   findItem,
   outcomeLabel,
@@ -76,12 +83,16 @@ export {
   STOCK_FULL_SCOOPS,
   WATER_FULL_ML,
   DISTILLED_WATER_CAPACITY_ML,
+  HCL_STOCK_CAPACITY_ML,
+  HCL_STOCK_WATER_ML,
+  HCL_STOCK_HCL_MOLES,
   DISH_CAPACITY_ML,
   PIPETTE_VOLUME_ML,
   PIPETTE_MIN_SOURCE_ML,
   FILTRATE_CAPACITY_ML,
   dishFillRatio,
   distilledWaterFillRatio,
+  hclFillRatio,
   filtrateFillRatio,
   sceneNeedsThermalPoll,
   stockFillRatio,
@@ -90,10 +101,11 @@ export {
 
 const THERMAL_POLL_MS = 300
 
-type IngredientKind = 'h2o' | StockSolid
+type IngredientKind = 'h2o' | 'hcl' | StockSolid
 
 const INGREDIENT_CAROUSEL: { itemId: string; kind: IngredientKind }[] = [
   { itemId: H2O_ID, kind: 'h2o' },
+  { itemId: HCL_ID, kind: 'hcl' },
   { itemId: NACL_ID, kind: 'nacl' },
   { itemId: CACL2_ID, kind: 'cacl2' },
   { itemId: SAND_ID, kind: 'sand' },
@@ -347,6 +359,10 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
     return onVessel(H2O_ID, event, { allowSpoon: false })
   }
 
+  async function onHclStock(event: MouseEvent<HTMLButtonElement>) {
+    return onVessel(HCL_ID, event, { allowSpoon: false })
+  }
+
   async function onWater(event: MouseEvent<HTMLButtonElement>) {
     return onVessel(WATER_ID, event, { spoonPourIfHolding: true })
   }
@@ -430,6 +446,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
   const waterHeld = water?.location === 'held'
   const dishHeld = dish?.location === 'held'
   const h2oHeld = scene ? findItem(scene, H2O_ID)?.location === 'held' : false
+  const hclHeld = scene ? findItem(scene, HCL_ID)?.location === 'held' : false
   const filtrateHeld = filtrate?.location === 'held'
   const paperHeld = paper?.location === 'held'
   const lastEvents = scene ? optionalArray(scene.last_events) : []
@@ -608,6 +625,21 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
                   )}
                   <StockSubstanceLabel substanceId="water" />
                 </button>
+              ) : visibleIngredient.kind === 'hcl' ? (
+                <button
+                  type="button"
+                  className="lab-item"
+                  aria-label={stockSubstanceAriaLabel('hcl')}
+                  disabled={busy}
+                  onClick={onHclStock}
+                >
+                  {hclHeld ? (
+                    <svg viewBox="0 0 80 118" className="h-28 w-20" aria-hidden />
+                  ) : (
+                    <HclBeakerSvg amountMl={scene ? hclStockAmountMl(scene) : null} />
+                  )}
+                  <StockSubstanceLabel substanceId="hcl" />
+                </button>
               ) : (
                 <button
                   type="button"
@@ -726,6 +758,8 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
               />
             ) : heldVesselId === H2O_ID && scene ? (
               <DistilledWaterBeakerSvg amountMl={distilledWaterAmountMl(scene)} floating />
+            ) : heldVesselId === HCL_ID && scene ? (
+              <HclBeakerSvg amountMl={hclStockAmountMl(scene)} floating />
             ) : heldSolid && heldVesselId && scene ? (
               <SolidBeakerSvg
                 solid={heldSolid}

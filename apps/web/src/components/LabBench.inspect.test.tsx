@@ -17,6 +17,7 @@ import {
   stubLabFetch,
   clickStock,
   clickSpoon,
+  clickCarousel,
 } from './labBenchTestHelpers'
 
 describe('LabBench inspect', () => {
@@ -236,6 +237,21 @@ describe('LabBench inspect', () => {
     const panel = await screen.findByRole('dialog', { name: 'Contents of Distilled water' })
     expect(panel).toHaveTextContent('H2O (l)')
     expect(panel).toHaveTextContent('100.00 ml')
+  })
+
+  it('idle HCl stock inspect shows composition and pH', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+    clickCarousel('next')
+    fireEvent.click(screen.getByRole('button', { name: 'Hydrochloric acid (30%)' }))
+
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Hydrochloric acid (30%)' })
+    expect(panel).toHaveTextContent('H2O (l)')
+    expect(panel).toHaveTextContent('8.04 ml')
+    expect(panel).toHaveTextContent('H+ (aq)')
+    expect(panel).toHaveTextContent('pH: -0.98')
   })
 
   it('idle click inspects paper versus filtrate', async () => {

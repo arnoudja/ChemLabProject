@@ -60,7 +60,7 @@ describe('LabBench load / carousel / layout', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('wraps the ingredient carousel H2O → NaCl → CaCl2 → SiO2 and hides other stocks from the DOM', async () => {
+  it('wraps the ingredient carousel H2O → HCl → NaCl → CaCl2 → SiO2 and hides other stocks from the DOM', async () => {
     vi.stubGlobal('fetch', stubLabFetch())
 
     render(<LabBench />)
@@ -68,9 +68,19 @@ describe('LabBench load / carousel / layout', () => {
     expect(document.querySelector('[data-h2o-fill]')).toHaveAttribute('data-h2o-fill', '1.00')
 
     clickCarousel('next')
-    expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hydrochloric acid (30%)' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Distilled water (H2O)' })).not.toBeInTheDocument()
     expect(document.querySelector('[data-h2o-fill]')).toBeNull()
+    expect(document.querySelector('[data-hcl-fill]')).toHaveAttribute('data-hcl-fill', '1.00')
+    const hclLabel = document.querySelector('[data-stock-label="hcl"]')
+    expect(hclLabel?.textContent).toContain('HCl')
+    expect(hclLabel?.textContent).toContain('(Hydrochloric acid)')
+    expect(hclLabel?.textContent).toContain('(30% w/w)')
+
+    clickCarousel('next')
+    expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Hydrochloric acid (30%)' })).not.toBeInTheDocument()
+    expect(document.querySelector('[data-hcl-fill]')).toBeNull()
     const saltLabel = document.querySelector('[data-stock-label="nacl"]')
     expect(saltLabel?.textContent).toContain('NaCl')
     expect(saltLabel?.textContent).toContain('(Sodium chloride)')
@@ -112,8 +122,7 @@ describe('LabBench load / carousel / layout', () => {
 
     clickSpoon()
     clickCarousel('next')
-
-    expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hydrochloric acid (30%)' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'spoon')
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
@@ -126,7 +135,7 @@ describe('LabBench load / carousel / layout', () => {
     await screen.findByRole('button', { name: 'Distilled water (H2O)' })
 
     clickCarousel('next')
-    expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hydrochloric acid (30%)' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset lab' }))
     await waitFor(() => {
@@ -450,6 +459,10 @@ describe('LabBench load / carousel / layout', () => {
     const water = await screen.findByRole('button', { name: 'Distilled water (H2O)' })
     expect(water.parentElement).toHaveClass('lab-stock-carousel-slot')
 
+    clickCarousel('next')
+    expect(screen.getByRole('button', { name: 'Hydrochloric acid (30%)' }).parentElement).toHaveClass(
+      'lab-stock-carousel-slot',
+    )
     clickCarousel('next')
     expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }).parentElement).toHaveClass(
       'lab-stock-carousel-slot',

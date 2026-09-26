@@ -1427,22 +1427,18 @@ fn apply_sub_boil_mass_transfer(dish: &mut SceneItem, dt: f64) {
     apply_latent_cool(dish, loss, c_eff);
 }
 
-fn apply_heat_limited_boil(dish: &mut SceneItem, dt: f64, heating: bool) {
+fn apply_heat_limited_boil(dish: &mut SceneItem, dt: f64) {
     let x_w = water_mole_fraction(dish);
     let t_boil = boiling_temperature_c(x_w);
     // Plateau at T_boil while heat-limited boiling; do not also apply latent ΔT
     // (Q_net already pays for vaporization).
     dish.properties.temperature_c = Some(t_boil);
-    // While heating, Newton cool is skipped for the dish (see apply_elapsed), so
-    // Q_net = burner power only. Subtracting UA here would double-count loss that
-    // is not applied while heating, and with UA_DISH=4 / BURNER_POWER_W=80 would
-    // make Q_net negative near 100 °C. When the burner is off, Q_net ≤ 0.
-    let q_net = if heating {
-        BURNER_POWER_W
-    } else {
-        (0.0 - UA_DISH * (t_boil - AMBIENT_TEMPERATURE_C)).max(0.0)
-    };
-    let m_dot = (q_net / WATER_LATENT_HEAT_J_PER_G).max(0.0);
+    // Caller only invokes this while the burner is on. Newton cool is skipped for
+    // the dish while heating (see apply_elapsed), so Q_net = burner power only.
+    // Subtracting UA here would double-count loss that is not applied while
+    // heating, and with UA_DISH=4 / BURNER_POWER_W=80 would make Q_net negative
+    // near 100 °C. Burner-off paths never call this (Q_net ≤ 0).
+    let m_dot = (BURNER_POWER_W / WATER_LATENT_HEAT_J_PER_G).max(0.0);
     remove_liquid_water_ml(dish, m_dot * dt);
 }
 
@@ -1475,7 +1471,7 @@ fn apply_dish_evaporation(dish: &mut SceneItem, dt: f64, heating: bool) {
         // it would dry / concentrate the dish before p_w reaches P_atm and block
         // the boil plateau. Ambient MT runs when the burner is off (below).
         if dish_is_boiling(t, x_w) {
-            apply_heat_limited_boil(dish, remaining, true);
+            apply_heat_limited_boil(dish, remaining);
             return;
         }
         let c_eff = effective_heat_capacity(dish).max(AMOUNT_EPS);
@@ -1490,7 +1486,7 @@ fn apply_dish_evaporation(dish: &mut SceneItem, dt: f64, heating: bool) {
         if remaining <= AMOUNT_EPS {
             return;
         }
-        apply_heat_limited_boil(dish, remaining, true);
+        apply_heat_limited_boil(dish, remaining);
         return;
     }
 

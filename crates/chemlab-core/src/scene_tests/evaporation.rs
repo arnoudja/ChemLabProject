@@ -153,7 +153,7 @@ fn burner_heats_to_boil_then_heat_limited_evaporates_and_turns_off() {
     let mut scene = initial_bench_scene("lab-test");
     let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
     dish.properties.temperature_c = Some(20.0);
-    // Enough water that heat-up + sub-boil MT still leave liquid at first boil.
+    // Enough water that heat-up (no MT while heating) still leaves liquid at first boil.
     dish.properties.composition = vec![
         CompositionEntry {
             substance_id: "water".into(),

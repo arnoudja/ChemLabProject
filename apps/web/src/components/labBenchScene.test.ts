@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { CompositionEntry, Item, LabScene } from '../generated/contracts'
-import { dishAmountMl, filtrateAmountMl, solutionVolumeMl } from './labBenchScene'
+import {
+  dishAmountMl,
+  distilledWaterAmountMl,
+  filtrateAmountMl,
+  solutionVolumeMl,
+  waterAmountMl,
+} from './labBenchScene'
 
 function entry(
   partial: Partial<CompositionEntry> & Pick<CompositionEntry, 'substance_id' | 'phase'>,
@@ -53,7 +59,7 @@ describe('solutionVolumeMl', () => {
   })
 })
 
-describe('dishAmountMl / filtrateAmountMl', () => {
+describe('SVG amount helpers (dish / filtrate / water)', () => {
   it('uses solution volume for brine fills (not water-only ml)', () => {
     const brine = [
       entry({ substance_id: 'water', phase: 'liquid', amount_ml: 20 }),
@@ -74,15 +80,36 @@ describe('dishAmountMl / filtrateAmountMl', () => {
         kind: 'beaker',
         properties: { composition: brine, fill_ml: expected },
       },
+      {
+        id: 'beaker-water',
+        kind: 'beaker',
+        properties: { composition: brine, fill_ml: expected },
+      },
     ])
 
     expect(dishAmountMl(scene)).toBeCloseTo(expected, 5)
     expect(filtrateAmountMl(scene)).toBeCloseTo(expected, 5)
+    expect(waterAmountMl(scene)).toBeCloseTo(expected, 5)
+  })
+
+  it('keeps distilled stock on water ml only', () => {
+    const scene = sceneWith([
+      {
+        id: 'beaker-h2o',
+        kind: 'beaker',
+        properties: {
+          composition: [entry({ substance_id: 'water', phase: 'liquid', amount_ml: 100 })],
+          fill_ml: 100,
+        },
+      },
+    ])
+    expect(distilledWaterAmountMl(scene)).toBe(100)
   })
 
   it('returns null when the vessel is missing', () => {
     const scene = sceneWith([])
     expect(dishAmountMl(scene)).toBeNull()
     expect(filtrateAmountMl(scene)).toBeNull()
+    expect(waterAmountMl(scene)).toBeNull()
   })
 })

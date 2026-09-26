@@ -91,7 +91,7 @@ export function formatCompositionLabel(substanceId: string, phase: string): stri
   return `${formula} (${phaseLabel})`
 }
 
-/** Solvent volume in litres from composition (solution volume when aqueous H⁺ is present). */
+/** Display volume in litres from Φ_V solution volume (water ml + electrolyte Φ_V). */
 export function solventVolumeLitres(composition: CompositionEntry[]): number | null {
   const volumeMl = solutionVolumeMl(composition)
   if (volumeMl <= 0) return null

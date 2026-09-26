@@ -138,12 +138,16 @@ export function hclStockAmountMl(scene: LabScene): number | null {
   return solutionVolumeMl(composition)
 }
 
+/** Main water beaker liquid height — Φ_V solution volume (matches server `fill_ml`).
+ * Distilled stock (`distilledWaterAmountMl`) stays water-ml only. */
 export function waterAmountMl(scene: LabScene): number | null {
   const item = findItem(scene, WATER_ID)
-  const entry = optionalArray(item?.properties.composition).find(
-    (c) => c.substance_id === 'water' && c.phase === 'liquid',
-  )
-  return entry?.amount_ml ?? null
+  if (!item) return null
+  const composition = optionalArray(item.properties.composition)
+  if (composition.length === 0) {
+    return item.properties.fill_ml ?? null
+  }
+  return solutionVolumeMl(composition)
 }
 
 /** True when the water beaker composition includes server-authored aqueous ions. */

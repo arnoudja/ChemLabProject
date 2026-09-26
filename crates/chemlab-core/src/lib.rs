@@ -6,10 +6,17 @@
 
 pub mod challenges;
 mod dissolve;
+mod hcl;
 mod scene;
 mod solubility;
 
 pub use dissolve::{dissolve, DissolveError, DissolveOutcome};
+pub use hcl::{
+    hcl_aq_density_g_per_ml, ph_of_item, solution_volume_ml, HCL_AZEOTROPE_BOIL_C,
+    HCL_AZEOTROPE_W_W, HCL_MOLAR_MASS_G_PER_MOL, HCL_STOCK_CAPACITY_ML, HCL_STOCK_DENSITY_G_PER_ML,
+    HCL_STOCK_HCL_MASS_G, HCL_STOCK_HCL_MOLES, HCL_STOCK_TOTAL_MASS_G, HCL_STOCK_WATER_MASS_G,
+    HCL_STOCK_W_W,
+};
 pub use scene::{
     apply_action, apply_elapsed, boiling_temperature_c, effective_heat_capacity,
     ensure_default_bench_items, initial_bench_scene, initial_scene_for_mode, water_mole_fraction,

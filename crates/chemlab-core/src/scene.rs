@@ -267,6 +267,47 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                 },
             },
             SceneItem {
+                id: "beaker-hcl".into(),
+                kind: "beaker".into(),
+                label: "Hydrochloric acid (30%)".into(),
+                location: "bench".into(),
+                properties: ItemProperties {
+                    volume_ml: Some(crate::hcl::HCL_STOCK_CAPACITY_ML),
+                    fill_ml: Some(crate::hcl::HCL_STOCK_CAPACITY_ML),
+                    transparent: Some(true),
+                    colourless: Some(true),
+                    temperature_c: Some(20.0),
+                    composition: vec![
+                        CompositionEntry {
+                            substance_id: "water".into(),
+                            phase: "liquid".into(),
+                            amount_ml: Some(crate::hcl::HCL_STOCK_WATER_MASS_G),
+                            amount_scoop: None,
+                            amount_g: None,
+                            amount_mol: None,
+                        },
+                        CompositionEntry {
+                            substance_id: "h+".into(),
+                            phase: "aqueous".into(),
+                            amount_ml: None,
+                            amount_scoop: None,
+                            amount_g: None,
+                            amount_mol: Some(crate::hcl::HCL_STOCK_HCL_MOLES),
+                        },
+                        CompositionEntry {
+                            substance_id: "cl-".into(),
+                            phase: "aqueous".into(),
+                            amount_ml: None,
+                            amount_scoop: None,
+                            amount_g: None,
+                            amount_mol: Some(crate::hcl::HCL_STOCK_HCL_MOLES),
+                        },
+                    ],
+                    holding: Vec::new(),
+                    ..ItemProperties::default()
+                },
+            },
+            SceneItem {
                 id: "beaker-nacl".into(),
                 kind: "beaker".into(),
                 label: "Sodium chloride".into(),
@@ -706,7 +747,7 @@ fn apply_spoon_use_while_holding(
     target_idx: usize,
 ) -> Result<(), SceneError> {
     let target = &scene.items[target_idx];
-    if is_distilled_water_stock(target) {
+    if is_distilled_water_stock(target) || is_hcl_stock(target) {
         return Err(SceneError::InvalidAction);
     }
 
@@ -975,6 +1016,7 @@ fn apply_pour(
     }
 
     if is_distilled_water_stock(&scene.items[target_idx])
+        || is_hcl_stock(&scene.items[target_idx])
         || scene.items[target_idx].kind == "filter_paper"
     {
         return Err(SceneError::InvalidAction);
@@ -1236,6 +1278,10 @@ fn is_distilled_water_stock(item: &SceneItem) -> bool {
     item.id == "beaker-h2o"
 }
 
+fn is_hcl_stock(item: &SceneItem) -> bool {
+    item.id == "beaker-hcl"
+}
+
 fn is_filtrate_beaker(item: &SceneItem) -> bool {
     item.id == "beaker-filtrate"
 }
@@ -1266,18 +1312,13 @@ fn composition_is_pure_h2o(entries: &[CompositionEntry]) -> bool {
 fn is_liquid_vessel(item: &SceneItem) -> bool {
     item.id == "beaker-water"
         || is_distilled_water_stock(item)
+        || is_hcl_stock(item)
         || is_filtrate_beaker(item)
         || item.kind == "evaporation_dish"
 }
 
 fn pipette_holding_liquid_ml(pipette: &SceneItem) -> f64 {
-    pipette
-        .properties
-        .holding
-        .iter()
-        .filter(|c| c.substance_id == "water" && c.phase == "liquid")
-        .map(|c| c.amount_ml.unwrap_or(0.0))
-        .sum()
+    crate::hcl::solution_volume_ml_of_entries(&pipette.properties.holding)
 }
 
 fn apply_toggle_burner(scene: &mut Scene, burner_item_id: &str) -> Result<(), SceneError> {
@@ -1424,6 +1465,30 @@ fn remove_liquid_water_ml(dish: &mut SceneItem, loss_ml: f64) {
     }
 }
 
+/// Remove evaporated mass from the dish. With aqueous HCl, use azeotrope-style
+/// HCl+water split; otherwise water-only (1 g ≈ 1 ml).
+fn remove_evaporated_mass(dish: &mut SceneItem, loss_mass_g: f64) {
+    if loss_mass_g <= AMOUNT_EPS {
+        return;
+    }
+    let inv = crate::hcl::HclInventory::from_item(dish);
+    if inv.n_h > AMOUNT_EPS {
+        crate::hcl::remove_hcl_water_evap_mass(dish, loss_mass_g);
+    } else {
+        remove_liquid_water_ml(dish, loss_mass_g);
+    }
+}
+
+/// Dish boil temperature: fixed azeotrope 108.6 °C when aqueous HCl is present;
+/// otherwise Raoult + Antoine from water mole fraction.
+fn dish_boil_temperature_c(item: &SceneItem) -> f64 {
+    let inv = crate::hcl::HclInventory::from_item(item);
+    if inv.n_h > AMOUNT_EPS {
+        return crate::hcl::HCL_AZEOTROPE_BOIL_C;
+    }
+    boiling_temperature_c(water_mole_fraction(item))
+}
+
 fn apply_latent_cool(dish: &mut SceneItem, mass_g: f64, c_eff_before: f64) {
     if mass_g <= AMOUNT_EPS || c_eff_before <= AMOUNT_EPS {
         return;
@@ -1435,7 +1500,7 @@ fn apply_latent_cool(dish: &mut SceneItem, mass_g: f64, c_eff_before: f64) {
     dish.properties.temperature_c = Some(t - mass_g * WATER_LATENT_HEAT_J_PER_G / c_eff_before);
 }
 
-/// Sub-boil mass transfer: `m_dot = k A max(0, p_w − p_air) / P_atm` (ml/s), then latent cool.
+/// Sub-boil mass transfer: `m_dot = k A max(0, p_w − p_air) / P_atm` (ml/s ≈ g/s), then latent cool.
 fn apply_sub_boil_mass_transfer(dish: &mut SceneItem, dt: f64) {
     if dt <= AMOUNT_EPS || !crate::solubility::dish_has_liquid(dish) {
         return;
@@ -1456,13 +1521,12 @@ fn apply_sub_boil_mass_transfer(dish: &mut SceneItem, dt: f64) {
         return;
     }
     let c_eff = effective_heat_capacity(dish).max(AMOUNT_EPS);
-    remove_liquid_water_ml(dish, loss);
+    remove_evaporated_mass(dish, loss);
     apply_latent_cool(dish, loss, c_eff);
 }
 
 fn apply_heat_limited_boil(dish: &mut SceneItem, dt: f64) {
-    let x_w = water_mole_fraction(dish);
-    let t_boil = boiling_temperature_c(x_w);
+    let t_boil = dish_boil_temperature_c(dish);
     // Plateau at T_boil while heat-limited boiling; do not also apply latent ΔT
     // (Q_net already pays for vaporization).
     dish.properties.temperature_c = Some(t_boil);
@@ -1472,13 +1536,19 @@ fn apply_heat_limited_boil(dish: &mut SceneItem, dt: f64) {
     // heating (and historically with BURNER_POWER_W=80 / UA_DISH=4 would make
     // Q_net negative near 100 °C). Burner-off paths never call this (Q_net ≤ 0).
     let m_dot = (BURNER_POWER_W / WATER_LATENT_HEAT_J_PER_G).max(0.0);
-    remove_liquid_water_ml(dish, m_dot * dt);
+    remove_evaporated_mass(dish, m_dot * dt);
 }
 
-fn dish_is_boiling(temperature_c: f64, x_w: f64) -> bool {
+fn dish_is_boiling(temperature_c: f64, item: &SceneItem) -> bool {
+    let inv = crate::hcl::HclInventory::from_item(item);
+    if inv.n_h > AMOUNT_EPS {
+        // Documented azeotrope boil rule: acid present → boil at 108.6 °C.
+        return temperature_c + 1e-3 >= crate::hcl::HCL_AZEOTROPE_BOIL_C;
+    }
     // Vapor-pressure gate only. Do not use T >= T_boil alone: as the dish
     // concentrates, T_boil can run away and a T comparison falsely trips.
     const BOIL_P_EPS_BAR: f64 = 1e-4;
+    let x_w = water_mole_fraction(item);
     x_w * water_vapor_pressure_bar(temperature_c) + BOIL_P_EPS_BAR >= ATM_PRESSURE_BAR
 }
 
@@ -1493,17 +1563,17 @@ fn apply_dish_evaporation(dish: &mut SceneItem, dt: f64, heating: bool) {
         .temperature_c
         .unwrap_or(AMBIENT_TEMPERATURE_C);
     let x_w = water_mole_fraction(dish);
-    if x_w <= AMOUNT_EPS {
+    if x_w <= AMOUNT_EPS && crate::hcl::HclInventory::from_item(dish).n_h <= AMOUNT_EPS {
         return;
     }
-    let t_boil = boiling_temperature_c(x_w);
+    let t_boil = dish_boil_temperature_c(dish);
 
     if heating {
         // While the burner heats: sensible heat until boil, then heat-limited
         // evaporation. Skip sub-boil MT here — with Antoine-scaled driving force
         // it would dry / concentrate the dish before p_w reaches P_atm and block
         // the boil plateau. Ambient MT runs when the burner is off (below).
-        if dish_is_boiling(t, x_w) {
+        if dish_is_boiling(t, dish) {
             apply_heat_limited_boil(dish, remaining);
             return;
         }
@@ -1525,7 +1595,7 @@ fn apply_dish_evaporation(dish: &mut SceneItem, dt: f64, heating: bool) {
 
     // Burner off: slow ambient mass transfer (and latent cool). No heat-limited
     // boil when Q_net ≤ 0.
-    if !dish_is_boiling(t, x_w) {
+    if !dish_is_boiling(t, dish) {
         apply_sub_boil_mass_transfer(dish, remaining);
     }
 }
@@ -1672,7 +1742,7 @@ fn apply_pipette_fill(
     if is_filtrate_beaker(&scene.items[target_idx]) && scene.items[target_idx].location != "bench" {
         return Err(SceneError::InvalidAction);
     }
-    let available_ml = crate::solubility::liquid_water_ml(&scene.items[target_idx]);
+    let available_ml = crate::hcl::solution_volume_ml(&scene.items[target_idx]);
     if available_ml <= AMOUNT_EPS {
         return Err(SceneError::NoFluidAvailable);
     }
@@ -1714,7 +1784,7 @@ fn apply_pipette_empty(
         return Err(SceneError::InvalidAction);
     }
     if scene.items[target_idx].kind == "evaporation_dish" {
-        let current = crate::solubility::liquid_water_ml(&scene.items[target_idx]);
+        let current = crate::hcl::solution_volume_ml(&scene.items[target_idx]);
         if current + PIPETTE_VOLUME_ML > DISH_CAPACITY_ML + AMOUNT_EPS {
             return Err(SceneError::InvalidAction);
         }
@@ -1723,7 +1793,7 @@ fn apply_pipette_empty(
         if !composition_is_pure_h2o(&scene.items[tool_idx].properties.holding) {
             return Err(SceneError::InvalidAction);
         }
-        let current = crate::solubility::liquid_water_ml(&scene.items[target_idx]);
+        let current = crate::hcl::solution_volume_ml(&scene.items[target_idx]);
         let cap = scene.items[target_idx]
             .properties
             .volume_ml
@@ -1732,11 +1802,24 @@ fn apply_pipette_empty(
             return Err(SceneError::InvalidAction);
         }
     }
+    if is_hcl_stock(&scene.items[target_idx]) {
+        if !crate::hcl::composition_is_stock_hcl(&scene.items[tool_idx].properties.holding) {
+            return Err(SceneError::InvalidAction);
+        }
+        let current = crate::hcl::solution_volume_ml(&scene.items[target_idx]);
+        let cap = scene.items[target_idx]
+            .properties
+            .volume_ml
+            .unwrap_or(crate::hcl::HCL_STOCK_CAPACITY_ML);
+        if current + PIPETTE_VOLUME_ML > cap + AMOUNT_EPS {
+            return Err(SceneError::InvalidAction);
+        }
+    }
     if is_filtrate_beaker(&scene.items[target_idx]) {
         if scene.items[target_idx].location != "bench" {
             return Err(SceneError::InvalidAction);
         }
-        let current = crate::solubility::liquid_water_ml(&scene.items[target_idx]);
+        let current = crate::hcl::solution_volume_ml(&scene.items[target_idx]);
         if current + PIPETTE_VOLUME_ML > FILTRATE_CAPACITY_ML + AMOUNT_EPS {
             return Err(SceneError::InvalidAction);
         }
@@ -1786,7 +1869,7 @@ fn is_solid_stock_beaker(item: &SceneItem) -> bool {
 /// Any ingredient stock on the Free bench, so a challenge layout that does not list
 /// a stock drops it — including stocks added to the bench later.
 fn is_ingredient_stock(item: &SceneItem) -> bool {
-    is_distilled_water_stock(item) || is_solid_stock_beaker(item)
+    is_distilled_water_stock(item) || is_hcl_stock(item) || is_solid_stock_beaker(item)
 }
 
 fn is_filter_paper(item: &SceneItem) -> bool {
@@ -1796,6 +1879,7 @@ fn is_filter_paper(item: &SceneItem) -> bool {
 fn is_tongs_vessel(item: &SceneItem) -> bool {
     item.id == "beaker-water"
         || is_distilled_water_stock(item)
+        || is_hcl_stock(item)
         || is_filtrate_beaker(item)
         || item.kind == "evaporation_dish"
 }
@@ -1874,7 +1958,7 @@ fn apply_tongs_onto_filter_paper(
         return Err(SceneError::InvalidAction);
     }
     let source_idx = find_item_index(scene, held_id)?;
-    let source_liquid = crate::solubility::liquid_water_ml(&scene.items[source_idx]);
+    let source_liquid = crate::hcl::solution_volume_ml(&scene.items[source_idx]);
     let has_solids = composition_has_solids(&scene.items[source_idx]);
     if source_liquid > AMOUNT_EPS {
         return apply_filter_pour(scene, tool_idx);
@@ -1906,8 +1990,8 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
         return Err(SceneError::InvalidAction);
     }
 
-    let source_liquid = crate::solubility::liquid_water_ml(&scene.items[source_idx]);
-    let dest_liquid = crate::solubility::liquid_water_ml(&scene.items[dest_idx]);
+    let source_liquid = crate::hcl::solution_volume_ml(&scene.items[source_idx]);
+    let dest_liquid = crate::hcl::solution_volume_ml(&scene.items[dest_idx]);
     let dest_room = (FILTRATE_CAPACITY_ML - dest_liquid).max(0.0);
     let has_solids = composition_has_solids(&scene.items[source_idx]);
 
@@ -2011,7 +2095,9 @@ fn wash_paper_solids_into_fluid(
         }
         let n_na = fluid_aqueous_mol(fluid, "na+");
         let n_ca = fluid_aqueous_mol(fluid, "ca2+");
-        let cap = crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, t_wash);
+        let n_h = fluid_aqueous_mol(fluid, "h+");
+        let cap =
+            crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, n_h, t_wash);
         let m_diss = avail.min(cap) * frac;
         if m_diss <= AMOUNT_EPS {
             continue;
@@ -2111,10 +2197,10 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
         return Err(SceneError::InvalidAction);
     }
 
-    let source_liquid = crate::solubility::liquid_water_ml(&scene.items[source_idx]);
+    let source_liquid = crate::hcl::solution_volume_ml(&scene.items[source_idx]);
     let dest_cap =
         vessel_liquid_capacity_ml(&scene.items[dest_idx]).ok_or(SceneError::InvalidAction)?;
-    let dest_liquid = crate::solubility::liquid_water_ml(&scene.items[dest_idx]);
+    let dest_liquid = crate::hcl::solution_volume_ml(&scene.items[dest_idx]);
     let dest_room = (dest_cap - dest_liquid).max(0.0);
     let has_solids = composition_has_solids(&scene.items[source_idx]);
 
@@ -2123,6 +2209,15 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
             return Err(SceneError::InvalidAction);
         }
         if !composition_is_pure_h2o(&scene.items[source_idx].properties.composition) {
+            return Err(SceneError::InvalidAction);
+        }
+    }
+    if is_hcl_stock(&scene.items[dest_idx]) {
+        if dest_room <= AMOUNT_EPS {
+            return Err(SceneError::InvalidAction);
+        }
+        if !crate::hcl::composition_is_stock_hcl(&scene.items[source_idx].properties.composition)
+        {
             return Err(SceneError::InvalidAction);
         }
     }
@@ -2297,6 +2392,8 @@ fn mix_transfer_into(
     transferred: &[CompositionEntry],
     source_t: Option<f64>,
 ) {
+    let dest_before = crate::hcl::HclInventory::from_item(target);
+    let added = crate::hcl::HclInventory::from_entries(transferred);
     if let Some(source_t) = source_t {
         let c_add = heat_capacity_of_entries(transferred);
         if c_add > AMOUNT_EPS {
@@ -2305,9 +2402,12 @@ fn mix_transfer_into(
     }
     merge_composition_into(target, transferred, true);
     crate::solubility::sync_fill_ml(target);
+    apply_hcl_dilution_temperature(target, dest_before, added);
 }
 
 fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquot_t: f64) {
+    let dest_before = crate::hcl::HclInventory::from_item(target);
+    let added = crate::hcl::HclInventory::from_entries(aliquot);
     let c_add = heat_capacity_of_entries(aliquot);
     // Pipette always blends with aliquot T (even when dest is empty / add_ml is tiny).
     if c_add > AMOUNT_EPS {
@@ -2317,6 +2417,31 @@ fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquo
     }
     merge_composition_into(target, aliquot, false);
     crate::solubility::sync_fill_ml(target);
+    apply_hcl_dilution_temperature(target, dest_before, added);
+}
+
+fn apply_hcl_dilution_temperature(
+    target: &mut SceneItem,
+    dest_before: crate::hcl::HclInventory,
+    added: crate::hcl::HclInventory,
+) {
+    if dest_before.n_h <= AMOUNT_EPS && added.n_h <= AMOUNT_EPS {
+        return;
+    }
+    let after = crate::hcl::HclInventory::from_item(target);
+    let q = crate::hcl::hcl_dilution_heat_j(dest_before, added, after);
+    if q.abs() <= AMOUNT_EPS {
+        return;
+    }
+    let c_eff = effective_heat_capacity(target);
+    if c_eff <= AMOUNT_EPS {
+        return;
+    }
+    let t = target
+        .properties
+        .temperature_c
+        .unwrap_or(AMBIENT_TEMPERATURE_C);
+    target.properties.temperature_c = Some(t - q / c_eff);
 }
 
 fn add_or_increase_water(item: &mut SceneItem, ml: f64) {
@@ -2346,7 +2471,7 @@ fn take_liquid_aliquot(
     source: &mut SceneItem,
     volume_ml: f64,
 ) -> Result<Vec<CompositionEntry>, SceneError> {
-    let liquid = crate::solubility::liquid_water_ml(source);
+    let liquid = crate::hcl::solution_volume_ml(source);
     if liquid + AMOUNT_EPS < volume_ml {
         return Err(SceneError::InvalidAction);
     }
@@ -2359,15 +2484,19 @@ fn take_liquid_aliquot(
             continue;
         }
         if entry.substance_id == "water" && entry.phase == "liquid" {
-            aliquot.push(CompositionEntry {
-                substance_id: "water".into(),
-                phase: "liquid".into(),
-                amount_ml: Some(volume_ml),
-                amount_scoop: None,
-                amount_g: None,
-                amount_mol: None,
-            });
-            let rest = entry.amount_ml.unwrap_or(0.0) - volume_ml;
+            let water_ml = entry.amount_ml.unwrap_or(0.0).max(0.0);
+            let taken_water = water_ml * frac;
+            let rest = water_ml - taken_water;
+            if taken_water > AMOUNT_EPS {
+                aliquot.push(CompositionEntry {
+                    substance_id: "water".into(),
+                    phase: "liquid".into(),
+                    amount_ml: Some(taken_water),
+                    amount_scoop: None,
+                    amount_g: None,
+                    amount_mol: None,
+                });
+            }
             if rest > AMOUNT_EPS {
                 remaining.push(CompositionEntry {
                     amount_ml: Some(rest),

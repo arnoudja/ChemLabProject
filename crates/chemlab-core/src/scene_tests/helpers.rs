@@ -35,18 +35,19 @@ pub(super) fn bench_with_water(lab_id: &str) -> Scene {
 }
 
 #[test]
-fn initial_bench_scene_has_twelve_items_with_water_and_evaporation_bench() {
+fn initial_bench_scene_has_thirteen_items_with_water_hcl_and_evaporation_bench() {
     let scene = initial_bench_scene("lab-test");
     assert_eq!(scene.lab_id, "lab-test");
     assert_eq!(scene.temperature_c, 20.0);
     assert_eq!(scene.version, 0);
     assert!(scene.last_events.is_empty());
     assert_eq!(scene.last_applied_unix_ms, None);
-    assert_eq!(scene.items.len(), 12);
+    assert_eq!(scene.items.len(), 13);
 
     let ids: Vec<_> = scene.items.iter().map(|i| i.id.as_str()).collect();
     assert!(ids.contains(&"spoon-1"));
     assert!(ids.contains(&"beaker-h2o"));
+    assert!(ids.contains(&"beaker-hcl"));
     assert!(ids.contains(&"beaker-nacl"));
     assert!(ids.contains(&"beaker-cacl2"));
     assert!(ids.contains(&"beaker-sand"));
@@ -71,6 +72,16 @@ fn initial_bench_scene_has_twelve_items_with_water_and_evaporation_bench() {
     assert_eq!(distilled.properties.composition[0].substance_id, "water");
     assert_eq!(distilled.properties.composition[0].phase, "liquid");
     assert_eq!(distilled.properties.composition[0].amount_ml, Some(100.0));
+
+    let hcl = item(&scene, "beaker-hcl");
+    assert_eq!(hcl.label, "Hydrochloric acid (30%)");
+    assert_eq!(hcl.properties.volume_ml, Some(crate::hcl::HCL_STOCK_CAPACITY_ML));
+    assert!((crate::hcl::solution_volume_ml(hcl) - 10.0).abs() < 1e-6);
+    assert!((water_ml(hcl) - crate::hcl::HCL_STOCK_WATER_MASS_G).abs() < 1e-9);
+    assert!((aqueous_mol(hcl, "h+") - crate::hcl::HCL_STOCK_HCL_MOLES).abs() < 1e-12);
+    assert!((aqueous_mol(hcl, "cl-") - crate::hcl::HCL_STOCK_HCL_MOLES).abs() < 1e-12);
+    let ph = crate::hcl::ph_of_item(hcl).expect("stock pH");
+    assert!(ph < 0.0);
 
     let water = item(&scene, "beaker-water");
     assert_eq!(water.kind, "beaker");
@@ -218,6 +229,27 @@ pub(super) fn use_tongs(scene: &mut Scene, target_id: &str) -> Result<(), SceneE
             target_item_id: target_id.into(),
         },
     )
+}
+
+/// Pick up `source_id` with tongs (if not already held), pour into `target_id`, put tongs away.
+pub(super) fn use_tongs_pour(scene: &mut Scene, source_id: &str, target_id: &str) {
+    for target in [source_id, target_id] {
+        apply_action(
+            scene,
+            Action::UseTool {
+                tool_item_id: "tongs-1".into(),
+                target_item_id: target.into(),
+            },
+        )
+        .unwrap_or_else(|err| panic!("tongs use on {target}: {err:?}"));
+    }
+    apply_action(
+        scene,
+        Action::PutAway {
+            tool_item_id: "tongs-1".into(),
+        },
+    )
+    .unwrap();
 }
 
 pub(super) fn put_tongs_away(scene: &mut Scene) -> Result<(), SceneError> {

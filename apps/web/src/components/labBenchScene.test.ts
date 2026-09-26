@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { CompositionEntry, Item, LabScene } from '../generated/contracts'
+import type { CompositionEntry, Item, ItemProperties, LabScene } from '../generated/contracts'
 import {
   dishAmountMl,
   distilledWaterAmountMl,
@@ -20,11 +20,17 @@ function entry(
   }
 }
 
-function sceneWith(items: Partial<Item>[]): LabScene {
+type SceneItemInput = Partial<Omit<Item, 'properties'>> & {
+  properties?: Partial<ItemProperties>
+}
+
+function sceneWith(items: SceneItemInput[]): LabScene {
   return {
     lab_id: 'lab-test',
     version: 1,
     temperature_c: 20,
+    mode: 'free',
+    challenge_completed: false,
     items: items.map((item) => ({
       id: item.id ?? 'item',
       kind: item.kind ?? 'beaker',

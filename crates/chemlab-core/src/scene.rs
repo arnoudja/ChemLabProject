@@ -238,7 +238,11 @@ pub enum SceneError {
     Dissolve(#[from] DissolveError),
 }
 
-fn solid_stock_beaker(id: impl Into<String>, label: impl Into<String>, substance_id: impl Into<String>) -> SceneItem {
+fn solid_stock_beaker(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    substance_id: impl Into<String>,
+) -> SceneItem {
     SceneItem {
         id: id.into(),
         kind: "beaker".into(),

@@ -72,4 +72,3 @@ fn ensure_default_bench_items_restores_filtration_catalog_without_resetting_vess
         1
     );
 }
-

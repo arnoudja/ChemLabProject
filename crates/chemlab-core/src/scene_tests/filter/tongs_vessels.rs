@@ -305,4 +305,3 @@ fn pipette_from_filtrate_leaves_solids_and_scales_ions() {
         (aqueous_mol(item(&scene, "beaker-filtrate"), "na+") - 0.02 * (1.0 - frac)).abs() < 1e-12
     );
 }
-

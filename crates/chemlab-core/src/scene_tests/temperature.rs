@@ -141,14 +141,16 @@ fn capacity_aware_heat_reaches_100_slower_with_more_water() {
     )
     .unwrap();
 
-    apply_elapsed(&mut light, 10.0);
-    apply_elapsed(&mut heavy, 10.0);
+    // Short of boil for 1 ml at 1100 W (~6 s to T_boil); keep heat-up-only.
+    let dt = 4.0;
+    apply_elapsed(&mut light, dt);
+    apply_elapsed(&mut heavy, dt);
     let t_light = item(&light, "dish-1").properties.temperature_c.unwrap();
     let t_heavy = item(&heavy, "dish-1").properties.temperature_c.unwrap();
     assert!(t_light > t_heavy + 1.0, "light={t_light} heavy={t_heavy}");
 
     let c_light = dish_c_eff(1.0);
-    let expected_light = (20.0 + (BURNER_POWER_W / c_light) * 10.0).min(boiling_temperature_c(1.0));
+    let expected_light = (20.0 + (BURNER_POWER_W / c_light) * dt).min(boiling_temperature_c(1.0));
     assert!((t_light - expected_light).abs() < 1e-9);
 }
 

@@ -76,7 +76,7 @@ pub const DISH_MASS_TRANSFER_COEFF_ML_PER_S_M2: f64 = 11.93;
 pub const BOILING_TEMPERATURE_C: f64 = 99.63;
 
 /// Burner heat power delivered to the evaporation dish (W).
-pub const BURNER_POWER_W: f64 = 80.0;
+pub const BURNER_POWER_W: f64 = 1100.0;
 
 /// Glass beaker body heat capacity (J/K), including filtrate / distilled-water stocks.
 pub const C_BEAKER: f64 = 150.0;
@@ -1469,8 +1469,8 @@ fn apply_heat_limited_boil(dish: &mut SceneItem, dt: f64) {
     // Caller only invokes this while the burner is on. Newton cool is skipped for
     // the dish while heating (see apply_elapsed), so Q_net = burner power only.
     // Subtracting UA here would double-count loss that is not applied while
-    // heating, and with UA_DISH=4 / BURNER_POWER_W=80 would make Q_net negative
-    // near 100 °C. Burner-off paths never call this (Q_net ≤ 0).
+    // heating (and historically with BURNER_POWER_W=80 / UA_DISH=4 would make
+    // Q_net negative near 100 °C). Burner-off paths never call this (Q_net ≤ 0).
     let m_dot = (BURNER_POWER_W / WATER_LATENT_HEAT_J_PER_G).max(0.0);
     remove_liquid_water_ml(dish, m_dot * dt);
 }

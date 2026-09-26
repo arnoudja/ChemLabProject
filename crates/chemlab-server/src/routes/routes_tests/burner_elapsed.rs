@@ -115,7 +115,7 @@ async fn get_scene_applies_elapsed_heat_while_burner_on() {
     let temperature = scene_item(&after, "dish-1")["properties"]["temperature_c"]
         .as_f64()
         .expect("temperature_c");
-    // 1 ml water + dish body; power / C_eff ≈ 80 / 84.184 ≈ 0.95 °C/s.
+    // 1 ml water + dish body; power / C_eff ≈ 1100 / 84.184 ≈ 13.1 °C/s.
     let c_eff = chemlab_core::C_DISH + 1.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K;
     let expected = 20.0 + (chemlab_core::BURNER_POWER_W / c_eff) * 1.5;
     assert!(

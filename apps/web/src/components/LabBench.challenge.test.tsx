@@ -89,7 +89,6 @@ describe('LabBench challenge mode', () => {
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
     expect(seen).not.toContain('Sodium hydroxide (NaOH)')
     expect(seen).not.toContain('Hydrochloric acid (30%)')
-    expect(seen).not.toContain('Hydrochloric acid (30%)')
   })
 
   it('starts the challenge distilled-water stock at 10 ml', () => {

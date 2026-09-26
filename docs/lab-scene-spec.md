@@ -126,7 +126,7 @@ Transfers (pipette empty, tongs liquid/solid pour, filter fluid → filtrate, sp
 
 where `C_dest` is the destination's effective heat capacity **before** the add. A **spoon** holding solids carries `temperature_c` from the source vessel and clears it on empty / put-away.
 
-**Filter pour wash:** after the phase split (solids → paper, liquid+aqueous → fluid parcel) and before mixing into the filtrate, fine soluble salts on the paper (`nacl`, `cacl2`) partially dissolve into the fluid with contact time `τ ∝ V_fluid` at the energy-weighted blend T of fluid + paper solids. `m_diss = min(avail, unsaturated_cap) · (1 − exp(−k·τ))` (common-ion capacity from `solubility`, including Cl⁻ from aqueous HCl); sand never dissolves. Dissolve ΔH adjusts the fluid parcel temperature before the filtrate blend.
+**Filter pour wash:** after the phase split (solids → paper, liquid+aqueous → fluid parcel) and before mixing into the filtrate, fine soluble solids on the paper (`nacl`, `cacl2`, `naoh`) partially dissolve into the fluid with contact time `τ ∝ V_fluid` at the energy-weighted blend T of fluid + paper solids. For salts `m_diss = min(avail, unsaturated_cap) · (1 − exp(−k·τ))` (common-ion capacity from `solubility`, including Cl⁻ from aqueous HCl); NaOH is highly soluble (no SI cap): `m_diss = avail · (1 − exp(−k·τ))`. Sand never dissolves. Dissolve ΔH adjusts the fluid parcel temperature before the filtrate blend.
 
 ### Free-mode hydrochloric acid stock
 
@@ -134,11 +134,11 @@ Free mode includes `beaker-hcl` (**Hydrochloric acid (30%)**): **10.00 ml** solu
 
 Mixing parcels that change HCl concentration applies tabulated **integral dilution enthalpy** (exothermic when concentrating → diluting) as `ΔT = −Q / C_eff` after the sensible blend. Salt dissolve into acidic water reuses the water-solvent path; `enforce_saturation` preserves `h+` and includes its Cl⁻ in the mixed SI / unsaturated capacity. Na⁺ paired with OH⁻ is excluded from the NaCl inventory so dissolving NaOH cannot invent Cl⁻.
 
-Inspect shows **pH** for aqueous acid or base: strong-acid approx `pH = −log₁₀([H⁺])`; strong-base approx `pH = 14 + log₁₀([OH⁻])`; near-neutral when both are consumed by neutralization.
+Inspect shows **pH** for aqueous acid or base: strong-acid approx `pH = −log₁₀([H⁺])`; strong-base approx `pH = 14 + log₁₀([OH⁻])`. When neutralization has consumed both `h+` and `oh-`, no pH is shown (same as pure water — the APIs return `None`).
 
 ### Free-mode sodium hydroxide stock
 
-Free mode includes `beaker-naoh` (**Sodium hydroxide**): **2.00 g** solid (`10 × 0.2 g` scoops), tongs + spoon parity with NaCl. Dissolves to aqueous `na+` + `oh-` (1:1, M = 40.00 g/mol) with ΔH_sol = **−44500 J/mol**. After mix/dissolve/filter wash, `H+ + OH- → H2O` (ΔH_neut = **−55800 J/mol**) runs **before** saturation. Challenge layouts omit `beaker-naoh` unless listed (e.g. `separate-nacl-sio2`). Out of scope: NaOH(aq) density table, base dish evaporation, buffers / extra safety UX.
+Free mode includes `beaker-naoh` (**Sodium hydroxide**): **2.00 g** solid (`10 × 0.2 g` scoops), tongs + spoon parity with NaCl. Dissolves to aqueous `na+` + `oh-` (1:1, M = 40.00 g/mol) with ΔH_sol = **−44500 J/mol** whenever solid NaOH meets liquid water (spoon pour, tongs dump into a wet vessel, water poured onto dry solid, and filter-paper wash — highly soluble, contact-time fraction with no SI cap). After mix/dissolve/filter wash, `H+ + OH- → H2O` (ΔH_neut = **−55800 J/mol**) runs **before** saturation. Challenge layouts omit `beaker-naoh` unless listed (e.g. `separate-nacl-sio2`). Out of scope: NaOH(aq) density table, base dish evaporation, buffers / extra safety UX.
 
 ### Burner heat, ambient cooling, clock
 

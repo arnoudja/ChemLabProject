@@ -35,7 +35,7 @@ pub(super) fn bench_with_water(lab_id: &str) -> Scene {
 }
 
 #[test]
-fn initial_bench_scene_has_thirteen_items_with_water_hcl_and_evaporation_bench() {
+fn initial_bench_scene_has_fourteen_items_with_water_hcl_naoh_and_evaporation_bench() {
     let scene = initial_bench_scene("lab-test");
     assert_eq!(scene.lab_id, "lab-test");
     assert_eq!(scene.temperature_c, 20.0);

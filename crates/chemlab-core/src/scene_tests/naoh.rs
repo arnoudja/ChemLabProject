@@ -202,6 +202,111 @@ fn tongs_dump_naoh_into_empty_beaker_stays_solid() {
 }
 
 #[test]
+fn tongs_dump_naoh_into_filled_beaker_dissolves() {
+    let mut scene = bench_with_water("lab-test");
+    let naoh_g = solid_g(item(&scene, "beaker-naoh"), "naoh");
+    let t_before = item(&scene, "beaker-water")
+        .properties
+        .temperature_c
+        .unwrap();
+
+    use_tongs(&mut scene, "beaker-naoh").unwrap();
+    use_tongs(&mut scene, "beaker-water").unwrap();
+
+    let water = item(&scene, "beaker-water");
+    let moles = naoh_g / 40.0;
+    assert!((aqueous_mol(water, "na+") - moles).abs() < 1e-9);
+    assert!((aqueous_mol(water, "oh-") - moles).abs() < 1e-9);
+    assert_eq!(solid_g(water, "naoh"), 0.0);
+    assert_eq!(solid_g(item(&scene, "beaker-naoh"), "naoh"), 0.0);
+    assert!(aqueous_mol(water, "cl-") < 1e-12);
+    let t_after = water.properties.temperature_c.unwrap();
+    assert!(
+        t_after > t_before + 0.1,
+        "tongs dump dissolve must heat ({t_before} → {t_after})"
+    );
+    let ph = crate::hcl::ph_of_item(water).expect("base pH");
+    assert!(ph > 12.0, "strong base pH, got {ph}");
+}
+
+#[test]
+fn pouring_water_onto_solid_naoh_dissolves() {
+    let mut scene = initial_bench_scene("lab-test");
+    let naoh_g = solid_g(item(&scene, "beaker-naoh"), "naoh");
+    use_tongs(&mut scene, "beaker-naoh").unwrap();
+    use_tongs(&mut scene, "beaker-water").unwrap();
+    put_tongs_away(&mut scene).unwrap();
+    assert!((solid_g(item(&scene, "beaker-water"), "naoh") - naoh_g).abs() < 1e-12);
+    assert_eq!(aqueous_mol(item(&scene, "beaker-water"), "oh-"), 0.0);
+
+    use_tongs(&mut scene, "beaker-h2o").unwrap();
+    use_tongs(&mut scene, "beaker-water").unwrap();
+
+    let water = item(&scene, "beaker-water");
+    let moles = naoh_g / 40.0;
+    assert!(water_ml(water) > 1e-6);
+    assert!((aqueous_mol(water, "oh-") - moles).abs() < 1e-9);
+    assert!((aqueous_mol(water, "na+") - moles).abs() < 1e-9);
+    assert_eq!(solid_g(water, "naoh"), 0.0);
+}
+
+#[test]
+fn stoichiometric_naoh_into_hcl_consumes_both_ions() {
+    let mut scene = initial_bench_scene("lab-test");
+    let n_rxn = SPOON_SCOOP_MASS_G / 40.0;
+    let water = scene
+        .items
+        .iter_mut()
+        .find(|i| i.id == "beaker-water")
+        .unwrap();
+    water.properties.composition = vec![
+        CompositionEntry {
+            substance_id: "water".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(100.0),
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: None,
+        },
+        CompositionEntry {
+            substance_id: "h+".into(),
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: Some(n_rxn),
+        },
+        CompositionEntry {
+            substance_id: "cl-".into(),
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: Some(n_rxn),
+        },
+    ];
+    water.properties.fill_ml = Some(100.0);
+    water.properties.temperature_c = Some(20.0);
+
+    scoop_naoh(&mut scene);
+    apply_action(
+        &mut scene,
+        Action::Pour {
+            source_item_id: "spoon-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+
+    let water = item(&scene, "beaker-water");
+    assert!(aqueous_mol(water, "h+") < 1e-12);
+    assert!(aqueous_mol(water, "oh-") < 1e-12);
+    assert!((aqueous_mol(water, "na+") - n_rxn).abs() < 1e-9);
+    assert!((aqueous_mol(water, "cl-") - n_rxn).abs() < 1e-9);
+    assert!(crate::hcl::ph_of_item(water).is_none());
+}
+
+#[test]
 fn tongs_return_naoh_to_matching_stock_only() {
     let mut scene = initial_bench_scene("lab-test");
     use_tongs(&mut scene, "beaker-naoh").unwrap();

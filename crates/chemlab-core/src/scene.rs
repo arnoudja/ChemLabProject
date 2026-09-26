@@ -1290,10 +1290,52 @@ fn set_aqueous_mol_on_item(item: &mut SceneItem, substance_id: &str, moles: f64)
     });
 }
 
-/// Neutralize acid/base, then run mixed-salt saturation.
+/// Dissolve any solid NaOH into aqueous `na+`/`oh-` when liquid water is present,
+/// neutralize acid/base, then run mixed-salt saturation.
+///
+/// NaOH is highly soluble and is not in the NaCl/CaCl₂ SI table, so tongs dumps /
+/// water-onto-solid paths must author ions here (spoon pour already dissolves via
+/// the qualitative table before this runs).
 fn finalize_aqueous_vessel(item: &mut SceneItem) {
+    dissolve_solid_naoh_in_water(item);
     apply_neutralization(item);
     crate::solubility::enforce_saturation(item);
+}
+
+/// Convert all solid `naoh` in a vessel to aqueous ions when liquid water is present.
+fn dissolve_solid_naoh_in_water(item: &mut SceneItem) {
+    let water_ml = item
+        .properties
+        .composition
+        .iter()
+        .find(|c| c.substance_id == "water" && c.phase == "liquid")
+        .and_then(|c| c.amount_ml)
+        .unwrap_or(0.0);
+    if water_ml <= AMOUNT_EPS {
+        return;
+    }
+    let mass_g = item
+        .properties
+        .composition
+        .iter()
+        .find(|c| c.substance_id == "naoh" && c.phase == "solid")
+        .map(solid_amount_g)
+        .unwrap_or(0.0);
+    if mass_g <= AMOUNT_EPS {
+        return;
+    }
+    item.properties
+        .composition
+        .retain(|c| !(c.substance_id == "naoh" && c.phase == "solid"));
+    if let Some((moles, delta_h)) =
+        author_dissolved_salt_ions(&mut item.properties.composition, "naoh", mass_g)
+    {
+        let t = item
+            .properties
+            .temperature_c
+            .unwrap_or(AMBIENT_TEMPERATURE_C);
+        apply_dissolution_temperature_change(item, moles, delta_h, t);
+    }
 }
 
 /// Apply dissolution heat to the solvent vessel: ΔT = −(n·ΔH_sol) / C_eff.
@@ -2151,17 +2193,19 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
     Ok(())
 }
 
-/// Partial contact-time wash: dissolve fine soluble salts on the paper into the
+/// Partial contact-time wash: dissolve fine soluble solids on the paper into the
 /// fluid parcel before it mixes into the filtrate. Sand stays solid on the paper.
 ///
-/// `τ = FILTER_WASH_TAU_S_PER_ML · V_fluid`; `m_diss = min(avail, cap) · (1 − exp(−k·τ))`
-/// at energy-weighted blend T of fluid + paper solids.
+/// `τ = FILTER_WASH_TAU_S_PER_ML · V_fluid`; for NaCl/CaCl₂
+/// `m_diss = min(avail, unsaturated_cap) · (1 − exp(−k·τ))` at energy-weighted
+/// blend T of fluid + paper solids. NaOH is highly soluble (no SI cap):
+/// `m_diss = avail · (1 − exp(−k·τ))`.
 ///
 /// Each salt uses its own unsaturated capacity in sequence (NaCl then CaCl₂),
-/// updating fluid ions between salts. That can slightly overshoot simultaneous
-/// mixed SI=1 when both solids are abundant; callers run `enforce_saturation` on
-/// the filtrate after mix, which may leave a small precipitate in the beaker
-/// rather than restoring paper solids.
+/// then NaOH; updating fluid ions between salts. That can slightly overshoot
+/// simultaneous mixed SI=1 when both salts are abundant; callers run
+/// `finalize_aqueous_vessel` on the filtrate after mix, which may leave a small
+/// precipitate in the beaker rather than restoring paper solids.
 fn wash_paper_solids_into_fluid(
     paper: &mut SceneItem,
     fluid: &mut Vec<CompositionEntry>,
@@ -2222,6 +2266,27 @@ fn wash_paper_solids_into_fluid(
             let c_eff = heat_capacity_of_entries(fluid);
             if c_eff > AMOUNT_EPS {
                 *fluid_t -= moles * delta_h / c_eff;
+            }
+        }
+    }
+
+    // Highly soluble NaOH: contact-time fraction only (no SI capacity gate).
+    let avail_naoh = paper
+        .properties
+        .composition
+        .iter()
+        .find(|c| c.substance_id == "naoh" && c.phase == "solid")
+        .map(solid_amount_g)
+        .unwrap_or(0.0);
+    if avail_naoh > AMOUNT_EPS {
+        let m_diss = avail_naoh * frac;
+        if m_diss > AMOUNT_EPS {
+            remove_solid_mass(paper, "naoh", m_diss);
+            if let Some((moles, delta_h)) = author_dissolved_salt_ions(fluid, "naoh", m_diss) {
+                let c_eff = heat_capacity_of_entries(fluid);
+                if c_eff > AMOUNT_EPS {
+                    *fluid_t -= moles * delta_h / c_eff;
+                }
             }
         }
     }

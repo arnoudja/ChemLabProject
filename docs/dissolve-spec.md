@@ -71,7 +71,7 @@ When the scene pours a dissolving salt into water, `chemlab-core` authors aqueou
 
 Molar masses: NaCl `58.44` g/mol, CaCl₂ `110.98` g/mol, NaOH `40.00` g/mol. Water mass ≈ liquid `amount_ml` (1 g/ml); c_p = `4.184` J/(g·K). Solid NaOH c_p ≈ `1.49` J/(g·K).
 
-**Neutralization:** when aqueous `h+` and `oh-` coexist after mix/dissolve, the scene consumes equal moles (`H+ + OH- → H2O`, ΔH_neut = `−55800` J/mol) **before** `enforce_saturation`. Spectators `na+`/`cl-` remain; excess acid or base stays. Strong-base pH ≈ `14 + log10([OH-])`. Na⁺ paired with OH⁻ is **not** counted as NaCl inventory (so SI does not invent Cl⁻).
+**Neutralization:** when aqueous `h+` and `oh-` coexist after mix/dissolve, the scene consumes equal moles (`H+ + OH- → H2O`, ΔH_neut = `−55800` J/mol) **before** `enforce_saturation`. Spectators `na+`/`cl-` remain; excess acid or base stays. Strong-base pH ≈ `14 + log10([OH-])`. When both ions are consumed, inspect shows no pH (`None`, same as pure water). Na⁺ paired with OH⁻ is **not** counted as NaCl inventory (so SI does not invent Cl⁻). Solid NaOH also ionizes whenever it meets liquid water outside the spoon qualitative table (tongs dump into a wet vessel, water onto dry solid) via the scene finalize path; filter wash uses contact-time kinetics with no SI cap.
 
 ## Errors (not dissolve results)
 

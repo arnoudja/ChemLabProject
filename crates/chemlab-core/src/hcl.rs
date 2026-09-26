@@ -293,8 +293,9 @@ pub fn azeotrope_vapor_w_hcl(w_liquid: f64) -> f64 {
 }
 
 /// Remove `loss_mass_g` of vapor from a dish with aqueous HCl, splitting water and
-/// HCl (proportional H⁺/Cl⁻) toward the azeotrope. Latent heat is still charged as
-/// water ΔH_vap × mass (documented approximation).
+/// HCl toward the azeotrope. Evaporated HCl removes `n_loss = m_hcl_loss / M_HCl`
+/// moles from **both** `h+` and `cl-` (clamp ≥ 0) so salt Cl⁻ is not scaled away.
+/// Latent heat is still charged as water ΔH_vap × mass (documented approximation).
 pub fn remove_hcl_water_evap_mass(dish: &mut SceneItem, loss_mass_g: f64) {
     if loss_mass_g <= AMOUNT_EPS {
         return;
@@ -323,26 +324,25 @@ pub fn remove_hcl_water_evap_mass(dish: &mut SceneItem, loss_mass_g: f64) {
         water.amount_ml = Some(remain);
     }
 
-    if inv.hcl_mass_g() > AMOUNT_EPS && m_hcl_loss > AMOUNT_EPS {
-        let frac = (m_hcl_loss / inv.hcl_mass_g()).clamp(0.0, 1.0);
-        scale_aqueous(dish, "h+", 1.0 - frac);
-        scale_aqueous(dish, "cl-", 1.0 - frac);
+    if m_hcl_loss > AMOUNT_EPS {
+        let n_loss = m_hcl_loss / HCL_MOLAR_MASS_G_PER_MOL;
+        subtract_aqueous(dish, "h+", n_loss);
+        subtract_aqueous(dish, "cl-", n_loss);
     }
 }
 
-fn scale_aqueous(item: &mut SceneItem, substance_id: &str, remain_frac: f64) {
+fn subtract_aqueous(item: &mut SceneItem, substance_id: &str, n_loss: f64) {
+    if n_loss <= AMOUNT_EPS {
+        return;
+    }
     if let Some(entry) = item
         .properties
         .composition
         .iter_mut()
         .find(|c| c.substance_id == substance_id && c.phase == "aqueous")
     {
-        let next = entry.amount_mol.unwrap_or(0.0).max(0.0) * remain_frac.max(0.0);
-        if next <= AMOUNT_EPS {
-            entry.amount_mol = Some(0.0);
-        } else {
-            entry.amount_mol = Some(next);
-        }
+        let next = (entry.amount_mol.unwrap_or(0.0).max(0.0) - n_loss).max(0.0);
+        entry.amount_mol = Some(if next <= AMOUNT_EPS { 0.0 } else { next });
     }
     item.properties.composition.retain(|c| {
         if c.phase == "aqueous" && c.substance_id == substance_id {

@@ -236,6 +236,74 @@ fn dish_boil_with_hcl_uses_azeotrope_temperature_and_removes_acid() {
 }
 
 #[test]
+fn dish_boil_with_hcl_and_dissolved_nacl_preserves_salt_cl() {
+    let mut scene = initial_bench_scene("lab-test");
+    // Dilute a pipette of HCl into the main beaker, dissolve one scoop NaCl, pour to dish.
+    fill_pipette_from(&mut scene, "beaker-hcl");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    fill_main_beaker_keep_ions(&mut scene, 20.0);
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "spoon-1".into(),
+            target_item_id: "beaker-nacl".into(),
+        },
+    )
+    .unwrap();
+    apply_action(
+        &mut scene,
+        Action::Pour {
+            source_item_id: "spoon-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+
+    let dish = item(&scene, "dish-1");
+    let n_na0 = aqueous_mol(dish, "na+");
+    let n_h0 = aqueous_mol(dish, "h+");
+    let n_cl0 = aqueous_mol(dish, "cl-");
+    assert!(n_na0 > 1e-6, "expected dissolved Na+");
+    assert!(n_h0 > 1e-6, "expected aqueous H+");
+    assert!(
+        (n_cl0 - (n_na0 + n_h0)).abs() < 1e-9,
+        "charge balance before boil: n_cl={n_cl0} n_na={n_na0} n_h={n_h0}"
+    );
+
+    apply_action(
+        &mut scene,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    apply_elapsed(&mut scene, 12.0);
+    apply_elapsed(&mut scene, 2.0);
+
+    let dish = item(&scene, "dish-1");
+    let n_na1 = aqueous_mol(dish, "na+");
+    let n_h1 = aqueous_mol(dish, "h+");
+    let n_cl1 = aqueous_mol(dish, "cl-");
+    assert!(n_h1 < n_h0, "HCl should leave with vapor");
+    assert!(
+        (n_na1 - n_na0).abs() < 1e-9,
+        "Na+ must stay: before={n_na0} after={n_na1}"
+    );
+    assert!(
+        (n_cl1 - (n_na1 + n_h1)).abs() < 1e-9,
+        "Cl− must track Na+ + H+ after HCl evaporates: n_cl={n_cl1} n_na={n_na1} n_h={n_h1}"
+    );
+}
+
+#[test]
 fn challenge_scene_omits_hcl_stock() {
     let scene = initial_scene_for_mode("lab-test", "separate-nacl-sio2").unwrap();
     assert!(scene.items.iter().all(|i| i.id != "beaker-hcl"));

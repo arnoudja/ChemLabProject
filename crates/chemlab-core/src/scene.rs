@@ -238,6 +238,141 @@ pub enum SceneError {
     Dissolve(#[from] DissolveError),
 }
 
+fn solid_stock_beaker(id: impl Into<String>, label: impl Into<String>, substance_id: impl Into<String>) -> SceneItem {
+    SceneItem {
+        id: id.into(),
+        kind: "beaker".into(),
+        label: label.into(),
+        location: "bench".into(),
+        properties: ItemProperties {
+            volume_ml: Some(250.0),
+            fill_ml: Some(100.0),
+            transparent: Some(true),
+            colourless: Some(true),
+            temperature_c: Some(20.0),
+            composition: vec![CompositionEntry {
+                substance_id: substance_id.into(),
+                phase: "solid".into(),
+                amount_ml: None,
+                amount_scoop: Some(10),
+                amount_g: Some(10.0 * SPOON_SCOOP_MASS_G),
+                amount_mol: None,
+            }],
+            holding: Vec::new(),
+            ..ItemProperties::default()
+        },
+    }
+}
+
+fn distilled_water_stock_beaker() -> SceneItem {
+    SceneItem {
+        id: "beaker-h2o".into(),
+        kind: "beaker".into(),
+        label: "Distilled water".into(),
+        location: "bench".into(),
+        properties: ItemProperties {
+            volume_ml: Some(DISTILLED_WATER_CAPACITY_ML),
+            fill_ml: Some(DISTILLED_WATER_CAPACITY_ML),
+            transparent: Some(true),
+            colourless: Some(true),
+            temperature_c: Some(20.0),
+            composition: vec![CompositionEntry {
+                substance_id: "water".into(),
+                phase: "liquid".into(),
+                amount_ml: Some(DISTILLED_WATER_CAPACITY_ML),
+                amount_scoop: None,
+                amount_g: None,
+                amount_mol: None,
+            }],
+            holding: Vec::new(),
+            ..ItemProperties::default()
+        },
+    }
+}
+
+fn hcl_stock_beaker() -> SceneItem {
+    SceneItem {
+        id: "beaker-hcl".into(),
+        kind: "beaker".into(),
+        label: "Hydrochloric acid (30%)".into(),
+        location: "bench".into(),
+        properties: ItemProperties {
+            volume_ml: Some(crate::hcl::HCL_STOCK_CAPACITY_ML),
+            fill_ml: Some(crate::hcl::HCL_STOCK_CAPACITY_ML),
+            transparent: Some(true),
+            colourless: Some(true),
+            temperature_c: Some(20.0),
+            composition: vec![
+                CompositionEntry {
+                    substance_id: "water".into(),
+                    phase: "liquid".into(),
+                    amount_ml: Some(crate::hcl::HCL_STOCK_WATER_MASS_G),
+                    amount_scoop: None,
+                    amount_g: None,
+                    amount_mol: None,
+                },
+                CompositionEntry {
+                    substance_id: "h+".into(),
+                    phase: "aqueous".into(),
+                    amount_ml: None,
+                    amount_scoop: None,
+                    amount_g: None,
+                    amount_mol: Some(crate::hcl::HCL_STOCK_HCL_MOLES),
+                },
+                CompositionEntry {
+                    substance_id: "cl-".into(),
+                    phase: "aqueous".into(),
+                    amount_ml: None,
+                    amount_scoop: None,
+                    amount_g: None,
+                    amount_mol: Some(crate::hcl::HCL_STOCK_HCL_MOLES),
+                },
+            ],
+            holding: Vec::new(),
+            ..ItemProperties::default()
+        },
+    }
+}
+
+fn empty_bench_beaker(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    volume_ml: f64,
+    temperature_c: f64,
+) -> SceneItem {
+    SceneItem {
+        id: id.into(),
+        kind: "beaker".into(),
+        label: label.into(),
+        location: "bench".into(),
+        properties: ItemProperties {
+            volume_ml: Some(volume_ml),
+            fill_ml: Some(0.0),
+            transparent: Some(true),
+            colourless: Some(true),
+            temperature_c: Some(temperature_c),
+            ..ItemProperties::default()
+        },
+    }
+}
+
+fn empty_evaporation_dish() -> SceneItem {
+    SceneItem {
+        id: "dish-1".into(),
+        kind: "evaporation_dish".into(),
+        label: "Evaporation dish".into(),
+        location: "bench".into(),
+        properties: ItemProperties {
+            volume_ml: Some(DISH_CAPACITY_ML),
+            fill_ml: Some(0.0),
+            transparent: Some(true),
+            colourless: Some(true),
+            temperature_c: Some(AMBIENT_TEMPERATURE_C),
+            ..ItemProperties::default()
+        },
+    }
+}
+
 /// Build the Free-mode bench scene for a lab.
 pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
     Scene {
@@ -255,176 +390,13 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                 location: "bench".into(),
                 properties: ItemProperties::default(),
             },
-            SceneItem {
-                id: "beaker-h2o".into(),
-                kind: "beaker".into(),
-                label: "Distilled water".into(),
-                location: "bench".into(),
-                properties: ItemProperties {
-                    volume_ml: Some(DISTILLED_WATER_CAPACITY_ML),
-                    fill_ml: Some(DISTILLED_WATER_CAPACITY_ML),
-                    transparent: Some(true),
-                    colourless: Some(true),
-                    temperature_c: Some(20.0),
-                    composition: vec![CompositionEntry {
-                        substance_id: "water".into(),
-                        phase: "liquid".into(),
-                        amount_ml: Some(DISTILLED_WATER_CAPACITY_ML),
-                        amount_scoop: None,
-                        amount_g: None,
-                        amount_mol: None,
-                    }],
-                    holding: Vec::new(),
-                    ..ItemProperties::default()
-                },
-            },
-            SceneItem {
-                id: "beaker-hcl".into(),
-                kind: "beaker".into(),
-                label: "Hydrochloric acid (30%)".into(),
-                location: "bench".into(),
-                properties: ItemProperties {
-                    volume_ml: Some(crate::hcl::HCL_STOCK_CAPACITY_ML),
-                    fill_ml: Some(crate::hcl::HCL_STOCK_CAPACITY_ML),
-                    transparent: Some(true),
-                    colourless: Some(true),
-                    temperature_c: Some(20.0),
-                    composition: vec![
-                        CompositionEntry {
-                            substance_id: "water".into(),
-                            phase: "liquid".into(),
-                            amount_ml: Some(crate::hcl::HCL_STOCK_WATER_MASS_G),
-                            amount_scoop: None,
-                            amount_g: None,
-                            amount_mol: None,
-                        },
-                        CompositionEntry {
-                            substance_id: "h+".into(),
-                            phase: "aqueous".into(),
-                            amount_ml: None,
-                            amount_scoop: None,
-                            amount_g: None,
-                            amount_mol: Some(crate::hcl::HCL_STOCK_HCL_MOLES),
-                        },
-                        CompositionEntry {
-                            substance_id: "cl-".into(),
-                            phase: "aqueous".into(),
-                            amount_ml: None,
-                            amount_scoop: None,
-                            amount_g: None,
-                            amount_mol: Some(crate::hcl::HCL_STOCK_HCL_MOLES),
-                        },
-                    ],
-                    holding: Vec::new(),
-                    ..ItemProperties::default()
-                },
-            },
-            SceneItem {
-                id: "beaker-nacl".into(),
-                kind: "beaker".into(),
-                label: "Sodium chloride".into(),
-                location: "bench".into(),
-                properties: ItemProperties {
-                    volume_ml: Some(250.0),
-                    fill_ml: Some(100.0),
-                    transparent: Some(true),
-                    colourless: Some(true),
-                    temperature_c: Some(20.0),
-                    composition: vec![CompositionEntry {
-                        substance_id: "nacl".into(),
-                        phase: "solid".into(),
-                        amount_ml: None,
-                        amount_scoop: Some(10),
-                        amount_g: Some(10.0 * SPOON_SCOOP_MASS_G),
-                        amount_mol: None,
-                    }],
-                    holding: Vec::new(),
-                    ..ItemProperties::default()
-                },
-            },
-            SceneItem {
-                id: "beaker-naoh".into(),
-                kind: "beaker".into(),
-                label: "Sodium hydroxide".into(),
-                location: "bench".into(),
-                properties: ItemProperties {
-                    volume_ml: Some(250.0),
-                    fill_ml: Some(100.0),
-                    transparent: Some(true),
-                    colourless: Some(true),
-                    temperature_c: Some(20.0),
-                    composition: vec![CompositionEntry {
-                        substance_id: "naoh".into(),
-                        phase: "solid".into(),
-                        amount_ml: None,
-                        amount_scoop: Some(10),
-                        amount_g: Some(10.0 * SPOON_SCOOP_MASS_G),
-                        amount_mol: None,
-                    }],
-                    holding: Vec::new(),
-                    ..ItemProperties::default()
-                },
-            },
-            SceneItem {
-                id: "beaker-cacl2".into(),
-                kind: "beaker".into(),
-                label: "Calcium chloride".into(),
-                location: "bench".into(),
-                properties: ItemProperties {
-                    volume_ml: Some(250.0),
-                    fill_ml: Some(100.0),
-                    transparent: Some(true),
-                    colourless: Some(true),
-                    temperature_c: Some(20.0),
-                    composition: vec![CompositionEntry {
-                        substance_id: "cacl2".into(),
-                        phase: "solid".into(),
-                        amount_ml: None,
-                        amount_scoop: Some(10),
-                        amount_g: Some(10.0 * SPOON_SCOOP_MASS_G),
-                        amount_mol: None,
-                    }],
-                    holding: Vec::new(),
-                    ..ItemProperties::default()
-                },
-            },
-            SceneItem {
-                id: "beaker-sand".into(),
-                kind: "beaker".into(),
-                label: "Sand".into(),
-                location: "bench".into(),
-                properties: ItemProperties {
-                    volume_ml: Some(250.0),
-                    fill_ml: Some(100.0),
-                    transparent: Some(true),
-                    colourless: Some(true),
-                    temperature_c: Some(20.0),
-                    composition: vec![CompositionEntry {
-                        substance_id: "sand".into(),
-                        phase: "solid".into(),
-                        amount_ml: None,
-                        amount_scoop: Some(10),
-                        amount_g: Some(10.0 * SPOON_SCOOP_MASS_G),
-                        amount_mol: None,
-                    }],
-                    holding: Vec::new(),
-                    ..ItemProperties::default()
-                },
-            },
-            SceneItem {
-                id: "beaker-water".into(),
-                kind: "beaker".into(),
-                label: "Beaker".into(),
-                location: "bench".into(),
-                properties: ItemProperties {
-                    volume_ml: Some(WATER_CAPACITY_ML),
-                    fill_ml: Some(0.0),
-                    transparent: Some(true),
-                    colourless: Some(true),
-                    temperature_c: Some(20.0),
-                    ..ItemProperties::default()
-                },
-            },
+            distilled_water_stock_beaker(),
+            hcl_stock_beaker(),
+            solid_stock_beaker("beaker-nacl", "Sodium chloride", "nacl"),
+            solid_stock_beaker("beaker-naoh", "Sodium hydroxide", "naoh"),
+            solid_stock_beaker("beaker-cacl2", "Calcium chloride", "cacl2"),
+            solid_stock_beaker("beaker-sand", "Sand", "sand"),
+            empty_bench_beaker("beaker-water", "Beaker", WATER_CAPACITY_ML, 20.0),
             SceneItem {
                 id: "tongs-1".into(),
                 kind: "tongs".into(),
@@ -442,20 +414,12 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                     ..ItemProperties::default()
                 },
             },
-            SceneItem {
-                id: "beaker-filtrate".into(),
-                kind: "beaker".into(),
-                label: "Filtrate".into(),
-                location: "bench".into(),
-                properties: ItemProperties {
-                    volume_ml: Some(FILTRATE_CAPACITY_ML),
-                    fill_ml: Some(0.0),
-                    transparent: Some(true),
-                    colourless: Some(true),
-                    temperature_c: Some(AMBIENT_TEMPERATURE_C),
-                    ..ItemProperties::default()
-                },
-            },
+            empty_bench_beaker(
+                "beaker-filtrate",
+                "Filtrate",
+                FILTRATE_CAPACITY_ML,
+                AMBIENT_TEMPERATURE_C,
+            ),
             SceneItem {
                 id: "filter-paper-1".into(),
                 kind: "filter_paper".into(),
@@ -463,20 +427,7 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
                 location: "bench".into(),
                 properties: ItemProperties::default(),
             },
-            SceneItem {
-                id: "dish-1".into(),
-                kind: "evaporation_dish".into(),
-                label: "Evaporation dish".into(),
-                location: "bench".into(),
-                properties: ItemProperties {
-                    volume_ml: Some(DISH_CAPACITY_ML),
-                    fill_ml: Some(0.0),
-                    transparent: Some(true),
-                    colourless: Some(true),
-                    temperature_c: Some(AMBIENT_TEMPERATURE_C),
-                    ..ItemProperties::default()
-                },
-            },
+            empty_evaporation_dish(),
             SceneItem {
                 id: "burner-1".into(),
                 kind: "burner".into(),

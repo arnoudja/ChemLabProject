@@ -286,7 +286,8 @@ fn dish_boil_with_dilute_hcl_near_water_and_concentrates_toward_azeotrope() {
     let dish = item(&scene, "dish-1");
     let w_after = hcl_w_w(dish);
     assert!(
-        w_after > w_before || (w_after - HCL_AZEOTROPE_W_W).abs() < (w_before - HCL_AZEOTROPE_W_W).abs(),
+        w_after > w_before
+            || (w_after - HCL_AZEOTROPE_W_W).abs() < (w_before - HCL_AZEOTROPE_W_W).abs(),
         "lean liquid should concentrate toward azeotrope: before={w_before} after={w_after}"
     );
 }

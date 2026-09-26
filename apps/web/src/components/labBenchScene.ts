@@ -163,20 +163,26 @@ export function dissolveCueFromEvents(
   return null
 }
 
+/** Dish liquid height — Φ_V solution volume (matches server `fill_ml`), not water-only ml. */
 export function dishAmountMl(scene: LabScene): number | null {
   const item = findItem(scene, DISH_ID)
-  const entry = optionalArray(item?.properties.composition).find(
-    (c) => c.substance_id === 'water' && c.phase === 'liquid',
-  )
-  return entry?.amount_ml ?? null
+  if (!item) return null
+  const composition = optionalArray(item.properties.composition)
+  if (composition.length === 0) {
+    return item.properties.fill_ml ?? null
+  }
+  return solutionVolumeMl(composition)
 }
 
+/** Filtrate liquid height — Φ_V solution volume (matches server `fill_ml`), not water-only ml. */
 export function filtrateAmountMl(scene: LabScene): number | null {
   const item = findItem(scene, FILTRATE_ID)
-  const entry = optionalArray(item?.properties.composition).find(
-    (c) => c.substance_id === 'water' && c.phase === 'liquid',
-  )
-  return entry?.amount_ml ?? item?.properties.fill_ml ?? null
+  if (!item) return null
+  const composition = optionalArray(item.properties.composition)
+  if (composition.length === 0) {
+    return item.properties.fill_ml ?? null
+  }
+  return solutionVolumeMl(composition)
 }
 
 export function paperHasResidue(scene: LabScene): boolean {

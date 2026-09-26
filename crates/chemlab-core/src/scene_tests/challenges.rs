@@ -52,6 +52,7 @@ fn catalog_entry_matches_the_docs_copy() {
         "The previous student accidentally put all the salt and sand in the main beaker, can you please separate them and put them back in their containers?"
     );
     assert_eq!(challenge.done, "Thank you.");
+    assert_eq!(challenge.distilled_water_ml, Some(10.0));
     assert_eq!(find_challenge("nope"), None);
     assert_eq!(find_challenge(FREE_MODE), None);
 }
@@ -96,7 +97,9 @@ fn separate_challenge_starts_with_mixed_beaker_and_empty_stocks() {
     }
 
     let distilled = item(&scene, "beaker-h2o");
-    assert_eq!(distilled.properties.fill_ml, Some(100.0));
+    assert_eq!(distilled.properties.volume_ml, Some(100.0));
+    assert_eq!(distilled.properties.fill_ml, Some(10.0));
+    assert_eq!(distilled.properties.composition[0].amount_ml, Some(10.0));
 
     // Full tool set stays available.
     for tool_id in [

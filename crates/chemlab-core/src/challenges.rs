@@ -40,6 +40,8 @@ pub struct Challenge {
     pub empty_stock_item_ids: &'static [&'static str],
     /// Dry solids (`substance_id`, grams) preloaded into `beaker-water`.
     pub main_beaker_solids: &'static [(&'static str, f64)],
+    /// Starting liquid ml in `beaker-h2o`. `None` keeps Free mode's full stock.
+    pub distilled_water_ml: Option<f64>,
     /// All clauses must hold for the challenge to be complete.
     pub win: &'static [StockTarget],
 }
@@ -53,6 +55,7 @@ pub const SEPARATE_NACL_SIO2: Challenge = Challenge {
     allowed_stock_item_ids: &["beaker-h2o", "beaker-nacl", "beaker-sand"],
     empty_stock_item_ids: &["beaker-nacl", "beaker-sand"],
     main_beaker_solids: &[("nacl", 2.0), ("sand", 2.0)],
+    distilled_water_ml: Some(10.0),
     win: &[
         StockTarget {
             item_id: "beaker-nacl",

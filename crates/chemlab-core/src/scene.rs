@@ -394,7 +394,8 @@ pub fn initial_scene_for_mode(lab_id: impl Into<String>, mode: &str) -> Option<S
 }
 
 /// The Free bench with the challenge's edits: allowed stocks only, listed stocks
-/// emptied, main beaker preloaded with the challenge's dry solids.
+/// emptied, main beaker preloaded with the challenge's dry solids, optional
+/// distilled-water start volume.
 fn challenge_scene(lab_id: String, challenge: &Challenge) -> Scene {
     let mut scene = initial_bench_scene(lab_id);
     scene.mode = challenge.id.into();
@@ -404,6 +405,11 @@ fn challenge_scene(lab_id: String, challenge: &Challenge) -> Scene {
     for stock_id in challenge.empty_stock_item_ids {
         if let Some(stock) = scene.items.iter_mut().find(|item| item.id == *stock_id) {
             empty_stock_solids(stock);
+        }
+    }
+    if let Some(ml) = challenge.distilled_water_ml {
+        if let Some(h2o) = scene.items.iter_mut().find(|item| item.id == "beaker-h2o") {
+            set_distilled_water_amount(h2o, ml);
         }
     }
     if let Some(beaker) = scene
@@ -416,6 +422,16 @@ fn challenge_scene(lab_id: String, challenge: &Challenge) -> Scene {
         }
     }
     scene
+}
+
+/// Set the distilled-water stock's liquid fill (capacity stays Free-mode size).
+fn set_distilled_water_amount(h2o: &mut SceneItem, ml: f64) {
+    h2o.properties.fill_ml = Some(ml);
+    for entry in &mut h2o.properties.composition {
+        if entry.substance_id == "water" && entry.phase == "liquid" {
+            entry.amount_ml = Some(ml);
+        }
+    }
 }
 
 /// Zero a stock beaker's own solid without dropping the composition line, so the

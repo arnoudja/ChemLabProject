@@ -86,6 +86,14 @@ async fn select_mode_switches_to_the_challenge_setup_and_persists_it() {
     let ids = scene_ids(&scene);
     assert!(!ids.contains(&"beaker-cacl2".to_string()));
     assert!(ids.contains(&"beaker-h2o".to_string()));
+    assert_eq!(
+        scene_item(&scene, "beaker-h2o")["properties"]["fill_ml"],
+        10.0
+    );
+    assert_eq!(
+        scene_item(&scene, "beaker-h2o")["properties"]["composition"][0]["amount_ml"],
+        10.0
+    );
     assert_eq!(solid_g(&scene, "beaker-water", "nacl"), 2.0);
     assert_eq!(solid_g(&scene, "beaker-water", "sand"), 2.0);
     assert_eq!(solid_g(&scene, "beaker-nacl", "nacl"), 0.0);

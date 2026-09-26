@@ -257,6 +257,13 @@ export function challengeScene(): LabScene {
       amount_g: 0,
     }))
   }
+  const h2o = next.items.find((item) => item.id === 'beaker-h2o')!
+  h2o.properties.fill_ml = 10
+  h2o.properties.composition = h2o.properties.composition!.map((entry) =>
+    entry.substance_id === 'water' && entry.phase === 'liquid'
+      ? { ...entry, amount_ml: 10 }
+      : entry,
+  )
   const beaker = next.items.find((item) => item.id === 'beaker-water')!
   beaker.properties.composition = (['nacl', 'sand'] as const).map((substance_id) => ({
     substance_id,

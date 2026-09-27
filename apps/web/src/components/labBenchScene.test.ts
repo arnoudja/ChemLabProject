@@ -16,6 +16,9 @@ import {
   PHI_V_NAHSO4_ML_PER_MOL,
   PHI_V_NACL_ML_PER_MOL,
   PHI_V_NAOH_ML_PER_MOL,
+  sceneNeedsClockPoll,
+  sceneNeedsDissolvePoll,
+  sceneNeedsThermalPoll,
   solutionVolumeMl,
   waterAmountMl,
 } from './labBenchScene'
@@ -247,5 +250,59 @@ describe('SVG amount helpers (dish / filtrate / water)', () => {
     expect(dishAmountMl(scene)).toBeNull()
     expect(filtrateAmountMl(scene)).toBeNull()
     expect(waterAmountMl(scene)).toBeNull()
+  })
+})
+
+describe('clock poll gates', () => {
+  it('needs dissolve poll for wet beaker with solid NaCl at ambient', () => {
+    const scene = sceneWith([
+      {
+        id: 'beaker-water',
+        kind: 'beaker',
+        properties: {
+          temperature_c: 20,
+          composition: [
+            entry({ substance_id: 'water', phase: 'liquid', amount_ml: 200 }),
+            entry({ substance_id: 'nacl', phase: 'solid', amount_g: 1.6 }),
+          ],
+        },
+      },
+      {
+        id: 'burner-1',
+        kind: 'burner',
+        properties: { on: false },
+      },
+    ])
+    expect(sceneNeedsDissolvePoll(scene)).toBe(true)
+    expect(sceneNeedsThermalPoll(scene)).toBe(false)
+    expect(sceneNeedsClockPoll(scene)).toBe(true)
+  })
+
+  it('does not dissolve-poll dry solid stock or sand slurry', () => {
+    const dryStock = sceneWith([
+      {
+        id: 'beaker-nacl',
+        kind: 'beaker',
+        properties: {
+          composition: [entry({ substance_id: 'nacl', phase: 'solid', amount_g: 2 })],
+        },
+      },
+    ])
+    expect(sceneNeedsDissolvePoll(dryStock)).toBe(false)
+
+    const sandOnly = sceneWith([
+      {
+        id: 'beaker-water',
+        kind: 'beaker',
+        properties: {
+          composition: [
+            entry({ substance_id: 'water', phase: 'liquid', amount_ml: 200 }),
+            entry({ substance_id: 'sand', phase: 'solid', amount_g: 2 }),
+          ],
+        },
+      },
+    ])
+    expect(sceneNeedsDissolvePoll(sandOnly)).toBe(false)
+    expect(sceneNeedsClockPoll(sandOnly)).toBe(false)
   })
 })

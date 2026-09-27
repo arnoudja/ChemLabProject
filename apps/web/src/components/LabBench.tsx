@@ -72,6 +72,7 @@ import {
   outcomeLabel,
   paperHasResidue,
   pipetteIsFilled,
+  sceneNeedsClockPoll,
   sceneNeedsThermalPoll,
   solidStockKind,
   spoonHoldingSpecies,
@@ -101,12 +102,13 @@ export {
   hclFillRatio,
   h2so4FillRatio,
   filtrateFillRatio,
+  sceneNeedsClockPoll,
   sceneNeedsThermalPoll,
   stockFillRatio,
   waterFillRatio,
 }
 
-const THERMAL_POLL_MS = 300
+const CLOCK_POLL_MS = 300
 
 type IngredientKind = 'h2o' | 'hcl' | 'h2so4' | StockSolid
 
@@ -141,7 +143,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
   const [toolCarouselIndex, setToolCarouselIndex] = useState(0)
 
   const burnerOn = scene ? burnerIsOn(scene) : false
-  const needsThermalPoll = scene ? sceneNeedsThermalPoll(scene) : false
+  const needsClockPoll = scene ? sceneNeedsClockPoll(scene) : false
 
   useEffect(() => {
     let cancelled = false
@@ -166,7 +168,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
   }, [scene, onModeChange])
 
   useEffect(() => {
-    if (!needsThermalPoll) return
+    if (!needsClockPoll) return
     let cancelled = false
     const id = window.setInterval(() => {
       void fetchLabScene()
@@ -176,12 +178,12 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
         .catch(() => {
           /* Poll errors stay quiet so a transient GET failure does not clear the bench. */
         })
-    }, THERMAL_POLL_MS)
+    }, CLOCK_POLL_MS)
     return () => {
       cancelled = true
       window.clearInterval(id)
     }
-  }, [needsThermalPoll])
+  }, [needsClockPoll])
 
   function trackPointer(event: MouseEvent<HTMLElement>) {
     const root = event.currentTarget.closest('[data-lab-bench]')

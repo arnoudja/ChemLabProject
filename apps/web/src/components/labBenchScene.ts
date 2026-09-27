@@ -247,6 +247,9 @@ export const AMBIENT_TEMPERATURE_C = 20
 /** Poll while any vessel is meaningfully off ambient (cool-down / residual heat). */
 export const THERMAL_POLL_DELTA_C = 0.5
 
+/** Soluble solids that advance via server kinetic dissolve (mirrors `dissolve_kinetics`). */
+const KINETIC_SOLUBLE_SOLIDS = new Set(['nacl', 'cacl2', 'naoh', 'na2so4', 'caso4'])
+
 /** True when the bench should poll for ongoing heat / ambient cool-down. */
 export function sceneNeedsThermalPoll(scene: LabScene): boolean {
   if (burnerIsOn(scene)) return true
@@ -256,6 +259,38 @@ export function sceneNeedsThermalPoll(scene: LabScene): boolean {
     if (Math.abs(t - AMBIENT_TEMPERATURE_C) >= THERMAL_POLL_DELTA_C) return true
   }
   return false
+}
+
+/**
+ * True when a wet beaker/dish still holds kinetically soluble solid.
+ * NaCl dissolve ΔT is often ≪ {@link THERMAL_POLL_DELTA_C}, so thermal poll alone
+ * leaves inspect amounts stale until the next user action.
+ */
+export function sceneNeedsDissolvePoll(scene: LabScene): boolean {
+  for (const item of scene.items) {
+    if (item.kind !== 'beaker' && item.kind !== 'evaporation_dish') continue
+    const composition = optionalArray(item.properties.composition)
+    const hasWater = composition.some(
+      (entry) =>
+        entry.substance_id === 'water' &&
+        entry.phase === 'liquid' &&
+        (entry.amount_ml ?? 0) > 0,
+    )
+    if (!hasWater) continue
+    const hasSolubleSolid = composition.some(
+      (entry) =>
+        entry.phase === 'solid' &&
+        KINETIC_SOLUBLE_SOLIDS.has(entry.substance_id) &&
+        (entry.amount_g ?? 0) > 0,
+    )
+    if (hasSolubleSolid) return true
+  }
+  return false
+}
+
+/** True when GET /api/lab/scene must keep ticking the server clock. */
+export function sceneNeedsClockPoll(scene: LabScene): boolean {
+  return sceneNeedsThermalPoll(scene) || sceneNeedsDissolvePoll(scene)
 }
 
 export function tongsHeldVesselId(

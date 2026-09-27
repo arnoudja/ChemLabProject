@@ -1241,20 +1241,22 @@ fn apply_neutralization(item: &mut SceneItem) {
     }
 }
 
-/// Ionize liquid H₂SO₄, dissolve solid NaOH, neutralize acid/base, then SI.
+/// Ionize liquid H₂SO₄, dissolve solid NaOH, neutralize acid/base, SI, then reform.
 ///
 /// NaOH is highly soluble and is not chloride-SI capped, so tongs dumps /
 /// water-onto-solid paths must author ions here (spoon pour already dissolves via
 /// the qualitative table before this runs). Liquid H₂SO₄ ionizes to
 /// `2 H⁺ + SO₄²⁻` (full-dissociation school approx) when the water:acid ratio is
 /// above the ~98% w/w reform threshold; after SI, free sulfuric below that
-/// threshold reforms to liquid `h2so4`.
+/// threshold reforms to liquid `h2so4`. SI syncs `fill_ml` before reform, so
+/// reform re-syncs so dish/beaker UI height matches post-reform Φ_V.
 fn finalize_aqueous_vessel(item: &mut SceneItem) {
     crate::h2so4::ionize_liquid_h2so4_in_water(item);
     dissolve_solid_naoh_in_water(item);
     apply_neutralization(item);
     crate::solubility::enforce_saturation(item);
     crate::h2so4::reform_aqueous_h2so4_to_liquid(item);
+    crate::solubility::sync_fill_ml(item);
 }
 
 /// Convert all solid `naoh` in a vessel to aqueous ions when liquid water is present.

@@ -322,6 +322,14 @@ fn dish_concentrate_below_threshold_reforms_liquid_h2so4() {
     );
     assert!(aqueous_mol(dish, "so4^2-") < 1e-12);
     assert!(aqueous_mol(dish, "h+") < 1e-12);
+    // Reform changes Φ_V (aq ions → liquid h2so4); finalize must re-sync fill_ml.
+    let fill = dish.properties.fill_ml.unwrap_or(0.0);
+    let phi_v = crate::hcl::solution_volume_ml(dish);
+    assert!(
+        (fill - phi_v).abs() < 1e-9,
+        "post-reform fill_ml desync: fill_ml={fill} Φ_V={phi_v}"
+    );
+    assert_fill_ml_matches_phi_v(&scene);
 }
 
 #[test]

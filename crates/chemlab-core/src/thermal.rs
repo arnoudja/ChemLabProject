@@ -289,6 +289,18 @@ pub(super) fn heat_capacity_of_entries(entries: &[CompositionEntry]) -> f64 {
     for entry in entries {
         if entry.substance_id == "water" && entry.phase == "liquid" {
             c += entry.amount_ml.unwrap_or(0.0) * WATER_SPECIFIC_HEAT_J_PER_G_K;
+        } else if entry.substance_id == "h2so4" && entry.phase == "liquid" {
+            let mass_g = entry.amount_g.unwrap_or_else(|| {
+                entry
+                    .amount_mol
+                    .map(|n| n * crate::h2so4::H2SO4_MOLAR_MASS_G_PER_MOL)
+                    .unwrap_or_else(|| {
+                        entry.amount_ml.unwrap_or(0.0)
+                            * crate::h2so4::H2SO4_STOCK_DENSITY_G_PER_ML
+                            * crate::h2so4::H2SO4_STOCK_W_W
+                    })
+            });
+            c += mass_g.max(0.0) * CP_H2SO4_LIQUID;
         } else if entry.phase == "solid" {
             if let Some(cp) = solid_specific_heat(&entry.substance_id) {
                 c += solid_amount_g(entry) * cp;

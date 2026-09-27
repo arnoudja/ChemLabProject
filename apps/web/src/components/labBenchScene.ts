@@ -8,9 +8,12 @@ export const HCL_STOCK_WATER_MASS_G = 8.043
 export const HCL_STOCK_HCL_MOLES = 3.447 / 36.46
 export const PHI_V_HCL_ML_PER_MOL =
   (HCL_STOCK_CAPACITY_ML - HCL_STOCK_WATER_MASS_G) / HCL_STOCK_HCL_MOLES
+export const PHI_V_H2SO4_ML_PER_MOL = 40.0
+export const PHI_V_NA2SO4_ML_PER_MOL = 20.0
 export const PHI_V_NACL_ML_PER_MOL = 22.0
 export const PHI_V_CACL2_ML_PER_MOL = 34.0
 export const PHI_V_NAOH_ML_PER_MOL = 4.0
+export const H2SO4_STOCK_CAPACITY_ML = 10.0
 
 /**
  * Item-id / volume glossary (wire ids are stable — do not rename):
@@ -36,6 +39,7 @@ export const SAND_ID = 'beaker-sand'
 export const NAOH_ID = 'beaker-naoh'
 export const H2O_ID = 'beaker-h2o'
 export const HCL_ID = 'beaker-hcl'
+export const H2SO4_ID = 'beaker-h2so4'
 export const WATER_ID = 'beaker-water'
 
 export function isStockSolid(id: string): id is StockSolid {
@@ -95,24 +99,38 @@ function aqueousMol(composition: CompositionEntry[], substanceId: string): numbe
   return Math.max(0, entry?.amount_mol ?? 0)
 }
 
-/** Solution volume (ml) = water ml + Σ n · Φ_V (HCl → NaOH → NaCl → CaCl₂ pairing). */
+/** Solution volume (ml) = water ml + liquid H₂SO₄ ml + Σ n · Φ_V. */
 export function solutionVolumeMl(composition: CompositionEntry[]): number {
   const waterEntry = composition.find(
     (c) => c.substance_id === 'water' && c.phase === 'liquid',
   )
   const waterMl = Math.max(0, waterEntry?.amount_ml ?? 0)
+  const h2so4Liquid = composition.find(
+    (c) => c.substance_id === 'h2so4' && c.phase === 'liquid',
+  )
+  const h2so4Ml = Math.max(0, h2so4Liquid?.amount_ml ?? 0)
   const nH = aqueousMol(composition, 'h+')
   const nOh = aqueousMol(composition, 'oh-')
   const nNa = aqueousMol(composition, 'na+')
   const nCa = aqueousMol(composition, 'ca2+')
-  const nHcl = nH
+  const nCl = aqueousMol(composition, 'cl-')
+  const nSo4 = aqueousMol(composition, 'so4^2-')
+  const nHcl = Math.min(nH, nCl)
+  const nHAfterHcl = Math.max(0, nH - nHcl)
+  const nH2so4 = Math.min(nHAfterHcl * 0.5, nSo4)
+  const nSo4AfterAcid = Math.max(0, nSo4 - nH2so4)
   const nNaoh = nOh
-  const nNacl = Math.max(0, nNa - nOh)
+  const nNaSalt = Math.max(0, nNa - nOh)
+  const nNa2so4 = Math.min(nNaSalt * 0.5, nSo4AfterAcid)
+  const nNacl = Math.max(0, nNaSalt - 2 * nNa2so4)
   const nCacl2 = nCa
   return (
     waterMl +
+    h2so4Ml +
     nHcl * PHI_V_HCL_ML_PER_MOL +
+    nH2so4 * PHI_V_H2SO4_ML_PER_MOL +
     nNaoh * PHI_V_NAOH_ML_PER_MOL +
+    nNa2so4 * PHI_V_NA2SO4_ML_PER_MOL +
     nNacl * PHI_V_NACL_ML_PER_MOL +
     nCacl2 * PHI_V_CACL2_ML_PER_MOL
   )
@@ -120,6 +138,14 @@ export function solutionVolumeMl(composition: CompositionEntry[]): number {
 
 export function hclStockAmountMl(scene: LabScene): number | null {
   const item = findItem(scene, HCL_ID)
+  if (!item) return null
+  const composition = optionalArray(item.properties.composition)
+  if (composition.length === 0) return null
+  return solutionVolumeMl(composition)
+}
+
+export function h2so4StockAmountMl(scene: LabScene): number | null {
+  const item = findItem(scene, H2SO4_ID)
   if (!item) return null
   const composition = optionalArray(item.properties.composition)
   if (composition.length === 0) return null
@@ -218,6 +244,7 @@ export function tongsHeldVesselId(
   | typeof DISH_ID
   | typeof H2O_ID
   | typeof HCL_ID
+  | typeof H2SO4_ID
   | typeof FILTRATE_ID
   | typeof PAPER_ID
   | typeof NACL_ID
@@ -231,6 +258,7 @@ export function tongsHeldVesselId(
     held === DISH_ID ||
     held === H2O_ID ||
     held === HCL_ID ||
+    held === H2SO4_ID ||
     held === FILTRATE_ID ||
     held === PAPER_ID ||
     held === NACL_ID ||

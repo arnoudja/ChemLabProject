@@ -3,6 +3,7 @@
 mod challenges;
 mod evaporation;
 mod filter;
+mod h2so4;
 mod hcl;
 mod helpers;
 mod naoh;

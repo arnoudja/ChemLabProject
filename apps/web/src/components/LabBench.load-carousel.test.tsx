@@ -60,7 +60,7 @@ describe('LabBench load / carousel / layout', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('wraps the ingredient carousel H2O → HCl → NaCl → NaOH → CaCl2 → SiO2 and hides other stocks from the DOM', async () => {
+  it('wraps the ingredient carousel H2O → HCl → H2SO4 → NaCl → NaOH → CaCl2 → SiO2 and hides other stocks from the DOM', async () => {
     vi.stubGlobal('fetch', stubLabFetch())
 
     render(<LabBench />)
@@ -78,9 +78,19 @@ describe('LabBench load / carousel / layout', () => {
     expect(hclLabel?.textContent).toContain('(30% w/w)')
 
     clickCarousel('next')
-    expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sulfuric acid' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Hydrochloric acid (30%)' })).not.toBeInTheDocument()
     expect(document.querySelector('[data-hcl-fill]')).toBeNull()
+    expect(document.querySelector('[data-h2so4-fill]')).toHaveAttribute('data-h2so4-fill', '1.00')
+    const h2so4Label = document.querySelector('[data-stock-label="h2so4"]')
+    expect(h2so4Label?.textContent).toMatch(/H\s*2\s*SO\s*4/)
+    expect(h2so4Label?.textContent).toContain('(Sulfuric acid)')
+    expect(h2so4Label?.textContent).toContain('(~98% w/w)')
+
+    clickCarousel('next')
+    expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sulfuric acid' })).not.toBeInTheDocument()
+    expect(document.querySelector('[data-h2so4-fill]')).toBeNull()
     const saltLabel = document.querySelector('[data-stock-label="nacl"]')
     expect(saltLabel?.textContent).toContain('NaCl')
     expect(saltLabel?.textContent).toContain('(Sodium chloride)')
@@ -485,6 +495,10 @@ describe('LabBench load / carousel / layout', () => {
 
     clickCarousel('next')
     expect(screen.getByRole('button', { name: 'Hydrochloric acid (30%)' }).parentElement).toHaveClass(
+      'lab-stock-carousel-slot',
+    )
+    clickCarousel('next')
+    expect(screen.getByRole('button', { name: 'Sulfuric acid' }).parentElement).toHaveClass(
       'lab-stock-carousel-slot',
     )
     clickCarousel('next')

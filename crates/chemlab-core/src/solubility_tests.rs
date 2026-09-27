@@ -459,8 +459,8 @@ fn soft_cap_ionic_strength_stays_below_i_star_and_varies_at_high_i() {
 
 #[test]
 fn oh_contributes_to_ionic_strength_without_inventing_nacl() {
-    let mix_salt = Mixture::from_moles(0.5, 0.0, 0.0, 0.0, 1.0);
-    let mix_with_oh = Mixture::from_moles(0.5, 0.0, 0.0, 0.2, 1.0);
+    let mix_salt = Mixture::from_moles(0.5, 0.0, 0.0, 0.0, 0.0, 1.0);
+    let mix_with_oh = Mixture::from_moles(0.5, 0.0, 0.0, 0.0, 0.2, 1.0);
     assert!((mix_salt.ionic_strength() - 0.5).abs() < 1e-12);
     assert!((mix_with_oh.ionic_strength() - 0.7).abs() < 1e-12);
 

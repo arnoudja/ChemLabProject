@@ -7,8 +7,11 @@ import {
   HCL_STOCK_CAPACITY_ML,
   HCL_STOCK_HCL_MOLES,
   HCL_STOCK_WATER_MASS_G,
+  H2SO4_STOCK_CAPACITY_ML,
   PHI_V_CACL2_ML_PER_MOL,
+  PHI_V_H2SO4_ML_PER_MOL,
   PHI_V_HCL_ML_PER_MOL,
+  PHI_V_NA2SO4_ML_PER_MOL,
   PHI_V_NACL_ML_PER_MOL,
   PHI_V_NAOH_ML_PER_MOL,
   solutionVolumeMl,
@@ -66,8 +69,31 @@ describe('Φ_V parity with chemlab-core (golden)', () => {
     expect(PHI_V_NACL_ML_PER_MOL).toBe(22.0)
     expect(PHI_V_CACL2_ML_PER_MOL).toBe(34.0)
     expect(PHI_V_NAOH_ML_PER_MOL).toBe(4.0)
+    expect(PHI_V_H2SO4_ML_PER_MOL).toBe(40.0)
+    expect(PHI_V_NA2SO4_ML_PER_MOL).toBe(20.0)
     expect(PHI_V_HCL_ML_PER_MOL).toBeCloseTo(20.7, 1)
     expect(HCL_STOCK_HCL_MOLES).toBeCloseTo(3.447 / 36.46, 12)
+  })
+
+  it('pure liquid H2SO4 stock volume is locked to 10.00 ml', () => {
+    const stock = [
+      entry({
+        substance_id: 'h2so4',
+        phase: 'liquid',
+        amount_ml: H2SO4_STOCK_CAPACITY_ML,
+      }),
+    ]
+    expect(solutionVolumeMl(stock)).toBeCloseTo(H2SO4_STOCK_CAPACITY_ML, 9)
+  })
+
+  it('sulfuric protons do not take Φ_V_HCl', () => {
+    const n = 0.05
+    const sulfuric = [
+      entry({ substance_id: 'water', phase: 'liquid', amount_ml: 50 }),
+      entry({ substance_id: 'h+', phase: 'aqueous', amount_mol: 2 * n }),
+      entry({ substance_id: 'so4^2-', phase: 'aqueous', amount_mol: n }),
+    ]
+    expect(solutionVolumeMl(sulfuric)).toBeCloseTo(50 + n * PHI_V_H2SO4_ML_PER_MOL, 9)
   })
 
   it('HCl stock composition volume is locked to 10.00 ml', () => {

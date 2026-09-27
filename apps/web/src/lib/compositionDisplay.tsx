@@ -32,6 +32,12 @@ const FORMULA_PARTS_BY_SUBSTANCE_ID: Record<string, FormulaPart[]> = {
     { kind: 'sub', value: '2' },
   ],
   hcl: [{ kind: 'text', value: 'HCl' }],
+  h2so4: [
+    { kind: 'text', value: 'H' },
+    { kind: 'sub', value: '2' },
+    { kind: 'text', value: 'SO' },
+    { kind: 'sub', value: '4' },
+  ],
   'h+': [
     { kind: 'text', value: 'H' },
     { kind: 'sup', value: '+' },
@@ -48,8 +54,23 @@ const FORMULA_PARTS_BY_SUBSTANCE_ID: Record<string, FormulaPart[]> = {
     { kind: 'text', value: 'Cl' },
     { kind: 'sup', value: '−' },
   ],
+  'so4^2-': [
+    { kind: 'text', value: 'SO' },
+    { kind: 'sub', value: '4' },
+    { kind: 'sup', value: '2−' },
+  ],
   naoh: [
     { kind: 'text', value: 'NaOH' },
+  ],
+  na2so4: [
+    { kind: 'text', value: 'Na' },
+    { kind: 'sub', value: '2' },
+    { kind: 'text', value: 'SO' },
+    { kind: 'sub', value: '4' },
+  ],
+  caso4: [
+    { kind: 'text', value: 'CaSO' },
+    { kind: 'sub', value: '4' },
   ],
   'oh-': [
     { kind: 'text', value: 'OH' },
@@ -176,7 +197,7 @@ export function CompositionInspectLine({
 }
 
 /** Stock jar captions under salt / sand / distilled-water beakers (display only). */
-export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand' | 'naoh' | 'water' | 'hcl'
+export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand' | 'naoh' | 'water' | 'hcl' | 'h2so4'
 
 const STOCK_SUBSTANCE_LABELS: Record<
   StockSubstanceId,
@@ -211,6 +232,11 @@ const STOCK_SUBSTANCE_LABELS: Record<
     chemicalName: 'Hydrochloric acid',
     commonName: '30% w/w',
     ariaName: 'Hydrochloric acid (30%)',
+  },
+  h2so4: {
+    chemicalName: 'Sulfuric acid',
+    commonName: '~98% w/w',
+    ariaName: 'Sulfuric acid',
   },
 }
 

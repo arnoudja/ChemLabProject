@@ -130,6 +130,7 @@ export function liquidCapacityMl(itemId: string): number {
   if (itemId === 'dish-1') return DISH_CAPACITY_ML
   if (itemId === 'beaker-h2o') return DISTILLED_WATER_CAPACITY_ML
   if (itemId === 'beaker-hcl') return HCL_STOCK_CAPACITY_ML
+  if (itemId === 'beaker-h2so4') return 10
   if (itemId === 'beaker-filtrate') return FILTRATE_CAPACITY_ML
   return 250
 }

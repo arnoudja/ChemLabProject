@@ -202,16 +202,40 @@ fn ensure_default_bench_items_restores_beaker_h2o_without_resetting_vessels() {
 }
 
 pub(super) fn aqueous_mol(item: &SceneItem, substance_id: &str) -> f64 {
-    item.properties
-        .composition
-        .iter()
-        .find(|c| c.substance_id == substance_id && c.phase == "aqueous")
-        .and_then(|c| c.amount_mol)
-        .unwrap_or(0.0)
+    crate::composition::aqueous_mol(item, substance_id)
 }
 
 pub(super) fn water_ml(item: &SceneItem) -> f64 {
     crate::solubility::liquid_water_ml(item)
+}
+
+/// Assert liquid vessels have `fill_ml ≈ Φ_V` after mutators.
+///
+/// Solid stock beakers keep a decorative `fill_ml` and are skipped; `sync_fill_ml`
+/// only matters for beakers/dishes/pipettes that hold solution volume.
+pub(super) fn assert_fill_ml_matches_phi_v(scene: &Scene) {
+    for item in &scene.items {
+        let tracks = matches!(item.kind.as_str(), "evaporation_dish" | "pipette")
+            || matches!(
+                item.id.as_str(),
+                MAIN_BEAKER_ID | DISTILLED_WATER_ID | "beaker-filtrate" | "beaker-hcl"
+            );
+        if !tracks {
+            continue;
+        }
+        // Pipette volume lives in `holding`, not `composition`.
+        let expected = if item.kind == "pipette" {
+            crate::hcl::solution_volume_ml_of_entries(&item.properties.holding)
+        } else {
+            crate::hcl::solution_volume_ml(item)
+        };
+        let fill = item.properties.fill_ml.unwrap_or(0.0);
+        assert!(
+            (fill - expected).abs() < 1e-9,
+            "fill_ml desync on {}: fill_ml={fill} Φ_V={expected}",
+            item.id
+        );
+    }
 }
 
 pub(super) fn fill_pipette_from(scene: &mut Scene, target_id: &str) {
@@ -416,4 +440,49 @@ pub(super) fn set_slurry_in_water(scene: &mut Scene) {
         },
     )
     .unwrap();
+}
+
+#[test]
+fn fill_ml_tracks_phi_v_after_tongs_filter_pipette_spoon_script() {
+    let mut scene = bench_with_water("lab-fill-ml");
+    assert_fill_ml_matches_phi_v(&scene);
+
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "spoon-1".into(),
+            target_item_id: "beaker-nacl".into(),
+        },
+    )
+    .unwrap();
+    apply_action(
+        &mut scene,
+        Action::Pour {
+            source_item_id: "spoon-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    assert_fill_ml_matches_phi_v(&scene);
+
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+    assert_fill_ml_matches_phi_v(&scene);
+
+    fill_pipette_from(&mut scene, "dish-1");
+    assert_fill_ml_matches_phi_v(&scene);
+    apply_action(
+        &mut scene,
+        Action::Pour {
+            source_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    assert_fill_ml_matches_phi_v(&scene);
+
+    // Top up main beaker from distilled stock, then filter into filtrate.
+    use_tongs_pour(&mut scene, "beaker-h2o", "beaker-water");
+    assert_fill_ml_matches_phi_v(&scene);
+    use_tongs_pour(&mut scene, "beaker-water", "filter-paper-1");
+    assert_fill_ml_matches_phi_v(&scene);
 }

@@ -1,5 +1,6 @@
 import type { LabScene } from '../generated/contracts'
 import { findChallenge, FREE_MODE } from '../lib/challenges'
+import { optionalArray } from '../lib/scene'
 import {
   STOCK_FULL_MASS_G,
   STOCK_FULL_SCOOPS,
@@ -308,57 +309,103 @@ export function filledScene(): LabScene {
 export const SEPARATE_CHALLENGE = findChallenge('separate-nacl-sio2')!
 export const CREATE_TABLE_SALT_CHALLENGE = findChallenge('create-table-salt')!
 
-/** Mirror of the server start scene for `separate-nacl-sio2`. */
-export function challengeScene(): LabScene {
+/**
+ * Layout params mirroring `chemlab-core::challenges::Challenge` fields used by
+ * `challenge_scene` / `initial_scene_for_mode`. Prefer this over new hand-cloned
+ * start-scene functions when adding a challenge.
+ */
+export type ChallengeStartLayout = {
+  mode: string
+  /** Ingredient stock ids kept on the bench (others removed from Free layout). */
+  allowedStockItemIds: readonly string[]
+  /** Kept stocks that start with none of their solid. */
+  emptyStockItemIds: readonly string[]
+  /** Dry solids preloaded into `beaker-water`. */
+  mainBeakerSolids: readonly { substance_id: string; amount_g: number }[]
+  /** Starting liquid ml in `beaker-h2o`. `null` keeps Free mode's full stock. */
+  distilledWaterMl: number | null
+}
+
+/** Free-mode stock ids that challenges may filter (mirrors server stock catalog). */
+const FREE_STOCK_ITEM_IDS = [
+  'beaker-h2o',
+  'beaker-hcl',
+  'beaker-nacl',
+  'beaker-naoh',
+  'beaker-cacl2',
+  'beaker-sand',
+] as const
+
+/**
+ * One parameterized FE start-scene builder driven by the same allowed/empty/preload
+ * lists the server uses. Prefer precomputed snapshots in tests when possible.
+ */
+export function challengeStartScene(layout: ChallengeStartLayout): LabScene {
   const next = initialScene()
-  next.mode = SEPARATE_CHALLENGE.id
+  next.mode = layout.mode
+  const allowed = new Set(layout.allowedStockItemIds)
   next.items = next.items.filter(
-    (item) => item.id !== 'beaker-cacl2' && item.id !== 'beaker-hcl' && item.id !== 'beaker-naoh',
+    (item) => !FREE_STOCK_ITEM_IDS.includes(item.id as (typeof FREE_STOCK_ITEM_IDS)[number]) || allowed.has(item.id),
   )
-  for (const stockId of ['beaker-nacl', 'beaker-sand']) {
-    const stock = next.items.find((item) => item.id === stockId)!
-    stock.properties.composition = stock.properties.composition!.map((entry) => ({
-      ...entry,
-      amount_scoop: 0,
-      amount_g: 0,
-    }))
+  for (const stockId of layout.emptyStockItemIds) {
+    const stock = next.items.find((item) => item.id === stockId)
+    if (!stock) continue
+    stock.properties.composition = optionalArray(stock.properties.composition).map((entry) =>
+      entry.phase === 'solid'
+        ? { ...entry, amount_scoop: 0, amount_g: 0 }
+        : entry,
+    )
   }
-  const h2o = next.items.find((item) => item.id === 'beaker-h2o')!
-  h2o.properties.fill_ml = 10
-  h2o.properties.composition = h2o.properties.composition!.map((entry) =>
-    entry.substance_id === 'water' && entry.phase === 'liquid'
-      ? { ...entry, amount_ml: 10 }
-      : entry,
-  )
+  if (layout.distilledWaterMl != null) {
+    const h2o = next.items.find((item) => item.id === 'beaker-h2o')!
+    h2o.properties.fill_ml = layout.distilledWaterMl
+    h2o.properties.composition = optionalArray(h2o.properties.composition).map((entry) =>
+      entry.substance_id === 'water' && entry.phase === 'liquid'
+        ? { ...entry, amount_ml: layout.distilledWaterMl }
+        : entry,
+    )
+  }
   const beaker = next.items.find((item) => item.id === 'beaker-water')!
-  beaker.properties.composition = (['nacl', 'sand'] as const).map((substance_id) => ({
-    substance_id,
+  beaker.properties.composition = layout.mainBeakerSolids.map((solid) => ({
+    substance_id: solid.substance_id,
     phase: 'solid' as const,
     amount_ml: null,
     amount_scoop: null,
-    amount_g: 2,
+    amount_g: solid.amount_g,
     amount_mol: null,
   }))
+  beaker.properties.fill_ml = 0
   return next
 }
 
-/** Mirror of the server start scene for `create-table-salt`. */
+/** Layout goldens mirroring Rust `SEPARATE_NACL_SIO2` / `CREATE_TABLE_SALT`. */
+export const SEPARATE_NACL_SIO2_LAYOUT: ChallengeStartLayout = {
+  mode: SEPARATE_CHALLENGE.id,
+  allowedStockItemIds: ['beaker-h2o', 'beaker-nacl', 'beaker-sand'],
+  emptyStockItemIds: ['beaker-nacl', 'beaker-sand'],
+  mainBeakerSolids: [
+    { substance_id: 'nacl', amount_g: 2 },
+    { substance_id: 'sand', amount_g: 2 },
+  ],
+  distilledWaterMl: 10,
+}
+
+export const CREATE_TABLE_SALT_LAYOUT: ChallengeStartLayout = {
+  mode: CREATE_TABLE_SALT_CHALLENGE.id,
+  allowedStockItemIds: ['beaker-h2o', 'beaker-hcl', 'beaker-naoh', 'beaker-nacl'],
+  emptyStockItemIds: ['beaker-nacl'],
+  mainBeakerSolids: [],
+  distilledWaterMl: null,
+}
+
+/** @deprecated Prefer `challengeStartScene(SEPARATE_NACL_SIO2_LAYOUT)` or a snapshot. */
+export function challengeScene(): LabScene {
+  return challengeStartScene(SEPARATE_NACL_SIO2_LAYOUT)
+}
+
+/** @deprecated Prefer `challengeStartScene(CREATE_TABLE_SALT_LAYOUT)` or a snapshot. */
 export function createTableSaltScene(): LabScene {
-  const next = initialScene()
-  next.mode = CREATE_TABLE_SALT_CHALLENGE.id
-  next.items = next.items.filter(
-    (item) => item.id !== 'beaker-cacl2' && item.id !== 'beaker-sand',
-  )
-  const nacl = next.items.find((item) => item.id === 'beaker-nacl')!
-  nacl.properties.composition = nacl.properties.composition!.map((entry) => ({
-    ...entry,
-    amount_scoop: 0,
-    amount_g: 0,
-  }))
-  const beaker = next.items.find((item) => item.id === 'beaker-water')!
-  beaker.properties.composition = []
-  beaker.properties.fill_ml = 0
-  return next
+  return challengeStartScene(CREATE_TABLE_SALT_LAYOUT)
 }
 
 export function withDryDishSolids(

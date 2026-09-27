@@ -6,6 +6,7 @@ license.workspace = true
 description = "Shared API DTOs (serde + ts-rs)"
 
 [dependencies]
+chemlab-core.workspace = true
 serde.workspace = true
 chrono.workspace = true
 ts-rs.workspace = true

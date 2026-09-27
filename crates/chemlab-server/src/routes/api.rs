@@ -14,7 +14,7 @@ use axum::{Json, Router};
 use axum_extra::extract::cookie::CookieJar;
 use chemlab_contracts::{
     AuthUserResponse, CsrfResponse, DissolveRequest, DissolveResponse, HealthResponse, LabAction,
-    LabActionResponse, LabEvent, LabScene, LoginRequest, MeResponse, RegisterRequest,
+    LabActionResponse, LabScene, LoginRequest, MeResponse, RegisterRequest,
 };
 use chemlab_db::{
     create_session, delete_session_by_token_hash, delete_sessions_for_user, find_user_by_email,
@@ -277,28 +277,7 @@ fn lab_version(lab: &LabRecord) -> Result<u32, ApiError> {
 }
 
 fn action_to_core(action: LabAction) -> chemlab_core::Action {
-    match action {
-        LabAction::UseTool {
-            tool_item_id,
-            target_item_id,
-        } => chemlab_core::Action::UseTool {
-            tool_item_id,
-            target_item_id,
-        },
-        LabAction::Pour {
-            source_item_id,
-            target_item_id,
-        } => chemlab_core::Action::Pour {
-            source_item_id,
-            target_item_id,
-        },
-        LabAction::PutAway { tool_item_id } => chemlab_core::Action::PutAway { tool_item_id },
-        LabAction::Reset => chemlab_core::Action::Reset,
-        LabAction::ToggleBurner { burner_item_id } => {
-            chemlab_core::Action::ToggleBurner { burner_item_id }
-        }
-        LabAction::SelectMode { mode } => chemlab_core::Action::SelectMode { mode },
-    }
+    action.into()
 }
 
 fn scene_to_contract(scene: chemlab_core::Scene) -> LabScene {
@@ -310,122 +289,14 @@ fn scene_to_contract(scene: chemlab_core::Scene) -> LabScene {
         lab_id: scene.lab_id,
         version: scene.version,
         temperature_c: scene.temperature_c,
-        items: scene
-            .items
-            .into_iter()
-            .map(|item| chemlab_contracts::Item {
-                id: item.id,
-                kind: item.kind,
-                label: item.label,
-                location: item.location,
-                properties: chemlab_contracts::ItemProperties {
-                    volume_ml: item.properties.volume_ml,
-                    fill_ml: item.properties.fill_ml,
-                    transparent: item.properties.transparent,
-                    colourless: item.properties.colourless,
-                    temperature_c: item.properties.temperature_c,
-                    composition: item
-                        .properties
-                        .composition
-                        .into_iter()
-                        .map(composition_to_contract)
-                        .collect(),
-                    holding: item
-                        .properties
-                        .holding
-                        .into_iter()
-                        .map(composition_to_contract)
-                        .collect(),
-                    on: item.properties.on,
-                    source_item_id: item.properties.source_item_id,
-                },
-            })
-            .collect(),
-        last_events: scene
-            .last_events
-            .into_iter()
-            .map(|event| LabEvent {
-                kind: event.kind,
-                message: event.message,
-            })
-            .collect(),
+        items: scene.items.into_iter().map(Into::into).collect(),
+        last_events: scene.last_events.into_iter().map(Into::into).collect(),
         last_applied_unix_ms: scene.last_applied_unix_ms,
-    }
-}
-
-fn composition_to_contract(
-    entry: chemlab_core::CompositionEntry,
-) -> chemlab_contracts::CompositionEntry {
-    chemlab_contracts::CompositionEntry {
-        substance_id: entry.substance_id,
-        phase: entry.phase,
-        amount_ml: entry.amount_ml,
-        amount_scoop: entry.amount_scoop,
-        amount_g: entry.amount_g,
-        amount_mol: entry.amount_mol,
     }
 }
 
 fn contract_to_scene(scene: LabScene) -> chemlab_core::Scene {
-    chemlab_core::Scene {
-        mode: scene.mode,
-        lab_id: scene.lab_id,
-        version: scene.version,
-        temperature_c: scene.temperature_c,
-        items: scene
-            .items
-            .into_iter()
-            .map(|item| chemlab_core::SceneItem {
-                id: item.id,
-                kind: item.kind,
-                label: item.label,
-                location: item.location,
-                properties: chemlab_core::ItemProperties {
-                    volume_ml: item.properties.volume_ml,
-                    fill_ml: item.properties.fill_ml,
-                    transparent: item.properties.transparent,
-                    colourless: item.properties.colourless,
-                    temperature_c: item.properties.temperature_c,
-                    composition: item
-                        .properties
-                        .composition
-                        .into_iter()
-                        .map(composition_to_core)
-                        .collect(),
-                    holding: item
-                        .properties
-                        .holding
-                        .into_iter()
-                        .map(composition_to_core)
-                        .collect(),
-                    on: item.properties.on,
-                    source_item_id: item.properties.source_item_id,
-                },
-            })
-            .collect(),
-        last_events: scene
-            .last_events
-            .into_iter()
-            .map(|event| chemlab_core::SceneEvent {
-                kind: event.kind,
-                message: event.message,
-            })
-            .collect(),
-        last_applied_unix_ms: scene.last_applied_unix_ms,
-    }
-}
-
-fn composition_to_core(
-    entry: chemlab_contracts::CompositionEntry,
-) -> chemlab_core::CompositionEntry {
-    chemlab_core::CompositionEntry {
-        substance_id: entry.substance_id,
-        phase: entry.phase,
-        amount_ml: entry.amount_ml,
-        amount_scoop: entry.amount_scoop,
-        amount_g: entry.amount_g,
-        amount_mol: entry.amount_mol,
-    }
+    scene.into()
 }
 
 fn to_auth_user(user: &UserRecord) -> AuthUserResponse {

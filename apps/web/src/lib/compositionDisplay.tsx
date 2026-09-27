@@ -1,156 +1,171 @@
 /** Display labels for server composition entries — formatting only, no chemistry. */
 
-import type { ReactNode } from 'react'
-import type { CompositionEntry } from '../generated/contracts'
-import { solutionVolumeMl } from '../components/labBenchScene'
+import type { ReactNode } from "react";
+import type { CompositionEntry } from "../generated/contracts";
+import { solutionVolumeMl } from "../components/labBenchScene";
 
 const PHASE_ABBREV: Record<string, string> = {
-  solid: 's',
-  liquid: 'l',
-  aqueous: 'aq',
-}
+  solid: "s",
+  liquid: "l",
+  aqueous: "aq",
+};
 
 type FormulaPart =
-  | { kind: 'text'; value: string }
-  | { kind: 'sub'; value: string }
-  | { kind: 'sup'; value: string }
+  | { kind: "text"; value: string }
+  | { kind: "sub"; value: string }
+  | { kind: "sup"; value: string };
 
 /** Known substance_id → formula parts with numeric subscripts / charge superscripts. */
 const FORMULA_PARTS_BY_SUBSTANCE_ID: Record<string, FormulaPart[]> = {
   water: [
-    { kind: 'text', value: 'H' },
-    { kind: 'sub', value: '2' },
-    { kind: 'text', value: 'O' },
+    { kind: "text", value: "H" },
+    { kind: "sub", value: "2" },
+    { kind: "text", value: "O" },
   ],
-  nacl: [{ kind: 'text', value: 'NaCl' }],
+  nacl: [{ kind: "text", value: "NaCl" }],
   cacl2: [
-    { kind: 'text', value: 'CaCl' },
-    { kind: 'sub', value: '2' },
+    { kind: "text", value: "CaCl" },
+    { kind: "sub", value: "2" },
   ],
   sand: [
-    { kind: 'text', value: 'SiO' },
-    { kind: 'sub', value: '2' },
+    { kind: "text", value: "SiO" },
+    { kind: "sub", value: "2" },
   ],
-  hcl: [{ kind: 'text', value: 'HCl' }],
+  hcl: [{ kind: "text", value: "HCl" }],
   h2so4: [
-    { kind: 'text', value: 'H' },
-    { kind: 'sub', value: '2' },
-    { kind: 'text', value: 'SO' },
-    { kind: 'sub', value: '4' },
+    { kind: "text", value: "H" },
+    { kind: "sub", value: "2" },
+    { kind: "text", value: "SO" },
+    { kind: "sub", value: "4" },
   ],
-  'h+': [
-    { kind: 'text', value: 'H' },
-    { kind: 'sup', value: '+' },
+  "h+": [
+    { kind: "text", value: "H" },
+    { kind: "sup", value: "+" },
   ],
-  'na+': [
-    { kind: 'text', value: 'Na' },
-    { kind: 'sup', value: '+' },
+  "na+": [
+    { kind: "text", value: "Na" },
+    { kind: "sup", value: "+" },
   ],
-  'ca2+': [
-    { kind: 'text', value: 'Ca' },
-    { kind: 'sup', value: '2+' },
+  "ca2+": [
+    { kind: "text", value: "Ca" },
+    { kind: "sup", value: "2+" },
   ],
-  'cl-': [
-    { kind: 'text', value: 'Cl' },
-    { kind: 'sup', value: '−' },
+  "cl-": [
+    { kind: "text", value: "Cl" },
+    { kind: "sup", value: "−" },
   ],
-  'so4^2-': [
-    { kind: 'text', value: 'SO' },
-    { kind: 'sub', value: '4' },
-    { kind: 'sup', value: '2−' },
+  "so4^2-": [
+    { kind: "text", value: "SO" },
+    { kind: "sub", value: "4" },
+    { kind: "sup", value: "2−" },
   ],
-  'hso4-': [
-    { kind: 'text', value: 'HSO' },
-    { kind: 'sub', value: '4' },
-    { kind: 'sup', value: '−' },
+  "hso4-": [
+    { kind: "text", value: "HSO" },
+    { kind: "sub", value: "4" },
+    { kind: "sup", value: "−" },
   ],
-  naoh: [
-    { kind: 'text', value: 'NaOH' },
-  ],
+  naoh: [{ kind: "text", value: "NaOH" }],
   na2so4: [
-    { kind: 'text', value: 'Na' },
-    { kind: 'sub', value: '2' },
-    { kind: 'text', value: 'SO' },
-    { kind: 'sub', value: '4' },
+    { kind: "text", value: "Na" },
+    { kind: "sub", value: "2" },
+    { kind: "text", value: "SO" },
+    { kind: "sub", value: "4" },
   ],
   caso4: [
-    { kind: 'text', value: 'CaSO' },
-    { kind: 'sub', value: '4' },
+    { kind: "text", value: "CaSO" },
+    { kind: "sub", value: "4" },
   ],
-  'oh-': [
-    { kind: 'text', value: 'OH' },
-    { kind: 'sup', value: '−' },
+  "oh-": [
+    { kind: "text", value: "OH" },
+    { kind: "sup", value: "−" },
   ],
-}
+};
 
 function formulaParts(substanceId: string): FormulaPart[] {
-  return FORMULA_PARTS_BY_SUBSTANCE_ID[substanceId] ?? [{ kind: 'text', value: substanceId }]
+  return (
+    FORMULA_PARTS_BY_SUBSTANCE_ID[substanceId] ?? [
+      { kind: "text", value: substanceId },
+    ]
+  );
 }
 
 /** Plain-text formula for tests / aria (ASCII digits and +/-). */
 export function formatFormulaPlain(substanceId: string): string {
   return formulaParts(substanceId)
     .map((part) => {
-      if (part.kind === 'sup' && part.value === '−') return '-'
-      return part.value
+      if (part.kind === "sup" && part.value === "−") return "-";
+      return part.value;
     })
-    .join('')
+    .join("");
 }
 
 /** Accessible HTML formula via `<sub>` / `<sup>` (Firefox-friendly). */
 export function formatFormulaNodes(substanceId: string): ReactNode {
   return formulaParts(substanceId).map((part, index) => {
-    if (part.kind === 'sub') {
-      return <sub key={index}>{part.value}</sub>
+    if (part.kind === "sub") {
+      return <sub key={index}>{part.value}</sub>;
     }
-    if (part.kind === 'sup') {
-      return <sup key={index}>{part.value}</sup>
+    if (part.kind === "sup") {
+      return <sup key={index}>{part.value}</sup>;
     }
-    return <span key={index}>{part.value}</span>
-  })
+    return <span key={index}>{part.value}</span>;
+  });
 }
 
 /** Format a server composition row as e.g. `H2O (l)` or `Na+ (aq)` (plain text). */
-export function formatCompositionLabel(substanceId: string, phase: string): string {
-  const formula = formatFormulaPlain(substanceId)
-  const phaseLabel = PHASE_ABBREV[phase] ?? phase
-  return `${formula} (${phaseLabel})`
+export function formatCompositionLabel(
+  substanceId: string,
+  phase: string,
+): string {
+  const formula = formatFormulaPlain(substanceId);
+  const phaseLabel = PHASE_ABBREV[phase] ?? phase;
+  return `${formula} (${phaseLabel})`;
 }
 
 /** Display volume in litres from Φ_V solution volume (water ml + electrolyte Φ_V). */
-export function solventVolumeLitres(composition: CompositionEntry[]): number | null {
-  const volumeMl = solutionVolumeMl(composition)
-  if (volumeMl <= 0) return null
-  return volumeMl / 1000
+export function solventVolumeLitres(
+  composition: CompositionEntry[],
+): number | null {
+  const volumeMl = solutionVolumeMl(composition);
+  if (volumeMl <= 0) return null;
+  return volumeMl / 1000;
 }
 
 /** Strong-acid / strong-base approximate pH display. */
 export function formatPh(ph: number): string {
-  return ph.toFixed(2)
+  return ph.toFixed(2);
 }
 
-export function phFromComposition(composition: CompositionEntry[]): number | null {
-  const hEntry = composition.find((c) => c.substance_id === 'h+' && c.phase === 'aqueous')
-  const ohEntry = composition.find((c) => c.substance_id === 'oh-' && c.phase === 'aqueous')
-  const nH = hEntry?.amount_mol ?? 0
-  const nOh = ohEntry?.amount_mol ?? 0
-  const volumeMl = solutionVolumeMl(composition)
-  if (volumeMl <= 0) return null
-  const volumeL = volumeMl / 1000
+export function phFromComposition(
+  composition: CompositionEntry[],
+): number | null {
+  const hEntry = composition.find(
+    (c) => c.substance_id === "h+" && c.phase === "aqueous",
+  );
+  const ohEntry = composition.find(
+    (c) => c.substance_id === "oh-" && c.phase === "aqueous",
+  );
+  const nH = hEntry?.amount_mol ?? 0;
+  const nOh = ohEntry?.amount_mol ?? 0;
+  const volumeMl = solutionVolumeMl(composition);
+  if (volumeMl <= 0) return null;
+  const volumeL = volumeMl / 1000;
   // Prefer solved [H+] (post-speciation both h+ and oh- are present at Kw levels).
   if (nH > 0) {
-    const conc = nH / volumeL
-    if (conc <= 0) return null
-    return -Math.log10(conc)
+    const conc = nH / volumeL;
+    if (conc <= 0) return null;
+    return -Math.log10(conc);
   }
   if (nOh > 0) {
-    const conc = nOh / volumeL
-    if (conc <= 0) return null
-    return 14 + Math.log10(conc)
+    const conc = nOh / volumeL;
+    if (conc <= 0) return null;
+    return 14 + Math.log10(conc);
   }
-  const water = composition.find((c) => c.substance_id === 'water' && c.phase === 'liquid')
-  if ((water?.amount_ml ?? 0) > 0) return 7
-  return null
+  const water = composition.find(
+    (c) => c.substance_id === "water" && c.phase === "liquid",
+  );
+  if ((water?.amount_ml ?? 0) > 0) return 7;
+  return null;
 }
 
 /** Format molarity, mass, or volume suffix from server amounts (display only). */
@@ -158,31 +173,35 @@ export function formatCompositionAmount(
   entry: CompositionEntry,
   solventVolumeL: number | null,
 ): string | null {
-  if (entry.phase === 'aqueous' && entry.amount_mol != null && solventVolumeL != null) {
-    const molarity = entry.amount_mol / solventVolumeL
-    return `${formatMolarity(molarity)} M`
+  if (
+    entry.phase === "aqueous" &&
+    entry.amount_mol != null &&
+    solventVolumeL != null
+  ) {
+    const molarity = entry.amount_mol / solventVolumeL;
+    return `${formatMolarity(molarity)} M`;
   }
-  if (entry.phase === 'solid' && entry.amount_g != null) {
-    return `${formatFixedAmount(entry.amount_g)} g`
+  if (entry.phase === "solid" && entry.amount_g != null) {
+    return `${formatFixedAmount(entry.amount_g)} g`;
   }
-  if (entry.phase === 'liquid' && entry.amount_ml != null) {
-    return `${formatFixedAmount(entry.amount_ml)} ml`
+  if (entry.phase === "liquid" && entry.amount_ml != null) {
+    return `${formatFixedAmount(entry.amount_ml)} ml`;
   }
-  return null
+  return null;
 }
 
 function formatMolarity(value: number): string {
-  return value.toPrecision(3)
+  return value.toPrecision(3);
 }
 
 /** Shared number formatting for mass (g) and volume (ml) suffixes — always two decimals. */
 function formatFixedAmount(value: number): string {
-  return value.toFixed(2)
+  return value.toFixed(2);
 }
 
 /** Format beaker/scene temperature for inspect labels (always two decimals). */
 export function formatTemperatureC(temperatureC: number): string {
-  return temperatureC.toFixed(2)
+  return temperatureC.toFixed(2);
 }
 
 /** Label + optional amount for the beaker inspect list. */
@@ -190,75 +209,90 @@ export function CompositionInspectLine({
   entry,
   solventVolumeL,
 }: {
-  entry: CompositionEntry
-  solventVolumeL: number | null
+  entry: CompositionEntry;
+  solventVolumeL: number | null;
 }): ReactNode {
-  const phaseLabel = PHASE_ABBREV[entry.phase] ?? entry.phase
-  const amount = formatCompositionAmount(entry, solventVolumeL)
+  const phaseLabel = PHASE_ABBREV[entry.phase] ?? entry.phase;
+  const amount = formatCompositionAmount(entry, solventVolumeL);
   return (
     <>
       {formatFormulaNodes(entry.substance_id)} ({phaseLabel})
       {amount ? <> — {amount}</> : null}
     </>
-  )
+  );
 }
 
 /** Stock jar captions under salt / sand / distilled-water beakers (display only). */
-export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand' | 'naoh' | 'water' | 'hcl' | 'h2so4'
+export type StockSubstanceId =
+  "nacl" | "cacl2" | "sand" | "naoh" | "na2so4" | "water" | "hcl" | "h2so4";
 
 const STOCK_SUBSTANCE_LABELS: Record<
   StockSubstanceId,
   { chemicalName: string; commonName: string; ariaName: string }
 > = {
   nacl: {
-    chemicalName: 'Sodium chloride',
-    commonName: 'Table salt',
-    ariaName: 'Sodium chloride (NaCl)',
+    chemicalName: "Sodium chloride",
+    commonName: "Table salt",
+    ariaName: "Sodium chloride (NaCl)",
   },
   cacl2: {
-    chemicalName: 'Calcium chloride',
-    commonName: 'De-icing salt',
-    ariaName: 'Calcium chloride (CaCl2)',
+    chemicalName: "Calcium chloride",
+    commonName: "De-icing salt",
+    ariaName: "Calcium chloride (CaCl2)",
   },
   sand: {
-    chemicalName: 'Silicon dioxide',
-    commonName: 'Sand',
-    ariaName: 'Sand',
+    chemicalName: "Silicon dioxide",
+    commonName: "Sand",
+    ariaName: "Sand",
   },
   naoh: {
-    chemicalName: 'Sodium hydroxide',
-    commonName: 'Caustic soda',
-    ariaName: 'Sodium hydroxide (NaOH)',
+    chemicalName: "Sodium hydroxide",
+    commonName: "Caustic soda",
+    ariaName: "Sodium hydroxide (NaOH)",
+  },
+  na2so4: {
+    chemicalName: "Sodium sulfate",
+    commonName: "Glauber's salt",
+    ariaName: "Sodium sulfate (Na2SO4)",
   },
   water: {
-    chemicalName: 'Water',
-    commonName: 'distilled water',
-    ariaName: 'Distilled water (H2O)',
+    chemicalName: "Water",
+    commonName: "distilled water",
+    ariaName: "Distilled water (H2O)",
   },
   hcl: {
-    chemicalName: 'Hydrochloric acid',
-    commonName: '30% w/w',
-    ariaName: 'Hydrochloric acid (30%)',
+    chemicalName: "Hydrochloric acid",
+    commonName: "30% w/w",
+    ariaName: "Hydrochloric acid (30%)",
   },
   h2so4: {
-    chemicalName: 'Sulfuric acid',
-    commonName: '~98% w/w',
-    ariaName: 'Sulfuric acid',
+    chemicalName: "Sulfuric acid",
+    commonName: "~98% w/w",
+    ariaName: "Sulfuric acid",
   },
-}
+};
 
 export function stockSubstanceAriaLabel(substanceId: StockSubstanceId): string {
-  return STOCK_SUBSTANCE_LABELS[substanceId].ariaName
+  return STOCK_SUBSTANCE_LABELS[substanceId].ariaName;
 }
 
 /** Three-line stock beaker label: formula, (chemical name), (common name). */
-export function StockSubstanceLabel({ substanceId }: { substanceId: StockSubstanceId }) {
-  const meta = STOCK_SUBSTANCE_LABELS[substanceId]
+export function StockSubstanceLabel({
+  substanceId,
+}: {
+  substanceId: StockSubstanceId;
+}) {
+  const meta = STOCK_SUBSTANCE_LABELS[substanceId];
   return (
-    <span className="lab-item-label lab-item-label-stack" data-stock-label={substanceId}>
-      <span className="lab-item-label-formula">{formatFormulaNodes(substanceId)}</span>
+    <span
+      className="lab-item-label lab-item-label-stack"
+      data-stock-label={substanceId}
+    >
+      <span className="lab-item-label-formula">
+        {formatFormulaNodes(substanceId)}
+      </span>
       <span className="lab-item-label-name">({meta.chemicalName})</span>
       <span className="lab-item-label-common">({meta.commonName})</span>
     </span>
-  )
+  );
 }

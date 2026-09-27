@@ -433,6 +433,7 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
             h2so4_stock_beaker(),
             solid_stock_beaker("beaker-nacl", "Sodium chloride", "nacl"),
             solid_stock_beaker("beaker-naoh", "Sodium hydroxide", "naoh"),
+            solid_stock_beaker("beaker-na2so4", "Sodium sulfate", "na2so4"),
             solid_stock_beaker("beaker-cacl2", "Calcium chloride", "cacl2"),
             solid_stock_beaker("beaker-sand", "Sand", "sand"),
             empty_bench_beaker("beaker-water", "Beaker", WATER_CAPACITY_ML, 20.0),
@@ -1605,7 +1606,7 @@ fn apply_pipette_put_away(scene: &mut Scene, tool_idx: usize) -> Result<(), Scen
 fn is_solid_stock_beaker(item: &SceneItem) -> bool {
     matches!(
         item.id.as_str(),
-        "beaker-nacl" | "beaker-cacl2" | "beaker-sand" | "beaker-naoh"
+        "beaker-nacl" | "beaker-cacl2" | "beaker-sand" | "beaker-naoh" | "beaker-na2so4"
     )
 }
 
@@ -1675,6 +1676,7 @@ fn stock_species_for_beaker(item: &SceneItem) -> Option<&'static str> {
         "beaker-cacl2" => Some("cacl2"),
         "beaker-sand" => Some("sand"),
         "beaker-naoh" => Some("naoh"),
+        "beaker-na2so4" => Some("na2so4"),
         _ => None,
     }
 }

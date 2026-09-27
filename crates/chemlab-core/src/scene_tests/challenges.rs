@@ -110,6 +110,7 @@ fn separate_challenge_starts_with_mixed_beaker_and_empty_stocks() {
     assert!(!ids.contains(&"beaker-cacl2"));
     assert!(!ids.contains(&"beaker-hcl"));
     assert!(!ids.contains(&"beaker-naoh"));
+    assert!(!ids.contains(&"beaker-na2so4"));
     assert!(ids.contains(&"beaker-h2o"));
     assert!(ids.contains(&"beaker-nacl"));
     assert!(ids.contains(&"beaker-sand"));
@@ -327,6 +328,7 @@ fn create_table_salt_starts_with_empty_nacl_and_full_reagent_stocks() {
     assert!(ids.contains(&"beaker-nacl"));
     assert!(!ids.contains(&"beaker-cacl2"));
     assert!(!ids.contains(&"beaker-sand"));
+    assert!(!ids.contains(&"beaker-na2so4"));
 
     let nacl = item(&scene, "beaker-nacl");
     assert_eq!(solid_g(nacl, "nacl"), 0.0);

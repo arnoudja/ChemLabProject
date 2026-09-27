@@ -148,6 +148,10 @@ Inspect shows **pH** from solved `[H⁺]` after speciation (`pH = −log₁₀([
 
 Free mode includes `beaker-naoh` (**Sodium hydroxide**): **2.00 g** solid (`10 × 0.2 g` scoops), tongs + spoon parity with NaCl. Dissolves to aqueous `na+` + `oh-` (1:1, M = 40.00 g/mol) with ΔH_sol = **−44500 J/mol** whenever solid NaOH meets liquid water (spoon pour, tongs dump into a wet vessel, water poured onto dry solid, and filter-paper wash — highly soluble, contact-time fraction with no SI cap). After mix/dissolve/filter wash, aqueous speciation (`K_w` + `K_a2`) subsumes `H+ + OH- → H2O` (ΔH_neut = **−55800 J/mol**) **before** saturation. Challenge layouts omit `beaker-naoh` unless listed (e.g. `separate-nacl-sio2`). Out of scope: base dish evaporation, buffers / extra safety UX.
 
+### Free-mode sodium sulfate stock
+
+Free mode includes `beaker-na2so4` (**Sodium sulfate**): **2.00 g** solid (`10 × 0.2 g` scoops), same solid-stock pattern as NaCl / NaOH / CaCl₂ / sand. Substance id `na2so4` matches the existing aqueous / SI / Φ_V paths from H₂SO₄ neutralization. Tongs + spoon scoop/put-away parity with other solids. Challenge layouts omit `beaker-na2so4` unless listed. Kinetic dissolve-rate tuning for this salt is out of scope for the stock addition.
+
 ### Burner heat, ambient cooling, clock
 
 A **pipette** transfers **1.00 ml** of mixed solution (water + aqueous ions in proportion, by **solution volume**). The source vessel must hold at least **3.00 ml** of liquid, so a vessel can never be pipetted dry: a fill from a dry vessel fails with `no_fluid_available` ("No fluid available.") and a fill from a vessel below 3.00 ml fails with `not_enough_fluid_available` ("Not enough fluid available."). Solid SiO₂ / other solids stay in the vessel. The evaporation dish holds at most **25.00 ml**.

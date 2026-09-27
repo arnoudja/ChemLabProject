@@ -158,6 +158,7 @@ async fn put_away_returns_scoop_to_matching_stock_for_each_solid() {
         ("putaway-sand@chemlab.local", "beaker-sand", "sand"),
         ("putaway-cacl2@chemlab.local", "beaker-cacl2", "cacl2"),
         ("putaway-naoh@chemlab.local", "beaker-naoh", "naoh"),
+        ("putaway-na2so4@chemlab.local", "beaker-na2so4", "na2so4"),
     ] {
         let (csrf_token, csrf_cookie, session_cookie) = register_user(&app, email).await;
         let cookies = format!("{session_cookie}; {csrf_cookie}");
@@ -248,7 +249,13 @@ async fn put_away_empty_spoon_is_noop() {
                 .as_array()
                 .is_some_and(|events| events.is_empty())
     );
-    for beaker_id in ["beaker-nacl", "beaker-sand", "beaker-cacl2", "beaker-naoh"] {
+    for beaker_id in [
+        "beaker-nacl",
+        "beaker-sand",
+        "beaker-cacl2",
+        "beaker-naoh",
+        "beaker-na2so4",
+    ] {
         let before_stock = before["items"]
             .as_array()
             .unwrap()

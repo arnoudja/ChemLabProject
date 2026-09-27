@@ -2,7 +2,9 @@
 
 use super::super::*;
 use super::helpers::*;
-use crate::h2so4::{self, H2SO4_STOCK_CAPACITY_ML, H2SO4_STOCK_H2SO4_MOLES};
+use crate::h2so4::{
+    self, H2SO4_REFORM_WATER_PER_ACID, H2SO4_STOCK_CAPACITY_ML, H2SO4_STOCK_H2SO4_MOLES,
+};
 use crate::hcl::{self, hcl_inventory_moles_entries};
 
 #[test]
@@ -86,10 +88,14 @@ fn sulfuric_only_dish_evap_removes_water_keeps_acid() {
     use_tongs_pour(&mut scene, "beaker-water", "dish-1");
 
     let dish = item(&scene, "dish-1");
-    let n_h0 = aqueous_mol(dish, "h+");
-    let n_so4_0 = aqueous_mol(dish, "so4^2-");
-    assert!(n_h0 > 1e-6 && n_so4_0 > 1e-6);
+    let n_acid0 = h2so4::H2so4Inventory::from_item(dish).n_h2so4;
+    assert!(n_acid0 > 1e-6);
     assert!(hcl_inventory_moles_entries(&dish.properties.composition) < 1e-15);
+    // Dilute enough that a short boil stays above the reform threshold.
+    assert!(
+        h2so4::H2so4Inventory::from_item(dish).water_per_h2so4()
+            > H2SO4_REFORM_WATER_PER_ACID * 10.0
+    );
 
     apply_action(
         &mut scene,
@@ -100,14 +106,15 @@ fn sulfuric_only_dish_evap_removes_water_keeps_acid() {
     .unwrap();
     apply_elapsed(&mut scene, 20.0);
     let dish = item(&scene, "dish-1");
-    let n_h1 = aqueous_mol(dish, "h+");
-    let n_so4_1 = aqueous_mol(dish, "so4^2-");
+    let n_acid1 = h2so4::H2so4Inventory::from_item(dish).n_h2so4;
     assert!(
-        (n_h1 - n_h0).abs() < 1e-9,
-        "H₂SO₄ must be non-volatile: h+ {n_h0} → {n_h1}"
+        (n_acid1 - n_acid0).abs() < 1e-9,
+        "H₂SO₄ must be non-volatile: acid {n_acid0} → {n_acid1}"
     );
-    assert!((n_so4_1 - n_so4_0).abs() < 1e-9);
     assert!(water_ml(dish) < 15.0, "water should leave");
+    // Still dilute → stays aqueous ions.
+    assert!(aqueous_mol(dish, "so4^2-") > 1e-6);
+    assert!(h2so4::liquid_h2so4_mol_entries(&dish.properties.composition) < 1e-15);
 }
 
 #[test]
@@ -262,4 +269,171 @@ fn stock_volume_is_ten_ml() {
     assert!(h2so4::composition_is_stock_h2so4(
         &stock.properties.composition
     ));
+}
+
+fn set_dish_water_ml(scene: &mut Scene, water_ml: f64) {
+    let dish = scene
+        .items
+        .iter_mut()
+        .find(|i| i.id == "dish-1")
+        .expect("dish-1");
+    dish.properties
+        .composition
+        .retain(|c| !(c.substance_id == "water" && c.phase == "liquid"));
+    if water_ml > 1e-15 {
+        dish.properties.composition.push(CompositionEntry {
+            substance_id: "water".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(water_ml),
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: None,
+        });
+    }
+    crate::solubility::sync_fill_ml(dish);
+}
+
+#[test]
+fn dish_concentrate_below_threshold_reforms_liquid_h2so4() {
+    let mut scene = initial_bench_scene("lab-test");
+    fill_main_beaker(&mut scene, 15.0);
+    fill_pipette_from(&mut scene, "beaker-h2so4");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+
+    let n_acid = h2so4::H2so4Inventory::from_item(item(&scene, "dish-1")).n_h2so4;
+    let w_below = H2SO4_REFORM_WATER_PER_ACID * n_acid * WATER_MOLAR_MASS_G_PER_MOL * 0.5;
+    set_dish_water_ml(&mut scene, w_below);
+    // Tiny elapsed tick runs finalize (ionize → neut → SI → reform).
+    apply_elapsed(&mut scene, 1e-6);
+
+    let dish = item(&scene, "dish-1");
+    assert!(
+        (h2so4::liquid_h2so4_mol_entries(&dish.properties.composition) - n_acid).abs() < 1e-9,
+        "expected liquid H₂SO₄, got {}",
+        h2so4::liquid_h2so4_mol_entries(&dish.properties.composition)
+    );
+    assert!(aqueous_mol(dish, "so4^2-") < 1e-12);
+    assert!(aqueous_mol(dish, "h+") < 1e-12);
+}
+
+#[test]
+fn dish_dry_out_conserves_acid_as_liquid_h2so4() {
+    let mut scene = initial_bench_scene("lab-test");
+    fill_main_beaker(&mut scene, 10.0);
+    fill_pipette_from(&mut scene, "beaker-h2so4");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+    let n_acid = h2so4::H2so4Inventory::from_item(item(&scene, "dish-1")).n_h2so4;
+
+    // Reform while a trace of water remains (finalize only runs when dish_has_liquid).
+    let w_below = H2SO4_REFORM_WATER_PER_ACID * n_acid * WATER_MOLAR_MASS_G_PER_MOL * 0.25;
+    set_dish_water_ml(&mut scene, w_below);
+    apply_elapsed(&mut scene, 1e-6);
+    assert!(
+        (h2so4::liquid_h2so4_mol_entries(&item(&scene, "dish-1").properties.composition) - n_acid)
+            .abs()
+            < 1e-9
+    );
+
+    // Strip residual water — liquid acid still counts as dish liquid; moles conserved.
+    set_dish_water_ml(&mut scene, 0.0);
+    apply_elapsed(&mut scene, 1e-6);
+
+    let dish = item(&scene, "dish-1");
+    assert!(water_ml(dish) < 1e-12);
+    assert!((h2so4::liquid_h2so4_mol_entries(&dish.properties.composition) - n_acid).abs() < 1e-9);
+    assert!(aqueous_mol(dish, "so4^2-") < 1e-12);
+    assert!(h2so4::composition_is_stock_h2so4(
+        &dish.properties.composition
+    ));
+    assert!(crate::solubility::dish_has_liquid(dish));
+}
+
+#[test]
+fn hcl_plus_h2so4_concentrate_reforms_only_sulfuric() {
+    let mut scene = initial_bench_scene("lab-test");
+    fill_main_beaker(&mut scene, 20.0);
+    fill_pipette_from(&mut scene, "beaker-h2so4");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    fill_pipette_from(&mut scene, "beaker-hcl");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+
+    let dish = item(&scene, "dish-1");
+    let n_h2so4 = h2so4::aqueous_h2so4_moles_entries(&dish.properties.composition);
+    let n_hcl = hcl_inventory_moles_entries(&dish.properties.composition);
+    assert!(n_h2so4 > 1e-6 && n_hcl > 1e-6);
+
+    let w_below = H2SO4_REFORM_WATER_PER_ACID * n_h2so4 * WATER_MOLAR_MASS_G_PER_MOL * 0.5;
+    set_dish_water_ml(&mut scene, w_below);
+    apply_elapsed(&mut scene, 1e-6);
+
+    let dish = item(&scene, "dish-1");
+    assert!((h2so4::liquid_h2so4_mol_entries(&dish.properties.composition) - n_h2so4).abs() < 1e-9);
+    assert!((hcl_inventory_moles_entries(&dish.properties.composition) - n_hcl).abs() < 1e-9);
+    assert!(aqueous_mol(dish, "so4^2-") < 1e-12);
+    assert!((aqueous_mol(dish, "h+") - n_hcl).abs() < 1e-9);
+    assert!((aqueous_mol(dish, "cl-") - n_hcl).abs() < 1e-9);
+}
+
+#[test]
+fn reformed_liquid_redilutes_and_ionizes() {
+    let mut scene = initial_bench_scene("lab-test");
+    // Dry-reformed pure acid in the dish.
+    {
+        let dish = scene
+            .items
+            .iter_mut()
+            .find(|i| i.id == "dish-1")
+            .expect("dish-1");
+        let n = H2SO4_STOCK_H2SO4_MOLES * 0.1;
+        dish.properties.composition = vec![CompositionEntry {
+            substance_id: "h2so4".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(h2so4::liquid_h2so4_ml_from_moles(n)),
+            amount_scoop: None,
+            amount_g: Some(n * h2so4::H2SO4_MOLAR_MASS_G_PER_MOL),
+            amount_mol: Some(n),
+        }];
+        crate::solubility::sync_fill_ml(dish);
+    }
+    fill_main_beaker(&mut scene, 25.0);
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+
+    let dish = item(&scene, "dish-1");
+    let n = H2SO4_STOCK_H2SO4_MOLES * 0.1;
+    assert!(h2so4::liquid_h2so4_mol_entries(&dish.properties.composition) < 1e-15);
+    assert!((aqueous_mol(dish, "so4^2-") - n).abs() < 1e-9);
+    assert!((aqueous_mol(dish, "h+") - 2.0 * n).abs() < 1e-9);
+    let t = dish.properties.temperature_c.unwrap_or(20.0);
+    assert!(t > 20.5, "re-dilution should warm, got {t}");
 }

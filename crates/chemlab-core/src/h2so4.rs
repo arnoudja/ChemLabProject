@@ -1,4 +1,5 @@
-//! Free-mode pure liquid H₂SO₄ stock: density, ionization, dilution enthalpy, put-back.
+//! Free-mode pure liquid H₂SO₄ stock: density, ionization / reformation,
+//! dilution enthalpy, put-back.
 
 use crate::composition::{aqueous_mol_entries, liquid_water_ml_entries};
 use crate::scene::{CompositionEntry, SceneItem, WATER_MOLAR_MASS_G_PER_MOL};
@@ -28,6 +29,14 @@ pub const H2SO4_STOCK_H2SO4_MOLES: f64 = H2SO4_STOCK_H2SO4_MASS_G / H2SO4_MOLAR_
 
 /// Tolerance on put-back purity (relative mole / volume drift).
 pub const H2SO4_STOCK_PUTBACK_EPS: f64 = 0.01;
+
+/// Water:H₂SO₄ mole ratio at stock ~98% w/w.
+///
+/// At or below this ratio, free aqueous acid reforms to liquid `h2so4`, and
+/// liquid acid does not ionize (reciprocal of the dilution gate).
+pub const H2SO4_REFORM_WATER_PER_ACID: f64 = (H2SO4_MOLAR_MASS_G_PER_MOL * (1.0 - H2SO4_STOCK_W_W)
+    / H2SO4_STOCK_W_W)
+    / WATER_MOLAR_MASS_G_PER_MOL;
 
 /// Liquid `h2so4` volume (ml) in a composition list.
 pub fn liquid_h2so4_ml_entries(entries: &[CompositionEntry]) -> f64 {
@@ -202,7 +211,43 @@ pub fn composition_is_stock_h2so4(entries: &[CompositionEntry]) -> bool {
     (m_per_ml - stock_m_per_ml).abs() / stock_m_per_ml <= H2SO4_STOCK_PUTBACK_EPS
 }
 
-/// Convert all liquid `h2so4` to aqueous `2 H⁺ + SO₄²⁻` when liquid water is present.
+/// Liquid `h2so4` volume (ml) authored at the stock density × w/w lock for `n` moles.
+pub fn liquid_h2so4_ml_from_moles(n: f64) -> f64 {
+    if n <= AMOUNT_EPS {
+        return 0.0;
+    }
+    n * H2SO4_MOLAR_MASS_G_PER_MOL / (H2SO4_STOCK_DENSITY_G_PER_ML * H2SO4_STOCK_W_W)
+}
+
+fn author_liquid_h2so4_moles(item: &mut SceneItem, n: f64) {
+    if n <= AMOUNT_EPS {
+        return;
+    }
+    let add_ml = liquid_h2so4_ml_from_moles(n);
+    let add_g = n * H2SO4_MOLAR_MASS_G_PER_MOL;
+    if let Some(existing) = item
+        .properties
+        .composition
+        .iter_mut()
+        .find(|c| c.substance_id == "h2so4" && c.phase == "liquid")
+    {
+        existing.amount_ml = Some(existing.amount_ml.unwrap_or(0.0) + add_ml);
+        existing.amount_mol = Some(existing.amount_mol.unwrap_or(0.0) + n);
+        existing.amount_g = Some(existing.amount_g.unwrap_or(0.0) + add_g);
+        return;
+    }
+    item.properties.composition.push(CompositionEntry {
+        substance_id: "h2so4".into(),
+        phase: "liquid".into(),
+        amount_ml: Some(add_ml),
+        amount_scoop: None,
+        amount_g: Some(add_g),
+        amount_mol: Some(n),
+    });
+}
+
+/// Convert all liquid `h2so4` to aqueous `2 H⁺ + SO₄²⁻` when the water:acid mole
+/// ratio is **above** [`H2SO4_REFORM_WATER_PER_ACID`] (~98% w/w stock).
 ///
 /// **Speciation note:** school sim uses full dissociation (both protons strong).
 /// Real H₂SO₄ has a weak second step (HSO₄⁻ ⇌ H⁺ + SO₄²⁻, Kₐ₂ ≈ 0.01); a full
@@ -210,12 +255,12 @@ pub fn composition_is_stock_h2so4(entries: &[CompositionEntry]) -> bool {
 ///
 /// Returns moles of H₂SO₄ ionized (for dilution-heat callers that already mixed).
 pub fn ionize_liquid_h2so4_in_water(item: &mut SceneItem) -> f64 {
-    let water_ml = crate::composition::solvent_water_ml_for_si(item);
-    if water_ml <= AMOUNT_EPS {
-        return 0.0;
-    }
     let n = liquid_h2so4_mol_entries(&item.properties.composition);
     if n <= AMOUNT_EPS {
+        return 0.0;
+    }
+    let inv = H2so4Inventory::from_item(item);
+    if inv.water_per_h2so4() <= H2SO4_REFORM_WATER_PER_ACID {
         return 0.0;
     }
     item.properties
@@ -231,6 +276,31 @@ pub fn ionize_liquid_h2so4_in_water(item: &mut SceneItem) -> f64 {
         "so4^2-",
         crate::composition::aqueous_mol(item, "so4^2-") + n,
     );
+    n
+}
+
+/// Inverse of [`ionize_liquid_h2so4_in_water`]: reform free aqueous sulfuric
+/// (`min((h+ − HCl)/2, so4)`) to liquid `h2so4` when the water:acid mole ratio is
+/// at or below [`H2SO4_REFORM_WATER_PER_ACID`].
+///
+/// HCl inventory (`min(h+, cl-)`) is left aqueous. Call **after** SI so salt
+/// sulfates claim SO₄ first.
+///
+/// Returns moles of H₂SO₄ reformed.
+pub fn reform_aqueous_h2so4_to_liquid(item: &mut SceneItem) -> f64 {
+    let n = aqueous_h2so4_moles_entries(&item.properties.composition);
+    if n <= AMOUNT_EPS {
+        return 0.0;
+    }
+    let inv = H2so4Inventory::from_item(item);
+    if inv.water_per_h2so4() > H2SO4_REFORM_WATER_PER_ACID {
+        return 0.0;
+    }
+    let n_h = crate::composition::aqueous_mol(item, "h+");
+    let n_so4 = crate::composition::aqueous_mol(item, "so4^2-");
+    crate::composition::set_aqueous_mol(item, "h+", (n_h - 2.0 * n).max(0.0));
+    crate::composition::set_aqueous_mol(item, "so4^2-", (n_so4 - n).max(0.0));
+    author_liquid_h2so4_moles(item, n);
     n
 }
 
@@ -309,5 +379,115 @@ mod tests {
         };
         let q = h2so4_dilution_heat_j(dest, added, after);
         assert!(q < 0.0, "expected exothermic dilution, Q={q}");
+    }
+
+    fn vessel(entries: Vec<CompositionEntry>) -> SceneItem {
+        use crate::scene::ItemProperties;
+        SceneItem {
+            id: "vessel".into(),
+            kind: "evaporation_dish".into(),
+            label: "test".into(),
+            location: "bench".into(),
+            properties: ItemProperties {
+                volume_ml: Some(25.0),
+                fill_ml: Some(10.0),
+                transparent: Some(true),
+                colourless: Some(true),
+                temperature_c: Some(20.0),
+                composition: entries,
+                ..ItemProperties::default()
+            },
+        }
+    }
+
+    fn water_ml_for_ratio(n_acid: f64, ratio: f64) -> f64 {
+        ratio * n_acid * WATER_MOLAR_MASS_G_PER_MOL
+    }
+
+    #[test]
+    fn reform_threshold_matches_stock_ww() {
+        let expected = (H2SO4_MOLAR_MASS_G_PER_MOL * (1.0 - H2SO4_STOCK_W_W) / H2SO4_STOCK_W_W)
+            / WATER_MOLAR_MASS_G_PER_MOL;
+        assert!((H2SO4_REFORM_WATER_PER_ACID - expected).abs() < 1e-12);
+        // Sanity: ~98% w/w is a small water:acid mole ratio (order 0.1).
+        let r = H2SO4_REFORM_WATER_PER_ACID;
+        assert!((0.05..0.2).contains(&r), "unexpected reform threshold {r}");
+    }
+
+    #[test]
+    fn dilute_aqueous_acid_does_not_reform() {
+        let n = 0.1;
+        let mut item = vessel(vec![water(50.0), aq("h+", 2.0 * n), aq("so4^2-", n)]);
+        assert_eq!(reform_aqueous_h2so4_to_liquid(&mut item), 0.0);
+        assert!((aqueous_h2so4_moles_entries(&item.properties.composition) - n).abs() < 1e-12);
+        assert!(liquid_h2so4_mol_entries(&item.properties.composition) < 1e-15);
+    }
+
+    #[test]
+    fn concentrate_at_threshold_reforms_to_liquid() {
+        let n = 0.1;
+        let w = water_ml_for_ratio(n, H2SO4_REFORM_WATER_PER_ACID);
+        let mut item = vessel(vec![water(w), aq("h+", 2.0 * n), aq("so4^2-", n)]);
+        let reformed = reform_aqueous_h2so4_to_liquid(&mut item);
+        assert!((reformed - n).abs() < 1e-12);
+        assert!((liquid_h2so4_mol_entries(&item.properties.composition) - n).abs() < 1e-12);
+        assert!(crate::composition::aqueous_mol(&item, "h+") < 1e-12);
+        assert!(crate::composition::aqueous_mol(&item, "so4^2-") < 1e-12);
+        // Residual water stays; ionize must not immediately undo reform.
+        assert_eq!(ionize_liquid_h2so4_in_water(&mut item), 0.0);
+        assert!((liquid_h2so4_mol_entries(&item.properties.composition) - n).abs() < 1e-12);
+    }
+
+    #[test]
+    fn dry_out_reforms_free_acid_to_liquid() {
+        let n = 0.1;
+        let mut item = vessel(vec![aq("h+", 2.0 * n), aq("so4^2-", n)]);
+        assert!((reform_aqueous_h2so4_to_liquid(&mut item) - n).abs() < 1e-12);
+        assert!((liquid_h2so4_mol_entries(&item.properties.composition) - n).abs() < 1e-12);
+        assert!(composition_is_stock_h2so4(&item.properties.composition));
+    }
+
+    #[test]
+    fn reform_leaves_hcl_inventory_aqueous() {
+        let n_h2so4 = 0.1;
+        let n_hcl = 0.05;
+        // Ratio uses total H₂SO₄ only (HCl is not in H2so4Inventory).
+        let w = water_ml_for_ratio(n_h2so4, H2SO4_REFORM_WATER_PER_ACID * 0.5);
+        let mut item = vessel(vec![
+            water(w),
+            aq("h+", 2.0 * n_h2so4 + n_hcl),
+            aq("so4^2-", n_h2so4),
+            aq("cl-", n_hcl),
+        ]);
+        let reformed = reform_aqueous_h2so4_to_liquid(&mut item);
+        assert!((reformed - n_h2so4).abs() < 1e-12);
+        assert!((liquid_h2so4_mol_entries(&item.properties.composition) - n_h2so4).abs() < 1e-12);
+        assert!((crate::composition::aqueous_mol(&item, "h+") - n_hcl).abs() < 1e-12);
+        assert!((crate::composition::aqueous_mol(&item, "cl-") - n_hcl).abs() < 1e-12);
+        assert!(crate::composition::aqueous_mol(&item, "so4^2-") < 1e-12);
+        assert!((hcl_inventory_moles_entries(&item.properties.composition) - n_hcl).abs() < 1e-12);
+    }
+
+    #[test]
+    fn re_dilute_above_threshold_ionizes_liquid() {
+        let n = 0.05;
+        let mut item = vessel(stock_h2so4_composition());
+        // Trim stock to `n` moles.
+        let ml = liquid_h2so4_ml_from_moles(n);
+        item.properties.composition = vec![CompositionEntry {
+            substance_id: "h2so4".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(ml),
+            amount_scoop: None,
+            amount_g: Some(n * H2SO4_MOLAR_MASS_G_PER_MOL),
+            amount_mol: Some(n),
+        }];
+        // Add water well above threshold.
+        item.properties.composition.push(water(20.0));
+        let ionized = ionize_liquid_h2so4_in_water(&mut item);
+        assert!((ionized - n).abs() < 1e-12);
+        assert!(liquid_h2so4_mol_entries(&item.properties.composition) < 1e-15);
+        assert!((crate::composition::aqueous_mol(&item, "so4^2-") - n).abs() < 1e-12);
+        assert!((crate::composition::aqueous_mol(&item, "h+") - 2.0 * n).abs() < 1e-12);
     }
 }

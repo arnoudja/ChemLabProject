@@ -14,8 +14,9 @@ mod solubility;
 
 pub use dissolve::{dissolve, DissolveError, DissolveOutcome};
 pub use h2so4::{
-    H2SO4_MOLAR_MASS_G_PER_MOL, H2SO4_STOCK_CAPACITY_ML, H2SO4_STOCK_DENSITY_G_PER_ML,
-    H2SO4_STOCK_H2SO4_MASS_G, H2SO4_STOCK_H2SO4_MOLES, H2SO4_STOCK_TOTAL_MASS_G, H2SO4_STOCK_W_W,
+    H2SO4_MOLAR_MASS_G_PER_MOL, H2SO4_REFORM_WATER_PER_ACID, H2SO4_STOCK_CAPACITY_ML,
+    H2SO4_STOCK_DENSITY_G_PER_ML, H2SO4_STOCK_H2SO4_MASS_G, H2SO4_STOCK_H2SO4_MOLES,
+    H2SO4_STOCK_TOTAL_MASS_G, H2SO4_STOCK_W_W,
 };
 pub use hcl::{
     hcl_aq_density_g_per_ml, hcl_boil_temperature_c, ph_of_item, solution_volume_ml,

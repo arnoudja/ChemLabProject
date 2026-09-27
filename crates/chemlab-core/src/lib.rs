@@ -4,6 +4,7 @@
 //! lookup (NaCl / CaCl₂ / NaOH / sand in water) plus the lab scene engine — scoop,
 //! pipette transfers, burner heat, evaporation, and mixed-salt saturation.
 
+mod acid_base;
 pub mod challenges;
 mod composition;
 mod dissolve;
@@ -23,6 +24,7 @@ pub use hcl::{
     HCL_AZEOTROPE_BOIL_C, HCL_AZEOTROPE_W_W, HCL_MOLAR_MASS_G_PER_MOL, HCL_STOCK_CAPACITY_ML,
     HCL_STOCK_DENSITY_G_PER_ML, HCL_STOCK_HCL_MASS_G, HCL_STOCK_HCL_MOLES, HCL_STOCK_TOTAL_MASS_G,
     HCL_STOCK_WATER_MASS_G, HCL_STOCK_W_W, PHI_V_H2SO4_ML_PER_MOL, PHI_V_NA2SO4_ML_PER_MOL,
+    PHI_V_NAHSO4_ML_PER_MOL,
 };
 pub use scene::{
     apply_action, apply_elapsed, boiling_temperature_c, effective_heat_capacity,

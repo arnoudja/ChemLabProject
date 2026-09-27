@@ -1,5 +1,8 @@
 use super::*;
-use super::{hcl_inventory_moles_entries, PHI_V_CASO4_ML_PER_MOL, PHI_V_H2SO4_ML_PER_MOL};
+use super::{
+    hcl_inventory_moles_entries, PHI_V_CASO4_ML_PER_MOL, PHI_V_H2SO4_ML_PER_MOL,
+    PHI_V_NA2SO4_ML_PER_MOL, PHI_V_NAHSO4_ML_PER_MOL,
+};
 
 fn aq(substance_id: &str, amount_mol: f64) -> CompositionEntry {
     CompositionEntry {
@@ -102,13 +105,23 @@ fn dilution_of_stock_into_water_is_exothermic() {
 }
 
 #[test]
-fn vapor_bias_drives_liquid_toward_azeotrope() {
+fn vapor_y_w_table_drives_liquid_toward_azeotrope() {
     let lean = azeotrope_vapor_w_hcl(0.10);
     assert!(lean < 0.10);
     let rich = azeotrope_vapor_w_hcl(0.30);
     assert!(rich > 0.30);
     let at = azeotrope_vapor_w_hcl(HCL_AZEOTROPE_W_W);
     assert!((at - HCL_AZEOTROPE_W_W).abs() < 1e-6);
+}
+
+#[test]
+fn hcl_latent_heat_mixes_water_and_acid() {
+    use crate::scene::WATER_LATENT_HEAT_J_PER_G;
+    assert!((hcl_latent_heat_j_per_g(0.0) - WATER_LATENT_HEAT_J_PER_G).abs() < 1e-9);
+    assert!((hcl_latent_heat_j_per_g(1.0) - HCL_LATENT_HEAT_J_PER_G).abs() < 1e-9);
+    let mid = hcl_latent_heat_j_per_g(0.5);
+    let expected = 0.5 * (WATER_LATENT_HEAT_J_PER_G + HCL_LATENT_HEAT_J_PER_G);
+    assert!((mid - expected).abs() < 1e-9);
 }
 
 #[test]
@@ -179,6 +192,39 @@ fn mixed_hcl_and_h2so4_phi_v_splits_inventories() {
     ];
     assert!((hcl_inventory_moles_entries(&entries) - n_hcl).abs() < 1e-12);
     let expected = 40.0 + n_hcl * PHI_V_HCL_ML_PER_MOL + n_h2so4 * PHI_V_H2SO4_ML_PER_MOL;
+    assert!((solution_volume_ml_of_entries(&entries) - expected).abs() < 1e-9);
+}
+
+#[test]
+fn nahso4_like_phi_v_pairs_salt_bisulfate_not_free_acid() {
+    // Partial neut / NaHSO₄-like: Na⁺ + HSO₄⁻ (+ Ka2 leftover SO₄²⁻).
+    let n = 0.05;
+    let n_hso4 = 0.043;
+    let n_so4 = 0.007;
+    let n_h = 0.007; // Ka2 free H roughly tracks free SO₄
+    let entries = vec![
+        water(100.0),
+        aq("na+", n),
+        aq("hso4-", n_hso4),
+        aq("so4^2-", n_so4),
+        aq("h+", n_h),
+    ];
+    let el = ElectrolyteMoles::from_entries(&entries);
+    assert!(
+        (el.n_nahso4 - n_hso4).abs() < 1e-12,
+        "bisulfate should pair as NaHSO₄, got {}",
+        el.n_nahso4
+    );
+    assert!(
+        el.n_h2so4 < 0.01,
+        "must not dump nearly all S into H₂SO₄, got {}",
+        el.n_h2so4
+    );
+    assert!((el.n_nahso4 + el.n_h2so4 + el.n_na2so4 - n).abs() < 1e-9);
+    let expected = 100.0
+        + el.n_nahso4 * PHI_V_NAHSO4_ML_PER_MOL
+        + el.n_h2so4 * PHI_V_H2SO4_ML_PER_MOL
+        + el.n_na2so4 * PHI_V_NA2SO4_ML_PER_MOL;
     assert!((solution_volume_ml_of_entries(&entries) - expected).abs() < 1e-9);
 }
 

@@ -293,6 +293,176 @@ fn dish_boil_with_dilute_hcl_near_water_and_concentrates_toward_azeotrope() {
 }
 
 #[test]
+fn dish_boil_hcl_with_salt_elevates_above_acid_only_table() {
+    let mut scene = initial_bench_scene("lab-test");
+    // Dilute HCl + heavy NaCl → Raoult elevation can exceed dilute HCl knot.
+    fill_main_beaker(&mut scene, 10.0);
+    fill_pipette_from(&mut scene, "beaker-hcl");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    // Several scoops of NaCl for a strong brine.
+    for _ in 0..8 {
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "spoon-1".into(),
+                target_item_id: "beaker-nacl".into(),
+            },
+        )
+        .unwrap();
+        apply_action(
+            &mut scene,
+            Action::Pour {
+                source_item_id: "spoon-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+    }
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+
+    let dish = item(&scene, "dish-1");
+    let w = hcl_w_w(dish);
+    let t_hcl = hcl::hcl_boil_temperature_c(w);
+    let t_raoult = boiling_temperature_c(water_mole_fraction(dish));
+    assert!(
+        t_raoult > t_hcl + 0.2,
+        "fixture needs salt elevation above acid table: raoult={t_raoult} hcl={t_hcl}"
+    );
+
+    apply_action(
+        &mut scene,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    apply_elapsed(&mut scene, 15.0);
+    let dish = item(&scene, "dish-1");
+    let t = dish.properties.temperature_c.unwrap_or(0.0);
+    assert!(
+        t + 1e-3 >= t_raoult.min(t_hcl.max(t_raoult)) - 0.5,
+        "plateau should respect max(T_hcl, T_raoult); t={t} hcl={t_hcl} raoult={t_raoult}"
+    );
+    assert!(
+        t + 0.5 >= t_raoult,
+        "salt elevation must not be ignored when HCl present: t={t} raoult={t_raoult}"
+    );
+}
+
+#[test]
+fn dish_boil_hcl_with_sulfate_elevates_above_acid_only_table() {
+    // Dilute HCl + concentrated H₂SO₄ → Raoult elevation must not be ignored.
+    let mut scene = initial_bench_scene("lab-test");
+    fill_main_beaker(&mut scene, 8.0);
+    fill_pipette_from(&mut scene, "beaker-hcl");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    // Two pipettes of H₂SO₄ for a sulfate-heavy concentrate.
+    for _ in 0..2 {
+        fill_pipette_from(&mut scene, "beaker-h2so4");
+        apply_action(
+            &mut scene,
+            Action::UseTool {
+                tool_item_id: "pipette-1".into(),
+                target_item_id: "beaker-water".into(),
+            },
+        )
+        .unwrap();
+    }
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+
+    let dish = item(&scene, "dish-1");
+    let w = hcl_w_w(dish);
+    let t_hcl = hcl::hcl_boil_temperature_c(w);
+    let t_raoult = boiling_temperature_c(water_mole_fraction(dish));
+    let n_s = aqueous_mol(dish, "so4^2-") + aqueous_mol(dish, "hso4-");
+    assert!(n_s > 1e-3, "fixture needs sulfate concentrate");
+    assert!(
+        t_raoult > t_hcl + 0.2,
+        "fixture needs sulfate elevation above acid table: raoult={t_raoult} hcl={t_hcl}"
+    );
+
+    apply_action(
+        &mut scene,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    apply_elapsed(&mut scene, 15.0);
+    let dish = item(&scene, "dish-1");
+    let t = dish.properties.temperature_c.unwrap_or(0.0);
+    assert!(
+        t + 0.5 >= t_raoult,
+        "sulfate elevation must not be ignored when HCl present: t={t} raoult={t_raoult}"
+    );
+}
+
+#[test]
+fn dish_boil_mixed_hcl_h2so4_gates_on_hcl_inventory() {
+    let mut scene = initial_bench_scene("lab-test");
+    fill_main_beaker(&mut scene, 15.0);
+    fill_pipette_from(&mut scene, "beaker-hcl");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    fill_pipette_from(&mut scene, "beaker-h2so4");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+
+    let dish = item(&scene, "dish-1");
+    let n_hcl = hcl::hcl_inventory_moles_entries(&dish.properties.composition);
+    let n_s = aqueous_mol(dish, "so4^2-") + aqueous_mol(dish, "hso4-");
+    assert!(n_hcl > 1e-6);
+    assert!(n_s > 1e-6);
+    let n_acid0 = n_s;
+
+    apply_action(
+        &mut scene,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    apply_elapsed(&mut scene, 12.0);
+    apply_elapsed(&mut scene, 2.0);
+
+    let dish = item(&scene, "dish-1");
+    let n_hcl1 = hcl::hcl_inventory_moles_entries(&dish.properties.composition);
+    let n_s1 = aqueous_mol(dish, "so4^2-") + aqueous_mol(dish, "hso4-");
+    assert!(n_hcl1 < n_hcl, "HCl inventory should leave via VLE");
+    assert!(
+        (n_s1 - n_acid0).abs() < 1e-9,
+        "H₂SO₄ must stay non-volatile: {n_acid0} → {n_s1}"
+    );
+}
+
+#[test]
 fn dish_boil_with_hcl_and_dissolved_nacl_preserves_salt_cl() {
     let mut scene = initial_bench_scene("lab-test");
     // Dilute a pipette of HCl into the main beaker, dissolve one scoop NaCl, pour to dish.

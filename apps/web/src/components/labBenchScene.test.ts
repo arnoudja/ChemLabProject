@@ -13,6 +13,7 @@ import {
   PHI_V_H2SO4_ML_PER_MOL,
   PHI_V_HCL_ML_PER_MOL,
   PHI_V_NA2SO4_ML_PER_MOL,
+  PHI_V_NAHSO4_ML_PER_MOL,
   PHI_V_NACL_ML_PER_MOL,
   PHI_V_NAOH_ML_PER_MOL,
   solutionVolumeMl,
@@ -71,6 +72,7 @@ describe('Φ_V parity with chemlab-core (golden)', () => {
     expect(PHI_V_CACL2_ML_PER_MOL).toBe(34.0)
     expect(PHI_V_NAOH_ML_PER_MOL).toBe(4.0)
     expect(PHI_V_H2SO4_ML_PER_MOL).toBe(40.0)
+    expect(PHI_V_NAHSO4_ML_PER_MOL).toBe(30.0)
     expect(PHI_V_NA2SO4_ML_PER_MOL).toBe(20.0)
     expect(PHI_V_CASO4_ML_PER_MOL).toBe(15.0)
     expect(PHI_V_HCL_ML_PER_MOL).toBeCloseTo(20.7, 1)
@@ -96,6 +98,32 @@ describe('Φ_V parity with chemlab-core (golden)', () => {
       entry({ substance_id: 'so4^2-', phase: 'aqueous', amount_mol: n }),
     ]
     expect(solutionVolumeMl(sulfuric)).toBeCloseTo(50 + n * PHI_V_H2SO4_ML_PER_MOL, 9)
+  })
+
+  it('NaHSO4-like bisulfate pairs as Φ_V_NaHSO4 not free H2SO4', () => {
+    const nHso4 = 0.043
+    const nSo4 = 0.007
+    const nH = 0.007
+    const nNa = 0.05
+    const mix = [
+      entry({ substance_id: 'water', phase: 'liquid', amount_ml: 100 }),
+      entry({ substance_id: 'na+', phase: 'aqueous', amount_mol: nNa }),
+      entry({ substance_id: 'hso4-', phase: 'aqueous', amount_mol: nHso4 }),
+      entry({ substance_id: 'so4^2-', phase: 'aqueous', amount_mol: nSo4 }),
+      entry({ substance_id: 'h+', phase: 'aqueous', amount_mol: nH }),
+    ]
+    // Bisulfate → NaHSO₄; Ka2 remnant Na⁺+H⁺+SO₄²⁻ → ½ Na₂SO₄ + ½ H₂SO₄.
+    const nNahso4 = nHso4
+    const nNa2so4 = Math.min((nNa - nNahso4) * 0.5, nSo4)
+    const nH2so4 = Math.min(nH, nSo4 - nNa2so4)
+    const expected =
+      100 +
+      nNahso4 * PHI_V_NAHSO4_ML_PER_MOL +
+      nNa2so4 * PHI_V_NA2SO4_ML_PER_MOL +
+      nH2so4 * PHI_V_H2SO4_ML_PER_MOL
+    expect(solutionVolumeMl(mix)).toBeCloseTo(expected, 9)
+    expect(nNahso4).toBeGreaterThan(0.04)
+    expect(nH2so4).toBeLessThan(0.01)
   })
 
   it('dissolved gypsum uses Φ_V_CaSO4 not CaCl2', () => {

@@ -106,8 +106,10 @@ describe('LabBench challenge mode', () => {
     const onModeChange = vi.fn()
 
     render(<LabBench onModeChange={onModeChange} />)
-    await screen.findByText(SEPARATE_CHALLENGE.prompt)
-    expect(onModeChange).toHaveBeenCalledWith(SEPARATE_CHALLENGE.id)
+    expect(await screen.findByText(SEPARATE_CHALLENGE.prompt)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(onModeChange).toHaveBeenCalledWith(SEPARATE_CHALLENGE.id)
+    })
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset lab' }))
 

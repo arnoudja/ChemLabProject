@@ -73,9 +73,10 @@ describe('LabBench challenge mode', () => {
 
     render(<LabBench />)
     expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
+    expect(challengeScene().items.find((item) => item.id === 'beaker-na2so4')).toBeUndefined()
 
     const seen: string[] = []
-    for (let i = 0; i < 9; i += 1) {
+    for (let i = 0; i < 12; i += 1) {
       for (const stock of [
         'Distilled water (H2O)',
         'Hydrochloric acid (30%)',
@@ -150,9 +151,10 @@ describe('LabBench challenge mode', () => {
 
     render(<LabBench />)
     expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
+    expect(createTableSaltScene().items.find((item) => item.id === 'beaker-na2so4')).toBeUndefined()
 
     const seen: string[] = []
-    for (let i = 0; i < 9; i += 1) {
+    for (let i = 0; i < 12; i += 1) {
       for (const stock of [
         'Distilled water (H2O)',
         'Hydrochloric acid (30%)',
@@ -177,9 +179,9 @@ describe('LabBench challenge mode', () => {
       ]),
     )
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
+    expect(seen).not.toContain('Sodium sulfate (Na2SO4)')
     expect(seen).not.toContain('Sand')
     expect(seen).not.toContain('Sulfuric acid')
-    expect(seen).not.toContain('Sodium sulfate (Na2SO4)')
   })
 
   it('create-table-salt starts with full distilled water and empty NaCl', () => {
@@ -195,5 +197,6 @@ describe('LabBench challenge mode', () => {
 
     expect(scene.items.find((item) => item.id === 'beaker-sand')).toBeUndefined()
     expect(scene.items.find((item) => item.id === 'beaker-cacl2')).toBeUndefined()
+    expect(scene.items.find((item) => item.id === 'beaker-na2so4')).toBeUndefined()
   })
 })

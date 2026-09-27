@@ -25,49 +25,19 @@ pub use scene::{
     SceneEvent, SceneItem, AMBIENT_TEMPERATURE_C, ATM_PRESSURE_BAR, BOILING_TEMPERATURE_C,
     BURNER_POWER_W, CP_CACL2, CP_NACL, CP_NAOH, CP_SAND, C_BEAKER, C_DISH, DISH_CAPACITY_ML,
     DISH_EVAP_AREA_M2, DISH_MASS_TRANSFER_COEFF_ML_PER_S_M2, DISTILLED_WATER_CAPACITY_ML,
-    FILTRATE_CAPACITY_ML, H_OH_NEUTRALIZATION_J_PER_MOL, NACL_DELTA_H_SOLUTION_J_PER_MOL,
-    NAOH_DELTA_H_SOLUTION_J_PER_MOL, PIPETTE_MIN_SOURCE_ML, PIPETTE_VOLUME_ML, RELATIVE_HUMIDITY,
-    SPOON_SCOOP_MASS_G, UA_BEAKER, UA_DISH, WATER_ANTOINE_A, WATER_ANTOINE_B, WATER_ANTOINE_C,
-    WATER_CAPACITY_ML, WATER_LATENT_HEAT_J_PER_G, WATER_MOLAR_MASS_G_PER_MOL,
-    WATER_SPECIFIC_HEAT_J_PER_G_K,
+    DISTILLED_WATER_ID, FILTRATE_CAPACITY_ML, H_OH_NEUTRALIZATION_J_PER_MOL, MAIN_BEAKER_ID,
+    NACL_DELTA_H_SOLUTION_J_PER_MOL, NAOH_DELTA_H_SOLUTION_J_PER_MOL, PIPETTE_MIN_SOURCE_ML,
+    PIPETTE_VOLUME_ML, RELATIVE_HUMIDITY, SPOON_SCOOP_MASS_G, UA_BEAKER, UA_DISH, WATER_ANTOINE_A,
+    WATER_ANTOINE_B, WATER_ANTOINE_C, WATER_CAPACITY_ML, WATER_LATENT_HEAT_J_PER_G,
+    WATER_MOLAR_MASS_G_PER_MOL, WATER_SPECIFIC_HEAT_J_PER_G_K,
 };
 
 /// Semantic version of the ChemLab core crate.
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Placeholder identity for the future lab simulation engine.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LabEngine {
-    name: String,
-}
-
-impl LabEngine {
-    /// Create a named engine placeholder (no simulation yet).
-    pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into() }
-    }
-
-    /// Engine display name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Whether the engine can run chemistry (false until v1).
-    pub fn can_simulate(&self) -> bool {
-        false
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn engine_placeholder_is_not_simulating_yet() {
-        let engine = LabEngine::new("chemlab-core");
-        assert_eq!(engine.name(), "chemlab-core");
-        assert!(!engine.can_simulate());
-    }
 
     #[test]
     fn core_version_is_semver_like() {

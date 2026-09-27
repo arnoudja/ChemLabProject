@@ -246,6 +246,7 @@ dependencies = [
 name = "chemlab-contracts"
 version = "0.1.0"
 dependencies = [
+ "chemlab-core",
  "chrono",
  "serde",
  "serde_json",

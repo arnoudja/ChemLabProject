@@ -4,6 +4,7 @@
 //! - **SI / wash / solvent basis** — liquid water ml only ([`liquid_water_ml`],
 //!   [`solvent_water_ml_for_si`]). Filter-wash τ and solubility SI use this.
 //! - **Transfer / fill / capacity** — Φ_V solution volume ([`crate::hcl::transfer_volume_ml`]).
+//!   UI `fill_ml` is kept in sync with Φ_V via [`sync_fill_ml`].
 
 use crate::scene::{CompositionEntry, SceneItem};
 
@@ -85,4 +86,20 @@ pub fn set_aqueous_mol(item: &mut SceneItem, substance_id: &str, moles: f64) {
         amount_g: None,
         amount_mol: Some(moles),
     });
+}
+
+/// Keep vessel `fill_ml` aligned with Φ_V solution volume for UI height.
+///
+/// Beakers and evaporation dishes sync from `composition`. Pipettes sync from
+/// `holding` (pipette fluid never lives in composition). Other kinds are left
+/// unchanged. Prefer calling this after composition/holding mutators rather than
+/// writing `fill_ml` by hand.
+pub fn sync_fill_ml(item: &mut SceneItem) {
+    if item.kind == "beaker" || item.kind == "evaporation_dish" {
+        item.properties.fill_ml = Some(crate::hcl::solution_volume_ml(item));
+    } else if item.kind == "pipette" {
+        item.properties.fill_ml = Some(crate::hcl::solution_volume_ml_of_entries(
+            &item.properties.holding,
+        ));
+    }
 }

@@ -12,6 +12,17 @@ export const PHI_V_NACL_ML_PER_MOL = 22.0
 export const PHI_V_CACL2_ML_PER_MOL = 34.0
 export const PHI_V_NAOH_ML_PER_MOL = 4.0
 
+/**
+ * Item-id / volume glossary (wire ids are stable — do not rename):
+ *
+ * - `WATER_ID` (`beaker-water`) — main reaction beaker. UI height via `waterAmountMl`
+ *   = Φ_V solution volume (matches server `fill_ml`).
+ * - `H2O_ID` (`beaker-h2o`) — distilled-water stock. `distilledWaterAmountMl` is
+ *   liquid water ml only (solvent basis), not Φ_V.
+ * - Substance id `"water"` — liquid H₂O rows in composition (`phase: "liquid"`).
+ * - `fill_ml` — display fill; server writes Φ_V via `sync_fill_ml`.
+ * - Liquid water `amount_ml` — SI / wash / solvent basis (not transfer capacity).
+ */
 export const SPOON_ID = 'spoon-1'
 export const PIPETTE_ID = 'pipette-1'
 export const TONGS_ID = 'tongs-1'

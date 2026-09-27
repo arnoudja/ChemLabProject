@@ -81,16 +81,10 @@ fn interpolate_g_per_100g(table: &[(f64, f64)], temperature_c: f64) -> f64 {
     last.1
 }
 
-pub use crate::composition::liquid_water_ml;
+pub use crate::composition::{liquid_water_ml, sync_fill_ml};
 
 pub fn dish_has_liquid(item: &SceneItem) -> bool {
     liquid_water_ml(item) > AMOUNT_EPS
-}
-
-pub fn sync_fill_ml(item: &mut SceneItem) {
-    if item.kind == "beaker" || item.kind == "evaporation_dish" || item.kind == "pipette" {
-        item.properties.fill_ml = Some(crate::hcl::solution_volume_ml(item));
-    }
 }
 
 fn solid_mol(item: &SceneItem, substance_id: &str, molar_mass: f64) -> f64 {

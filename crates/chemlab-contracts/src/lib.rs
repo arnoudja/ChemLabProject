@@ -1,5 +1,7 @@
 //! Wire-format DTOs shared between Axum and the Vite frontend (via ts-rs).
 
+mod convert;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

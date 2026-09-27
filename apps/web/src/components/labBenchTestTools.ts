@@ -1,4 +1,4 @@
-import type { LabScene } from '../generated/contracts'
+import type { CompositionEntry, LabScene } from '../generated/contracts'
 import {
   DISH_CAPACITY_ML,
   DISTILLED_WATER_CAPACITY_ML,
@@ -8,6 +8,7 @@ import {
   PIPETTE_VOLUME_ML,
 } from './LabBench'
 import { optionalArray } from '../lib/scene'
+import { solutionVolumeMl } from './labBenchScene'
 import { cloneScene } from './labBenchTestFixtures'
 
 export function liquidWaterEntry(item: LabScene['items'][number]) {
@@ -16,11 +17,97 @@ export function liquidWaterEntry(item: LabScene['items'][number]) {
   )
 }
 
+/** Φ_V solution volume for room / fill_ml (matches server `transfer_volume_ml`). */
+function solutionMlOf(item: LabScene['items'][number]): number {
+  return solutionVolumeMl(optionalArray(item.properties.composition))
+}
+
+function syncFillMlFromPhiV(item: LabScene['items'][number]) {
+  if (item.kind === 'beaker' || item.kind === 'evaporation_dish' || item.kind === 'pipette') {
+    item.properties.fill_ml = solutionMlOf(item)
+  }
+}
+
+/**
+ * Scale non-solid composition by `frac` (Φ_V transfer). Solids stay on the source
+ * unless the caller moves them (filter paper path).
+ */
+function takeFluidFraction(
+  source: LabScene['items'][number],
+  frac: number,
+): CompositionEntry[] {
+  const taken: CompositionEntry[] = []
+  const remaining: CompositionEntry[] = []
+  for (const entry of optionalArray(source.properties.composition)) {
+    if (entry.phase === 'solid') {
+      remaining.push(entry)
+      continue
+    }
+    if (entry.substance_id === 'water' && entry.phase === 'liquid') {
+      const solventWaterMl = entry.amount_ml ?? 0
+      const move = solventWaterMl * frac
+      const rest = solventWaterMl - move
+      if (move > 1e-12) {
+        taken.push({ ...entry, amount_ml: move })
+      }
+      if (rest > 1e-12) {
+        remaining.push({ ...entry, amount_ml: rest })
+      }
+      continue
+    }
+    if (entry.phase === 'aqueous') {
+      const mol = entry.amount_mol ?? 0
+      const move = mol * frac
+      const rest = mol - move
+      if (move > 1e-12) {
+        taken.push({ ...entry, amount_mol: move })
+      }
+      if (rest > 1e-12) {
+        remaining.push({ ...entry, amount_mol: rest })
+      }
+      continue
+    }
+    remaining.push(entry)
+  }
+  source.properties.composition = remaining
+  syncFillMlFromPhiV(source)
+  return taken
+}
+
+function mergeFluidInto(dest: LabScene['items'][number], fluid: CompositionEntry[]) {
+  const composition = [...optionalArray(dest.properties.composition)]
+  for (const entry of fluid) {
+    if (entry.substance_id === 'water' && entry.phase === 'liquid') {
+      const existing = composition.find(
+        (c) => c.substance_id === 'water' && c.phase === 'liquid',
+      )
+      if (existing) {
+        existing.amount_ml = (existing.amount_ml ?? 0) + (entry.amount_ml ?? 0)
+      } else {
+        composition.push({ ...entry })
+      }
+      continue
+    }
+    if (entry.phase === 'aqueous') {
+      const existing = composition.find(
+        (c) => c.substance_id === entry.substance_id && c.phase === 'aqueous',
+      )
+      if (existing) {
+        existing.amount_mol = (existing.amount_mol ?? 0) + (entry.amount_mol ?? 0)
+      } else {
+        composition.push({ ...entry })
+      }
+      continue
+    }
+    composition.push({ ...entry })
+  }
+  dest.properties.composition = composition
+  syncFillMlFromPhiV(dest)
+}
+
 export function pipetteIsFull(scene: LabScene): boolean {
   const pipette = scene.items.find((item) => item.id === 'pipette-1')
-  return optionalArray(pipette?.properties.holding).some(
-    (entry) => entry.substance_id === 'water' && entry.phase === 'liquid' && (entry.amount_ml ?? 0) > 0,
-  )
+  return solutionVolumeMl(optionalArray(pipette?.properties.holding)) > 0
 }
 
 export function applyTongsPickUp(scene: LabScene, targetId: string): LabScene {
@@ -56,13 +143,11 @@ export function applyTongsPour(scene: LabScene, destId: string): LabScene | { er
   }
   const source = next.items.find((item) => item.id === sourceId)!
   const dest = next.items.find((item) => item.id === destId)!
-  const sourceWater = liquidWaterEntry(source)
-  const sourceMl = sourceWater?.amount_ml ?? 0
-  const destWater = liquidWaterEntry(dest)
-  const destMl = destWater?.amount_ml ?? 0
-  const room = Math.max(0, liquidCapacityMl(destId) - destMl)
+  const sourceSolutionMl = solutionMlOf(source)
+  const destSolutionMl = solutionMlOf(dest)
+  const room = Math.max(0, liquidCapacityMl(destId) - destSolutionMl)
   const solids = optionalArray(source.properties.composition).filter((entry) => entry.phase === 'solid')
-  if (sourceMl <= 0) {
+  if (sourceSolutionMl <= 0) {
     if (solids.length === 0) {
       return { error: 'empty holding', code: 'empty_holding', status: 400 }
     }
@@ -70,6 +155,8 @@ export function applyTongsPour(scene: LabScene, destId: string): LabScene | { er
     source.properties.composition = optionalArray(source.properties.composition).filter(
       (entry) => entry.phase !== 'solid',
     )
+    syncFillMlFromPhiV(source)
+    syncFillMlFromPhiV(dest)
     next.last_events = [{ kind: 'poured', message: 'Poured solids into the vessel.' }]
     next.version += 1
     return next
@@ -77,28 +164,21 @@ export function applyTongsPour(scene: LabScene, destId: string): LabScene | { er
   if (room <= 0) {
     return { error: 'invalid action', code: 'invalid_action', status: 400 }
   }
-  const transferred = Math.min(sourceMl, room)
-  if (sourceWater) {
-    sourceWater.amount_ml = sourceMl - transferred
-    source.properties.fill_ml = sourceWater.amount_ml
+  const transferred = Math.min(sourceSolutionMl, room)
+  const frac = transferred / sourceSolutionMl
+  const fluid = takeFluidFraction(source, frac)
+  // Stub: move a matching solid fraction with the pour (layout tests only).
+  for (const solid of solids) {
+    const moved = (solid.amount_g ?? 0) * frac
+    solid.amount_g = (solid.amount_g ?? 0) - moved
+    if (moved > 1e-12) {
+      fluid.push({ ...solid, amount_g: moved })
+    }
   }
-  if (destWater) {
-    destWater.amount_ml = destMl + transferred
-    dest.properties.fill_ml = destWater.amount_ml
-  } else {
-    dest.properties.composition = [
-      ...optionalArray(dest.properties.composition),
-      {
-        substance_id: 'water',
-        phase: 'liquid',
-        amount_ml: transferred,
-        amount_scoop: null,
-        amount_g: null,
-        amount_mol: null,
-      },
-    ]
-    dest.properties.fill_ml = transferred
-  }
+  source.properties.composition = optionalArray(source.properties.composition).filter(
+    (entry) => entry.phase !== 'solid' || (entry.amount_g ?? 0) > 1e-12,
+  )
+  mergeFluidInto(dest, fluid)
   next.last_events = [{ kind: 'poured', message: 'Poured from the held vessel.' }]
   next.version += 1
   return next
@@ -117,12 +197,11 @@ export function applyFilterPour(scene: LabScene): LabScene | { error: string; co
     return { error: 'invalid action', code: 'invalid_action', status: 400 }
   }
   const source = next.items.find((item) => item.id === sourceId)!
-  const sourceWater = liquidWaterEntry(source)
-  const sourceMl = sourceWater?.amount_ml ?? 0
-  const destMl = liquidWaterEntry(dest)?.amount_ml ?? 0
-  const room = Math.max(0, FILTRATE_CAPACITY_ML - destMl)
+  const sourceSolutionMl = solutionMlOf(source)
+  const destSolutionMl = solutionMlOf(dest)
+  const room = Math.max(0, FILTRATE_CAPACITY_ML - destSolutionMl)
   const solids = optionalArray(source.properties.composition).filter((entry) => entry.phase === 'solid')
-  if (sourceMl <= 0) {
+  if (sourceSolutionMl <= 0) {
     if (solids.length === 0) {
       return { error: 'empty holding', code: 'empty_holding', status: 400 }
     }
@@ -131,30 +210,10 @@ export function applyFilterPour(scene: LabScene): LabScene | { error: string; co
   if (room <= 0) {
     return { error: 'invalid action', code: 'invalid_action', status: 400 }
   }
-  const transferred = Math.min(sourceMl, room)
-  const frac = transferred / sourceMl
-  if (sourceWater) {
-    sourceWater.amount_ml = sourceMl - transferred
-    source.properties.fill_ml = sourceWater.amount_ml
-  }
-  const destWater = liquidWaterEntry(dest)
-  if (destWater) {
-    destWater.amount_ml = destMl + transferred
-    dest.properties.fill_ml = destWater.amount_ml
-  } else {
-    dest.properties.composition = [
-      ...optionalArray(dest.properties.composition),
-      {
-        substance_id: 'water',
-        phase: 'liquid',
-        amount_ml: transferred,
-        amount_scoop: null,
-        amount_g: null,
-        amount_mol: null,
-      },
-    ]
-    dest.properties.fill_ml = transferred
-  }
+  const transferred = Math.min(sourceSolutionMl, room)
+  const frac = transferred / sourceSolutionMl
+  const fluid = takeFluidFraction(source, frac)
+  mergeFluidInto(dest, fluid)
   for (const solid of solids) {
     const moved = (solid.amount_g ?? 0) * frac
     solid.amount_g = (solid.amount_g ?? 0) - moved
@@ -191,9 +250,9 @@ export function applyTongsUse(
       return { error: 'invalid action', code: 'invalid_action', status: 400 }
     }
     const source = scene.items.find((item) => item.id === held)
-    const sourceMl = liquidWaterEntry(source!)?.amount_ml ?? 0
+    const sourceSolutionMl = solutionMlOf(source!)
     const solids = optionalArray(source?.properties.composition).filter((entry) => entry.phase === 'solid')
-    if (sourceMl <= 0 && solids.length > 0) {
+    if (sourceSolutionMl <= 0 && solids.length > 0) {
       return applyTongsPour(scene, 'filter-paper-1')
     }
     return applyFilterPour(scene)
@@ -231,9 +290,8 @@ export function applyPipetteFill(
   const next = cloneScene(scene)
   const source = next.items.find((item) => item.id === sourceId)!
   const pipette = next.items.find((item) => item.id === 'pipette-1')!
-  const water = liquidWaterEntry(source)
-  const availableMl = water?.amount_ml ?? 0
-  if (!water || availableMl <= 0) {
+  const availableMl = solutionMlOf(source)
+  if (availableMl <= 0) {
     return { error: 'No fluid available.', code: 'no_fluid_available', status: 400 }
   }
   if (availableMl < PIPETTE_MIN_SOURCE_ML) {
@@ -243,22 +301,13 @@ export function applyPipetteFill(
       status: 400,
     }
   }
-  water.amount_ml = availableMl - PIPETTE_VOLUME_ML
-  source.properties.fill_ml = water.amount_ml
+  const frac = PIPETTE_VOLUME_ML / availableMl
+  const fluid = takeFluidFraction(source, frac)
   pipette.location = 'hand'
-  pipette.properties.holding = [
-    {
-      substance_id: 'water',
-      phase: 'liquid',
-      amount_ml: PIPETTE_VOLUME_ML,
-      amount_scoop: null,
-      amount_g: null,
-      amount_mol: null,
-    },
-  ]
+  pipette.properties.holding = fluid
   pipette.properties.source_item_id = sourceId
   pipette.properties.temperature_c = source.properties.temperature_c
-  pipette.properties.fill_ml = PIPETTE_VOLUME_ML
+  pipette.properties.fill_ml = solutionVolumeMl(fluid)
   next.last_events = [
     {
       kind: 'pipetted',
@@ -274,24 +323,8 @@ export function applyPipetteEmpty(scene: LabScene, targetId: string): LabScene {
   const target = next.items.find((item) => item.id === targetId)!
   const pipette = next.items.find((item) => item.id === 'pipette-1')!
   if (!pipetteIsFull(next)) return scene
-  const existing = liquidWaterEntry(target)
-  if (existing) {
-    existing.amount_ml = (existing.amount_ml ?? 0) + PIPETTE_VOLUME_ML
-    target.properties.fill_ml = existing.amount_ml
-  } else {
-    target.properties.composition = [
-      ...optionalArray(target.properties.composition),
-      {
-        substance_id: 'water',
-        phase: 'liquid',
-        amount_ml: PIPETTE_VOLUME_ML,
-        amount_scoop: null,
-        amount_g: null,
-        amount_mol: null,
-      },
-    ]
-    target.properties.fill_ml = PIPETTE_VOLUME_ML
-  }
+  const holding = optionalArray(pipette.properties.holding)
+  mergeFluidInto(target, holding)
   pipette.properties.holding = []
   pipette.properties.source_item_id = null
   pipette.properties.fill_ml = 0
@@ -324,7 +357,7 @@ export function withBurnerToggle(scene: LabScene): LabScene {
   const next = cloneScene(scene)
   const burner = next.items.find((item) => item.id === 'burner-1')!
   const dish = next.items.find((item) => item.id === 'dish-1')!
-  const hasLiquid = (liquidWaterEntry(dish)?.amount_ml ?? 0) > 0
+  const hasLiquid = solutionMlOf(dish) > 0
   const currentlyOn = burner.properties.on === true
   const nextOn = currentlyOn ? false : hasLiquid
   burner.properties.on = nextOn

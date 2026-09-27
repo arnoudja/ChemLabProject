@@ -373,6 +373,64 @@ fn dish_dry_out_conserves_acid_as_liquid_h2so4() {
 }
 
 #[test]
+fn burner_turns_off_when_dish_water_gone_even_if_liquid_h2so4_remains() {
+    // Dilute H₂SO₄ + burner on → evaporate until no liquid water → burner off.
+    // Leftover liquid molecular H₂SO₄ must not keep the heater on.
+    let mut scene = initial_bench_scene("lab-test");
+    fill_main_beaker(&mut scene, 4.0);
+    fill_pipette_from(&mut scene, "beaker-h2so4");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "beaker-water".into(),
+        },
+    )
+    .unwrap();
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+    let n_acid0 = h2so4::H2so4Inventory::from_item(item(&scene, "dish-1")).n_h2so4;
+    assert!(n_acid0 > 1e-6);
+    assert!(water_ml(item(&scene, "dish-1")) > 1.0);
+
+    apply_action(
+        &mut scene,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(item(&scene, "burner-1").properties.on, Some(true));
+
+    for _ in 0..20_000 {
+        if water_ml(item(&scene, "dish-1")) < 1e-9 {
+            break;
+        }
+        apply_elapsed(&mut scene, 0.5);
+    }
+
+    let dish = item(&scene, "dish-1");
+    assert!(
+        water_ml(dish) < 1e-9,
+        "expected water fully evaporated, got {}",
+        water_ml(dish)
+    );
+    let n_liquid = h2so4::liquid_h2so4_mol_entries(&dish.properties.composition);
+    assert!(
+        n_liquid > 1e-6,
+        "liquid H₂SO₄ should remain after dry-out, got {n_liquid}"
+    );
+    assert!(
+        (h2so4::H2so4Inventory::from_item(dish).n_h2so4 - n_acid0).abs() < 1e-9,
+        "acid inventory must be conserved"
+    );
+    assert_eq!(
+        item(&scene, "burner-1").properties.on,
+        Some(false),
+        "burner must auto-off when liquid water is gone (liquid H₂SO₄ alone must not keep it on)"
+    );
+}
+
+#[test]
 fn hcl_plus_h2so4_concentrate_reforms_only_sulfuric() {
     let mut scene = initial_bench_scene("lab-test");
     fill_main_beaker(&mut scene, 20.0);

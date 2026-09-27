@@ -228,7 +228,7 @@ pub enum Action {
     /// Replace the scene with a fresh start scene for the scene's current mode
     /// (same `lab_id` / `version`).
     Reset,
-    /// Idle click on the burner. Stays off when the dish has no liquid.
+    /// Idle click on the burner. Stays off when the dish has no liquid water.
     ToggleBurner { burner_item_id: String },
     /// Switch to Free mode or a challenge; always a hard reset into that mode's start scene.
     SelectMode { mode: String },
@@ -1442,9 +1442,10 @@ fn apply_toggle_burner(scene: &mut Scene, burner_item_id: &str) -> Result<(), Sc
         .iter()
         .position(|item| item.kind == "evaporation_dish")
         .ok_or(SceneError::InvalidAction)?;
-    let has_liquid = crate::solubility::dish_has_liquid(&scene.items[dish_idx]);
+    // Toggle-on requires liquid water; liquid H₂SO₄ alone is not enough heat fuel.
+    let has_water = crate::solubility::dish_has_liquid_water(&scene.items[dish_idx]);
     let currently_on = scene.items[burner_idx].properties.on.unwrap_or(false);
-    let next_on = if currently_on { false } else { has_liquid };
+    let next_on = if currently_on { false } else { has_water };
     scene.items[burner_idx].properties.on = Some(next_on);
     if next_on != currently_on {
         scene.last_events.push(SceneEvent {

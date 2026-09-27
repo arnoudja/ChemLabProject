@@ -358,9 +358,10 @@ export function withBurnerToggle(scene: LabScene): LabScene {
   const next = cloneScene(scene)
   const burner = next.items.find((item) => item.id === 'burner-1')!
   const dish = next.items.find((item) => item.id === 'dish-1')!
-  const hasLiquid = solutionMlOf(dish) > 0
+  // Mirror server: toggle-on / heat require liquid water; liquid H₂SO₄ alone is not enough.
+  const hasWater = (liquidWaterEntry(dish)?.amount_ml ?? 0) > 0
   const currentlyOn = burner.properties.on === true
-  const nextOn = currentlyOn ? false : hasLiquid
+  const nextOn = currentlyOn ? false : hasWater
   burner.properties.on = nextOn
   if (nextOn !== currentlyOn) {
     next.last_events = [{ kind: 'toggled', message: nextOn ? 'Burner on.' : 'Burner off.' }]

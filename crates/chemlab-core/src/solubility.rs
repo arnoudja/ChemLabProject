@@ -123,6 +123,12 @@ pub fn dish_has_liquid(item: &SceneItem) -> bool {
     liquid_water_ml(item) > AMOUNT_EPS || crate::h2so4::liquid_h2so4_ml(item) > AMOUNT_EPS
 }
 
+/// Liquid water (H₂O) in the dish — burner heat gate. Liquid molecular H₂SO₄ alone
+/// does not count; the burner auto-offs (and stays off) when water is gone.
+pub fn dish_has_liquid_water(item: &SceneItem) -> bool {
+    liquid_water_ml(item) > AMOUNT_EPS
+}
+
 fn solid_mol(item: &SceneItem, substance_id: &str, molar_mass: f64) -> f64 {
     item.properties
         .composition

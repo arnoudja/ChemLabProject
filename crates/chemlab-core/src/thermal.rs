@@ -25,8 +25,10 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
     let mut heating_dish = false;
     if let (Some(burner_idx), Some(dish_idx)) = (burner_idx, dish_idx) {
         if scene.items[burner_idx].properties.on == Some(true) {
+            // Heat only while liquid water remains. Leftover liquid H₂SO₄ after
+            // dry-out must not keep the burner on (T would stall with no water).
             if scene.items[dish_idx].location != "bench"
-                || !crate::solubility::dish_has_liquid(&scene.items[dish_idx])
+                || !crate::solubility::dish_has_liquid_water(&scene.items[dish_idx])
             {
                 scene.items[burner_idx].properties.on = Some(false);
             } else {
@@ -43,7 +45,7 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
             finalize_aqueous_vessel(&mut scene.items[dish_idx]);
             if let Some(burner_idx) = burner_idx {
                 if scene.items[burner_idx].properties.on == Some(true)
-                    && !crate::solubility::dish_has_liquid(&scene.items[dish_idx])
+                    && !crate::solubility::dish_has_liquid_water(&scene.items[dish_idx])
                 {
                     scene.items[burner_idx].properties.on = Some(false);
                 }

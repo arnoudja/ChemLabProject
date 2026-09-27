@@ -1873,8 +1873,11 @@ fn wash_paper_solids_into_fluid(
         let n_na = (crate::composition::aqueous_mol_entries(fluid, "na+") - n_oh).max(0.0);
         let n_ca = crate::composition::aqueous_mol_entries(fluid, "ca2+");
         let n_h = crate::composition::aqueous_mol_entries(fluid, "h+");
-        let cap =
-            crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, n_h, n_oh, t_wash);
+        let n_cl = crate::composition::aqueous_mol_entries(fluid, "cl-");
+        let n_so4 = crate::composition::aqueous_mol_entries(fluid, "so4^2-");
+        let cap = crate::solubility::unsaturated_capacity_g(
+            salt, v_fluid, n_na, n_ca, n_h, n_cl, n_oh, n_so4, t_wash,
+        );
         let m_diss = avail.min(cap) * frac;
         if m_diss <= AMOUNT_EPS {
             continue;

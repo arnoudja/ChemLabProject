@@ -222,15 +222,18 @@ pub const PHI_V_NAOH_ML_PER_MOL: f64 = 4.0;
 
 /// Pair aqueous ions into electrolyte formula units for additive Φ_V volume.
 ///
-/// Order: HCl → H₂SO₄ → NaOH → Na₂SO₄ → NaCl → CaCl₂.
+/// Order: HCl → H₂SO₄ → NaOH → Na₂SO₄ → CaSO₄ → NaCl → CaCl₂.
 /// HCl is `min(h+, cl-)`; remaining free `h+` pairs with `so4^2-` as H₂SO₄
-/// (fully dissociated school approx: 2 H⁺ per SO₄²⁻).
+/// (fully dissociated school approx: 2 H⁺ per SO₄²⁻). Leftover Ca²⁺ pairs with
+/// remaining SO₄ as CaSO₄(aq) before any CaCl₂ attribution — dissolved gypsum
+/// never borrows Φ_V_CaCl₂ without Cl⁻.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ElectrolyteMoles {
     pub n_hcl: f64,
     pub n_h2so4: f64,
     pub n_naoh: f64,
     pub n_na2so4: f64,
+    pub n_caso4: f64,
     pub n_nacl: f64,
     pub n_cacl2: f64,
 }
@@ -251,13 +254,21 @@ impl ElectrolyteMoles {
         let n_na_salt = (n_na - n_oh).max(0.0);
         let n_na2so4 = (n_na_salt * 0.5).min(n_so4_after_acid).max(0.0);
         let n_na_after_sulfate = (n_na_salt - 2.0 * n_na2so4).max(0.0);
+        let n_so4_after_na2so4 = (n_so4_after_acid - n_na2so4).max(0.0);
+        let n_caso4 = n_ca.min(n_so4_after_na2so4).max(0.0);
+        let n_ca_after_sulfate = (n_ca - n_caso4).max(0.0);
+        let n_cl_after_hcl = (n_cl - n_hcl).max(0.0);
+        let n_nacl = n_na_after_sulfate.min(n_cl_after_hcl).max(0.0);
+        let n_cl_after_nacl = (n_cl_after_hcl - n_nacl).max(0.0);
+        let n_cacl2 = n_ca_after_sulfate.min(n_cl_after_nacl * 0.5).max(0.0);
         Self {
             n_hcl,
             n_h2so4,
             n_naoh,
             n_na2so4,
-            n_nacl: n_na_after_sulfate,
-            n_cacl2: n_ca,
+            n_caso4,
+            n_nacl,
+            n_cacl2,
         }
     }
 }
@@ -266,6 +277,8 @@ impl ElectrolyteMoles {
 pub const PHI_V_H2SO4_ML_PER_MOL: f64 = 40.0;
 /// Apparent molar volume of aqueous Na₂SO₄ (ml/mol).
 pub const PHI_V_NA2SO4_ML_PER_MOL: f64 = 20.0;
+/// Apparent molar volume of aqueous CaSO₄ (ml/mol); school mid-range value.
+pub const PHI_V_CASO4_ML_PER_MOL: f64 = 15.0;
 
 /// Solution volume (ml) = liquid water ml + liquid H₂SO₄ ml + Σ nᵢ · Φ_V,ᵢ.
 ///
@@ -282,6 +295,7 @@ pub fn solution_volume_ml_of_entries(entries: &[CompositionEntry]) -> f64 {
         + el.n_h2so4 * PHI_V_H2SO4_ML_PER_MOL
         + el.n_naoh * PHI_V_NAOH_ML_PER_MOL
         + el.n_na2so4 * PHI_V_NA2SO4_ML_PER_MOL
+        + el.n_caso4 * PHI_V_CASO4_ML_PER_MOL
         + el.n_nacl * PHI_V_NACL_ML_PER_MOL
         + el.n_cacl2 * PHI_V_CACL2_ML_PER_MOL
 }

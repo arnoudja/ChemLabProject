@@ -57,14 +57,15 @@ fn unsaturated_capacity_is_zero_when_already_at_si1_and_positive_in_pure_water()
     let water_ml = 10.0;
     let litres = water_ml / 1000.0;
     let t = 20.0;
-    let pure_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.0, 0.0, t);
+    let pure_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, t);
     let expected = solubility_mol_per_l(Salt::Nacl, t) * litres * NACL_MOLAR_MASS_G_PER_MOL;
     assert!((pure_cap - expected).abs() < 1e-6);
     let sat_mol = solubility_mol_per_l(Salt::Nacl, t) * litres;
-    let sat_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, sat_mol, 0.0, 0.0, 0.0, t);
+    let sat_cap = unsaturated_capacity_g(Salt::Nacl, water_ml, sat_mol, 0.0, 0.0, 0.0, 0.0, 0.0, t);
     assert!(sat_cap < 1e-6);
     assert!(
-        unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.0, 0.0, 80.0) > pure_cap + 1e-4
+        unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 80.0)
+            > pure_cap + 1e-4
     );
 }
 
@@ -459,8 +460,8 @@ fn soft_cap_ionic_strength_stays_below_i_star_and_varies_at_high_i() {
 
 #[test]
 fn oh_contributes_to_ionic_strength_without_inventing_nacl() {
-    let mix_salt = Mixture::from_moles(0.5, 0.0, 0.0, 0.0, 0.0, 1.0);
-    let mix_with_oh = Mixture::from_moles(0.5, 0.0, 0.0, 0.0, 0.2, 1.0);
+    let mix_salt = Mixture::from_moles(0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+    let mix_with_oh = Mixture::from_moles(0.5, 0.0, 0.0, 0.0, 0.0, 0.2, 1.0);
     assert!((mix_salt.ionic_strength() - 0.5).abs() < 1e-12);
     assert!((mix_with_oh.ionic_strength() - 0.7).abs() < 1e-12);
 
@@ -475,4 +476,69 @@ fn oh_contributes_to_ionic_strength_without_inventing_nacl() {
     assert!((aqueous_mol(&beaker, "oh-") - 0.2).abs() < 1e-12);
     assert!((aqueous_mol(&beaker, "cl-") - 0.5 * s_nacl).abs() < 1e-8);
     assert!((aqueous_mol(&beaker, "na+") - (0.5 * s_nacl + 0.2)).abs() < 1e-8);
+}
+
+#[test]
+fn dry_out_conserves_free_sulfate_with_protons() {
+    // Pure H₂SO₄ boiled dry: non-volatile acid must keep SO₄²⁻ (and h+).
+    let mut dish = dish_at(100.0, 0.0);
+    push_aq(&mut dish, "h+", 0.2);
+    push_aq(&mut dish, "so4^2-", 0.1);
+    enforce_saturation(&mut dish);
+    assert!(
+        (aqueous_mol(&dish, "so4^2-") - 0.1).abs() < 1e-12,
+        "dry-out must not wipe free SO₄: got {}",
+        aqueous_mol(&dish, "so4^2-")
+    );
+    assert!((aqueous_mol(&dish, "h+") - 0.2).abs() < 1e-12);
+    assert!(!has_solid(&dish, "na2so4"));
+    assert!(!has_solid(&dish, "caso4"));
+}
+
+#[test]
+fn sulfuric_wash_fluid_does_not_invent_hcl_common_ion() {
+    let water_ml = 100.0;
+    let t = 20.0;
+    let pure = unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, t);
+    // 0.5 mol H⁺ + 0.25 mol SO₄²⁻, no Cl⁻ — HCl inventory is 0; I/γ may trim
+    // capacity modestly, but must not match inventing Cl⁻ from bare h+.
+    let with_h2so4 = unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.5, 0.0, 0.0, 0.25, t);
+    let with_hcl = unsaturated_capacity_g(Salt::Nacl, water_ml, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, t);
+    assert!(
+        with_h2so4 > with_hcl + 5.0,
+        "H₂SO₄ (no Cl) must dissolve far more NaCl than real HCl: h2so4={with_h2so4} hcl={with_hcl}"
+    );
+    assert!(
+        with_h2so4 > pure * 0.75,
+        "H₂SO₄ I/γ trim should stay modest vs pure water: pure={pure} h2so4={with_h2so4}"
+    );
+}
+
+#[test]
+fn pure_h2so4_ionic_strength_is_three_m() {
+    // Full-dissociation H₂SO₄: I = ½(2m·1² + m·2²) = 3m.
+    let m = 0.1;
+    let mix = Mixture::from_moles(0.0, 0.0, m, 0.0, 2.0 * m, 0.0, 1.0);
+    assert!((mix.ionic_strength() - 3.0 * m).abs() < 1e-12);
+    assert!(mix.m_cl() < 1e-15, "no Cl inventory");
+}
+
+#[test]
+fn chloride_si_m_cl_not_understated_after_sulfate_partition() {
+    // 0.2 Na⁺ / 0.2 Cl⁻ / 0.05 SO₄ / 0.1 H⁺ — after sulfate Na partition,
+    // chloride IAP must still see m_cl ≈ 0.2 (true aq Cl⁻).
+    let mut dish = dish_at(20.0, 1000.0);
+    push_aq(&mut dish, "na+", 0.2);
+    push_aq(&mut dish, "cl-", 0.2);
+    push_aq(&mut dish, "so4^2-", 0.05);
+    push_aq(&mut dish, "h+", 0.1);
+    enforce_saturation(&mut dish);
+    assert!(
+        (aqueous_mol(&dish, "cl-") - 0.2).abs() < 1e-9,
+        "Cl⁻ inventory must be conserved: got {}",
+        aqueous_mol(&dish, "cl-")
+    );
+    // Chloride-budget Na after pairing 0.05 SO₄ as aq Na₂SO₄ → 0.1 Na for salts + HCl.
+    // Undersaturated at these dilute levels — no NaCl solid.
+    assert!(!has_solid(&dish, "nacl"));
 }

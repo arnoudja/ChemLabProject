@@ -1,5 +1,5 @@
 use super::*;
-use super::{hcl_inventory_moles_entries, PHI_V_H2SO4_ML_PER_MOL};
+use super::{hcl_inventory_moles_entries, PHI_V_CASO4_ML_PER_MOL, PHI_V_H2SO4_ML_PER_MOL};
 
 fn aq(substance_id: &str, amount_mol: f64) -> CompositionEntry {
     CompositionEntry {
@@ -180,6 +180,19 @@ fn mixed_hcl_and_h2so4_phi_v_splits_inventories() {
     assert!((hcl_inventory_moles_entries(&entries) - n_hcl).abs() < 1e-12);
     let expected = 40.0 + n_hcl * PHI_V_HCL_ML_PER_MOL + n_h2so4 * PHI_V_H2SO4_ML_PER_MOL;
     assert!((solution_volume_ml_of_entries(&entries) - expected).abs() < 1e-9);
+}
+
+#[test]
+fn dissolved_gypsum_uses_phi_v_caso4_not_cacl2() {
+    let n = 0.01;
+    let entries = vec![water(50.0), aq("ca2+", n), aq("so4^2-", n)];
+    let expected = 50.0 + n * PHI_V_CASO4_ML_PER_MOL;
+    assert!((solution_volume_ml_of_entries(&entries) - expected).abs() < 1e-9);
+    // Must not attribute CaCl₂ Φ_V without Cl⁻.
+    assert!(
+        (solution_volume_ml_of_entries(&entries) - (50.0 + n * PHI_V_CACL2_ML_PER_MOL)).abs()
+            > 1e-6
+    );
 }
 
 #[test]

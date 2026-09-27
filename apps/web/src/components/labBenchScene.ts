@@ -10,6 +10,7 @@ export const PHI_V_HCL_ML_PER_MOL =
   (HCL_STOCK_CAPACITY_ML - HCL_STOCK_WATER_MASS_G) / HCL_STOCK_HCL_MOLES
 export const PHI_V_H2SO4_ML_PER_MOL = 40.0
 export const PHI_V_NA2SO4_ML_PER_MOL = 20.0
+export const PHI_V_CASO4_ML_PER_MOL = 15.0
 export const PHI_V_NACL_ML_PER_MOL = 22.0
 export const PHI_V_CACL2_ML_PER_MOL = 34.0
 export const PHI_V_NAOH_ML_PER_MOL = 4.0
@@ -122,8 +123,14 @@ export function solutionVolumeMl(composition: CompositionEntry[]): number {
   const nNaoh = nOh
   const nNaSalt = Math.max(0, nNa - nOh)
   const nNa2so4 = Math.min(nNaSalt * 0.5, nSo4AfterAcid)
-  const nNacl = Math.max(0, nNaSalt - 2 * nNa2so4)
-  const nCacl2 = nCa
+  const nNaAfterSulfate = Math.max(0, nNaSalt - 2 * nNa2so4)
+  const nSo4AfterNa2so4 = Math.max(0, nSo4AfterAcid - nNa2so4)
+  const nCaso4 = Math.min(nCa, nSo4AfterNa2so4)
+  const nCaAfterSulfate = Math.max(0, nCa - nCaso4)
+  const nClAfterHcl = Math.max(0, nCl - nHcl)
+  const nNacl = Math.min(nNaAfterSulfate, nClAfterHcl)
+  const nClAfterNacl = Math.max(0, nClAfterHcl - nNacl)
+  const nCacl2 = Math.min(nCaAfterSulfate, nClAfterNacl * 0.5)
   return (
     waterMl +
     h2so4Ml +
@@ -131,6 +138,7 @@ export function solutionVolumeMl(composition: CompositionEntry[]): number {
     nH2so4 * PHI_V_H2SO4_ML_PER_MOL +
     nNaoh * PHI_V_NAOH_ML_PER_MOL +
     nNa2so4 * PHI_V_NA2SO4_ML_PER_MOL +
+    nCaso4 * PHI_V_CASO4_ML_PER_MOL +
     nNacl * PHI_V_NACL_ML_PER_MOL +
     nCacl2 * PHI_V_CACL2_ML_PER_MOL
   )

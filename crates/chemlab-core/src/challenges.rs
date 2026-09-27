@@ -16,12 +16,22 @@ pub const FREE_MODE: &str = "free";
 /// float compare would make a finished challenge unwinnable.
 pub const CHALLENGE_MASS_TOLERANCE_G: f64 = 1e-6;
 
+/// How a [`StockTarget`] mass is compared against the stock's solid grams.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WinCompare {
+    /// `|grams − amount_g| ≤ CHALLENGE_MASS_TOLERANCE_G`
+    Exact,
+    /// `grams + CHALLENGE_MASS_TOLERANCE_G ≥ amount_g`
+    AtLeast,
+}
+
 /// One "this stock holds about this much of this species" clause of a win condition.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StockTarget {
     pub item_id: &'static str,
     pub substance_id: &'static str,
     pub amount_g: f64,
+    pub compare: WinCompare,
 }
 
 /// A challenge as both product copy and engine rules.
@@ -61,17 +71,37 @@ pub const SEPARATE_NACL_SIO2: Challenge = Challenge {
             item_id: "beaker-nacl",
             substance_id: "nacl",
             amount_g: 2.0,
+            compare: WinCompare::Exact,
         },
         StockTarget {
             item_id: "beaker-sand",
             substance_id: "sand",
             amount_g: 2.0,
+            compare: WinCompare::Exact,
         },
     ],
 };
 
+/// Neutralize HCl with NaOH, evaporate, and return solid NaCl to its empty stock.
+pub const CREATE_TABLE_SALT: Challenge = Challenge {
+    id: "create-table-salt",
+    title: "Create table salt",
+    prompt: "We're out of NaCl again, can you create some for us?",
+    done: "Thank you again.",
+    allowed_stock_item_ids: &["beaker-h2o", "beaker-hcl", "beaker-naoh", "beaker-nacl"],
+    empty_stock_item_ids: &["beaker-nacl"],
+    main_beaker_solids: &[],
+    distilled_water_ml: None,
+    win: &[StockTarget {
+        item_id: "beaker-nacl",
+        substance_id: "nacl",
+        amount_g: 0.20,
+        compare: WinCompare::AtLeast,
+    }],
+};
+
 /// Every challenge, in picker order (Free mode is not a challenge).
-pub const CHALLENGES: &[Challenge] = &[SEPARATE_NACL_SIO2];
+pub const CHALLENGES: &[Challenge] = &[SEPARATE_NACL_SIO2, CREATE_TABLE_SALT];
 
 /// Whether `mode` is the default bench rather than a challenge.
 pub fn is_free_mode(mode: &str) -> bool {
@@ -105,5 +135,8 @@ fn stock_holds_target(scene: &Scene, target: &StockTarget) -> bool {
         .filter(|entry| entry.phase == "solid" && entry.substance_id == target.substance_id)
         .map(solid_amount_g)
         .sum();
-    (grams - target.amount_g).abs() <= CHALLENGE_MASS_TOLERANCE_G
+    match target.compare {
+        WinCompare::Exact => (grams - target.amount_g).abs() <= CHALLENGE_MASS_TOLERANCE_G,
+        WinCompare::AtLeast => grams + CHALLENGE_MASS_TOLERANCE_G >= target.amount_g,
+    }
 }

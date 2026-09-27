@@ -3,6 +3,7 @@ use crate::state::AppState;
 use axum::http::StatusCode;
 
 const SEPARATE: &str = "separate-nacl-sio2";
+const CREATE_SALT: &str = "create-table-salt";
 
 fn select_mode(mode: &str) -> serde_json::Value {
     serde_json::json!({ "type": "select_mode", "mode": mode })
@@ -235,5 +236,69 @@ async fn challenge_completed_is_derived_from_the_stocks() {
     assert_eq!(
         body_json(reset).await["scene"]["challenge_completed"],
         false
+    );
+}
+
+#[tokio::test]
+async fn select_mode_switches_to_create_table_salt_layout() {
+    let app = test_app().await;
+    let (csrf_token, csrf_cookie, session_cookie) =
+        register_user(&app, "mode-create-salt@chemlab.local").await;
+    let cookies = format!("{session_cookie}; {csrf_cookie}");
+
+    let response = post_action(&app, &cookies, Some(&csrf_token), select_mode(CREATE_SALT)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let scene = body_json(response).await["scene"].clone();
+
+    assert_eq!(scene["mode"], CREATE_SALT);
+    assert_eq!(scene["challenge_completed"], false);
+    let ids = scene_ids(&scene);
+    assert!(ids.contains(&"beaker-h2o".to_string()));
+    assert!(ids.contains(&"beaker-hcl".to_string()));
+    assert!(ids.contains(&"beaker-naoh".to_string()));
+    assert!(ids.contains(&"beaker-nacl".to_string()));
+    assert!(!ids.contains(&"beaker-cacl2".to_string()));
+    assert!(!ids.contains(&"beaker-sand".to_string()));
+    assert_eq!(
+        scene_item(&scene, "beaker-h2o")["properties"]["fill_ml"],
+        100.0
+    );
+    assert_eq!(solid_g(&scene, "beaker-nacl", "nacl"), 0.0);
+    assert_eq!(solid_g(&scene, "beaker-naoh", "naoh"), 2.0);
+    assert_eq!(solid_g(&scene, "beaker-water", "nacl"), 0.0);
+
+    let reloaded = body_json(get_scene(&app, Some(&cookies)).await).await;
+    assert_eq!(reloaded["mode"], CREATE_SALT);
+}
+
+#[tokio::test]
+async fn create_table_salt_completes_with_at_least_one_scoop() {
+    let (app, state) = test_app_state().await;
+    let (csrf_token, csrf_cookie, session_cookie) =
+        register_user(&app, "mode-create-salt-win@chemlab.local").await;
+    let cookies = format!("{session_cookie}; {csrf_cookie}");
+    assert_eq!(
+        post_action(&app, &cookies, Some(&csrf_token), select_mode(CREATE_SALT))
+            .await
+            .status(),
+        StatusCode::OK
+    );
+
+    persist_stock_solid(&state, &app, &cookies, "beaker-nacl", "nacl", 0.19).await;
+    assert_eq!(
+        body_json(get_scene(&app, Some(&cookies)).await).await["challenge_completed"],
+        false
+    );
+
+    persist_stock_solid(&state, &app, &cookies, "beaker-nacl", "nacl", 0.20).await;
+    assert_eq!(
+        body_json(get_scene(&app, Some(&cookies)).await).await["challenge_completed"],
+        true
+    );
+
+    persist_stock_solid(&state, &app, &cookies, "beaker-nacl", "nacl", 0.40).await;
+    assert_eq!(
+        body_json(get_scene(&app, Some(&cookies)).await).await["challenge_completed"],
+        true
     );
 }

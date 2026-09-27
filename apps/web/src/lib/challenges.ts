@@ -21,6 +21,12 @@ export const CHALLENGES: Challenge[] = [
       'The previous student accidentally put all the salt and sand in the main beaker, can you please separate them and put them back in their containers?',
     done: 'Thank you.',
   },
+  {
+    id: 'create-table-salt',
+    title: 'Create table salt',
+    prompt: "We're out of NaCl again, can you create some for us?",
+    done: 'Thank you again.',
+  },
 ]
 
 /** Picker options: Free mode first (the default), then the catalog. */

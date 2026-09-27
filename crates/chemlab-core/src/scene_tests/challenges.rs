@@ -1,11 +1,19 @@
 use super::super::*;
-use super::helpers::{item, solid_g};
-use crate::challenges::{is_completed, CHALLENGES, SEPARATE_NACL_SIO2};
+use super::helpers::{aqueous_mol, fill_pipette_from, item, solid_g};
+use crate::challenges::{
+    is_completed, CHALLENGES, CREATE_TABLE_SALT, SEPARATE_NACL_SIO2, WinCompare,
+};
+use crate::hcl::{HCL_STOCK_CAPACITY_ML, HCL_STOCK_HCL_MOLES};
 
 const SEPARATE: &str = "separate-nacl-sio2";
+const CREATE_SALT: &str = "create-table-salt";
 
 fn separate_scene() -> Scene {
     initial_scene_for_mode("lab-test", SEPARATE).expect("challenge scene")
+}
+
+fn create_salt_scene() -> Scene {
+    initial_scene_for_mode("lab-test", CREATE_SALT).expect("challenge scene")
 }
 
 fn select_mode(scene: &mut Scene, mode: &str) -> Result<(), SceneError> {
@@ -43,7 +51,10 @@ fn free_is_the_default_mode_and_is_never_completed() {
 
 #[test]
 fn catalog_entry_matches_the_docs_copy() {
-    assert_eq!(CHALLENGES.len(), 1);
+    assert_eq!(CHALLENGES.len(), 2);
+    assert_eq!(&CHALLENGES[0], &SEPARATE_NACL_SIO2);
+    assert_eq!(&CHALLENGES[1], &CREATE_TABLE_SALT);
+
     let challenge = find_challenge(SEPARATE).expect("catalog entry");
     assert_eq!(challenge, &SEPARATE_NACL_SIO2);
     assert_eq!(challenge.title, "Separate salt from sand");
@@ -53,6 +64,32 @@ fn catalog_entry_matches_the_docs_copy() {
     );
     assert_eq!(challenge.done, "Thank you.");
     assert_eq!(challenge.distilled_water_ml, Some(10.0));
+    assert!(challenge
+        .win
+        .iter()
+        .all(|target| target.compare == WinCompare::Exact));
+
+    let create = find_challenge(CREATE_SALT).expect("create-table-salt catalog entry");
+    assert_eq!(create, &CREATE_TABLE_SALT);
+    assert_eq!(create.title, "Create table salt");
+    assert_eq!(
+        create.prompt,
+        "We're out of NaCl again, can you create some for us?"
+    );
+    assert_eq!(create.done, "Thank you again.");
+    assert_eq!(create.distilled_water_ml, None);
+    assert_eq!(
+        create.allowed_stock_item_ids,
+        &["beaker-h2o", "beaker-hcl", "beaker-naoh", "beaker-nacl"]
+    );
+    assert_eq!(create.empty_stock_item_ids, &["beaker-nacl"]);
+    assert!(create.main_beaker_solids.is_empty());
+    assert_eq!(create.win.len(), 1);
+    assert_eq!(create.win[0].item_id, "beaker-nacl");
+    assert_eq!(create.win[0].substance_id, "nacl");
+    assert_eq!(create.win[0].amount_g, 0.20);
+    assert_eq!(create.win[0].compare, WinCompare::AtLeast);
+
     assert_eq!(find_challenge("nope"), None);
     assert_eq!(find_challenge(FREE_MODE), None);
 }
@@ -274,6 +311,140 @@ fn solved_by_playing_the_challenge_through() {
         (solid_g(item(&scene, "beaker-nacl"), "nacl") - 2.0).abs() < 1e-6,
         "recovered NaCl {}",
         solid_g(item(&scene, "beaker-nacl"), "nacl")
+    );
+    assert!(is_completed(&scene));
+}
+
+#[test]
+fn create_table_salt_starts_with_empty_nacl_and_full_reagent_stocks() {
+    let scene = create_salt_scene();
+    assert_eq!(scene.mode, CREATE_SALT);
+
+    let ids: Vec<_> = scene.items.iter().map(|i| i.id.as_str()).collect();
+    assert!(ids.contains(&"beaker-h2o"));
+    assert!(ids.contains(&"beaker-hcl"));
+    assert!(ids.contains(&"beaker-naoh"));
+    assert!(ids.contains(&"beaker-nacl"));
+    assert!(!ids.contains(&"beaker-cacl2"));
+    assert!(!ids.contains(&"beaker-sand"));
+
+    let nacl = item(&scene, "beaker-nacl");
+    assert_eq!(solid_g(nacl, "nacl"), 0.0);
+    let nacl_entry = nacl
+        .properties
+        .composition
+        .iter()
+        .find(|entry| entry.substance_id == "nacl")
+        .expect("stock keeps its species line");
+    assert_eq!(nacl_entry.amount_scoop, Some(0));
+
+    let hcl = item(&scene, "beaker-hcl");
+    assert!((crate::hcl::solution_volume_ml(hcl) - HCL_STOCK_CAPACITY_ML).abs() < 1e-6);
+    assert!((aqueous_mol(hcl, "h+") - HCL_STOCK_HCL_MOLES).abs() < 1e-12);
+
+    assert_eq!(solid_g(item(&scene, "beaker-naoh"), "naoh"), 2.0);
+
+    let distilled = item(&scene, "beaker-h2o");
+    assert_eq!(distilled.properties.volume_ml, Some(100.0));
+    assert_eq!(distilled.properties.fill_ml, Some(100.0));
+    assert_eq!(distilled.properties.composition[0].amount_ml, Some(100.0));
+
+    let beaker = item(&scene, "beaker-water");
+    assert!(beaker.properties.composition.is_empty());
+    assert_eq!(beaker.properties.fill_ml, Some(0.0));
+
+    for tool_id in [
+        "spoon-1",
+        "pipette-1",
+        "tongs-1",
+        "filter-paper-1",
+        "dish-1",
+        "burner-1",
+    ] {
+        assert!(ids.contains(&tool_id), "missing {tool_id}");
+    }
+}
+
+#[test]
+fn create_table_salt_wins_at_least_one_scoop_of_solid_nacl() {
+    let mut scene = create_salt_scene();
+    assert!(!is_completed(&scene));
+
+    fill_stock(&mut scene, "beaker-nacl", "nacl", 0.19);
+    assert!(!is_completed(&scene), "0.19 g is short of 0.20 g");
+
+    fill_stock(&mut scene, "beaker-nacl", "nacl", 0.20);
+    assert!(is_completed(&scene), "exactly 0.20 g wins");
+
+    fill_stock(&mut scene, "beaker-nacl", "nacl", 0.40);
+    assert!(is_completed(&scene), "extra solid still wins (AtLeast)");
+
+    // Aqueous NaCl in the stock does not count — solid phase only.
+    let stock = scene
+        .items
+        .iter_mut()
+        .find(|item| item.id == "beaker-nacl")
+        .expect("stock beaker");
+    stock.properties.composition = vec![CompositionEntry {
+        substance_id: "nacl".into(),
+        phase: "aqueous".into(),
+        amount_ml: None,
+        amount_scoop: None,
+        amount_g: Some(0.40),
+        amount_mol: None,
+    }];
+    assert!(!is_completed(&scene), "aqueous-only stock must not win");
+}
+
+#[test]
+fn separate_challenge_exact_win_rejects_extra_mass() {
+    let mut scene = separate_scene();
+    fill_stock(&mut scene, "beaker-nacl", "nacl", 2.0);
+    fill_stock(&mut scene, "beaker-sand", "sand", 2.2);
+    assert!(!is_completed(&scene), "Exact win rejects surplus sand");
+
+    fill_stock(&mut scene, "beaker-sand", "sand", 2.0);
+    assert!(is_completed(&scene));
+}
+
+#[test]
+fn create_table_salt_solved_by_neutralize_evaporate_and_return() {
+    let mut scene = create_salt_scene();
+
+    // Acid excess: pipette HCl into the dish, then dissolve one scoop of NaOH.
+    fill_pipette_from(&mut scene, "beaker-hcl");
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: "dish-1".into(),
+        },
+    )
+    .unwrap();
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "spoon-1".into(),
+            target_item_id: "beaker-naoh".into(),
+        },
+    )
+    .unwrap();
+    apply_action(
+        &mut scene,
+        Action::UseTool {
+            tool_item_id: "spoon-1".into(),
+            target_item_id: "dish-1".into(),
+        },
+    )
+    .unwrap();
+
+    boil_dish_dry(&mut scene);
+    move_all_solids(&mut scene, "dish-1", "beaker-nacl");
+
+    let recovered = solid_g(item(&scene, "beaker-nacl"), "nacl");
+    assert!(
+        recovered + 1e-6 >= 0.20,
+        "expected ≥ 0.20 g solid NaCl, got {recovered}"
     );
     assert!(is_completed(&scene));
 }

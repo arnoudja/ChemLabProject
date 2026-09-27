@@ -306,6 +306,7 @@ export function filledScene(): LabScene {
 }
 
 export const SEPARATE_CHALLENGE = findChallenge('separate-nacl-sio2')!
+export const CREATE_TABLE_SALT_CHALLENGE = findChallenge('create-table-salt')!
 
 /** Mirror of the server start scene for `separate-nacl-sio2`. */
 export function challengeScene(): LabScene {
@@ -338,6 +339,25 @@ export function challengeScene(): LabScene {
     amount_g: 2,
     amount_mol: null,
   }))
+  return next
+}
+
+/** Mirror of the server start scene for `create-table-salt`. */
+export function createTableSaltScene(): LabScene {
+  const next = initialScene()
+  next.mode = CREATE_TABLE_SALT_CHALLENGE.id
+  next.items = next.items.filter(
+    (item) => item.id !== 'beaker-cacl2' && item.id !== 'beaker-sand',
+  )
+  const nacl = next.items.find((item) => item.id === 'beaker-nacl')!
+  nacl.properties.composition = nacl.properties.composition!.map((entry) => ({
+    ...entry,
+    amount_scoop: 0,
+    amount_g: 0,
+  }))
+  const beaker = next.items.find((item) => item.id === 'beaker-water')!
+  beaker.properties.composition = []
+  beaker.properties.fill_ml = 0
   return next
 }
 

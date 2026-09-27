@@ -1,7 +1,7 @@
 use super::super::*;
 use super::helpers::{aqueous_mol, fill_pipette_from, item, solid_g};
 use crate::challenges::{
-    is_completed, CHALLENGES, CREATE_TABLE_SALT, SEPARATE_NACL_SIO2, WinCompare,
+    is_completed, WinCompare, CHALLENGES, CREATE_TABLE_SALT, SEPARATE_NACL_SIO2,
 };
 use crate::hcl::{HCL_STOCK_CAPACITY_ML, HCL_STOCK_HCL_MOLES};
 

@@ -151,52 +151,82 @@ describe('LabBench tongs', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 
-  it('picks up the visible solid stock with tongs, dumps into the Beaker, and puts it away', async () => {
+  it.each([
+    ['beaker-nacl', 'nacl', 'Sodium chloride (NaCl)'] as const,
+    ['beaker-na2so4', 'na2so4', 'Sodium sulfate (Na2SO4)'] as const,
+  ])(
+    'picks up %s with tongs, dumps into the Beaker, and puts it away',
+    async (stockId, solid, label) => {
+      const fetchMock = stubLabFetch()
+      vi.stubGlobal('fetch', fetchMock)
+
+      render(<LabBench />)
+      await screen.findByRole('button', { name: 'Beaker' })
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveTextContent(
+        /tongs to lift vessels, filter paper, or solid ingredients/,
+      )
+
+      clickTongs()
+      fireEvent.mouseMove(screen.getByRole('region', { name: 'Lab bench' }), {
+        clientX: 40,
+        clientY: 40,
+      })
+      clickStock(label)
+      await waitFor(() => {
+        expectCsrfLabAction(fetchMock, {
+          type: 'use_tool',
+          tool_item_id: 'tongs-1',
+          target_item_id: stockId,
+        })
+      })
+      expect(
+        screen.getByRole('button', { name: label }).querySelector('[data-stock-solid]'),
+      ).toBeNull()
+      expect(
+        document.querySelector(`.lab-cursor-vessel [data-stock-solid="${solid}"]`),
+      ).not.toBeNull()
+      expect(screen.queryByRole('button', { name: 'Distilled water (H2O)' })).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Calcium chloride (CaCl2)' }),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Sand' })).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
+      await waitFor(() => {
+        expectCsrfLabAction(fetchMock, {
+          type: 'use_tool',
+          tool_item_id: 'tongs-1',
+          target_item_id: 'beaker-water',
+        })
+      })
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'tongs')
+      expect(
+        screen.getByRole('button', { name: label }).querySelector('[data-stock-solid]'),
+      ).toBeNull()
+
+      fireEvent.click(screen.getByRole('button', { name: label }))
+      await waitFor(() => {
+        expectCsrfLabAction(fetchMock, {
+          type: 'put_away',
+          tool_item_id: 'tongs-1',
+        })
+      })
+      expect(
+        screen.getByRole('button', { name: label }).querySelector(`[data-stock-solid="${solid}"]`),
+      ).not.toBeNull()
+      expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    },
+  )
+
+  it('does not use the pipette on solid Na2SO4 stock', async () => {
     const fetchMock = stubLabFetch()
     vi.stubGlobal('fetch', fetchMock)
 
     render(<LabBench />)
-    await screen.findByRole('button', { name: 'Beaker' })
-    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveTextContent(
-      /tongs to lift vessels, filter paper, or solid ingredients/,
-    )
-
-    clickTongs()
-    fireEvent.mouseMove(screen.getByRole('region', { name: 'Lab bench' }), { clientX: 40, clientY: 40 })
-    clickStock('Sodium chloride (NaCl)')
-    await waitFor(() => {
-      expectCsrfLabAction(fetchMock, {
-        type: 'use_tool',
-        tool_item_id: 'tongs-1',
-        target_item_id: 'beaker-nacl',
-      })
-    })
-    expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }).querySelector('[data-stock-solid]')).toBeNull()
-    expect(document.querySelector('.lab-cursor-vessel [data-stock-solid="nacl"]')).not.toBeNull()
-    expect(screen.queryByRole('button', { name: 'Distilled water (H2O)' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Calcium chloride (CaCl2)' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Sand' })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
-    await waitFor(() => {
-      expectCsrfLabAction(fetchMock, {
-        type: 'use_tool',
-        tool_item_id: 'tongs-1',
-        target_item_id: 'beaker-water',
-      })
-    })
-    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'tongs')
-    expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }).querySelector('[data-stock-solid]')).toBeNull()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }))
-    await waitFor(() => {
-      expectCsrfLabAction(fetchMock, {
-        type: 'put_away',
-        tool_item_id: 'tongs-1',
-      })
-    })
-    expect(screen.getByRole('button', { name: 'Sodium chloride (NaCl)' }).querySelector('[data-stock-solid="nacl"]')).not.toBeNull()
-    expect(screen.getByRole('region', { name: 'Lab bench' })).toHaveAttribute('data-tool', 'none')
+    await screen.findByRole('button', { name: 'Pipette' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    clickStock('Sodium sulfate (Na2SO4)')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/lab/action', expect.anything())
   })
 
   it('clicking the empty dish slot or the tongs put-away returns the held dish home', async () => {

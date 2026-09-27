@@ -8,6 +8,8 @@ import {
   HCL_STOCK_HCL_MOLES,
   HCL_STOCK_WATER_MASS_G,
   H2SO4_STOCK_CAPACITY_ML,
+  NA2SO4_ID,
+  NAOH_ID,
   PHI_V_CACL2_ML_PER_MOL,
   PHI_V_CASO4_ML_PER_MOL,
   PHI_V_H2SO4_ML_PER_MOL,
@@ -20,6 +22,7 @@ import {
   sceneNeedsDissolvePoll,
   sceneNeedsThermalPoll,
   solutionVolumeMl,
+  tongsHeldVesselId,
   waterAmountMl,
 } from './labBenchScene'
 
@@ -250,6 +253,22 @@ describe('SVG amount helpers (dish / filtrate / water)', () => {
     expect(dishAmountMl(scene)).toBeNull()
     expect(filtrateAmountMl(scene)).toBeNull()
     expect(waterAmountMl(scene)).toBeNull()
+  })
+})
+
+describe('tongsHeldVesselId', () => {
+  it('recognizes held solid Na2SO4 stock like NaOH', () => {
+    for (const stockId of [NAOH_ID, NA2SO4_ID] as const) {
+      const scene = sceneWith([
+        {
+          id: 'tongs-1',
+          kind: 'tongs',
+          properties: { source_item_id: stockId },
+        },
+        { id: stockId, kind: 'beaker', location: 'held' },
+      ])
+      expect(tongsHeldVesselId(scene)).toBe(stockId)
+    }
   })
 })
 

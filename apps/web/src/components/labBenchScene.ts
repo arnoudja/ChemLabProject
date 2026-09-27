@@ -39,13 +39,14 @@ export const NACL_ID = 'beaker-nacl'
 export const CACL2_ID = 'beaker-cacl2'
 export const SAND_ID = 'beaker-sand'
 export const NAOH_ID = 'beaker-naoh'
+export const NA2SO4_ID = 'beaker-na2so4'
 export const H2O_ID = 'beaker-h2o'
 export const HCL_ID = 'beaker-hcl'
 export const H2SO4_ID = 'beaker-h2so4'
 export const WATER_ID = 'beaker-water'
 
 export function isStockSolid(id: string): id is StockSolid {
-  return id === 'nacl' || id === 'cacl2' || id === 'sand' || id === 'naoh'
+  return id === 'nacl' || id === 'cacl2' || id === 'sand' || id === 'naoh' || id === 'na2so4'
 }
 
 export function findItem(scene: LabScene, id: string): Item | undefined {
@@ -296,6 +297,7 @@ export function solidStockKind(itemId: string): StockSolid | null {
   if (itemId === CACL2_ID) return 'cacl2'
   if (itemId === SAND_ID) return 'sand'
   if (itemId === NAOH_ID) return 'naoh'
+  if (itemId === NA2SO4_ID) return 'na2so4'
   return null
 }
 

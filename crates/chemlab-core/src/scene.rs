@@ -136,6 +136,9 @@ pub const CACL2_DELTA_H_SOLUTION_J_PER_MOL: f64 = -81300.0;
 /// Enthalpy of solution of solid NaOH (exothermic), J/mol.
 pub const NAOH_DELTA_H_SOLUTION_J_PER_MOL: f64 = -44500.0;
 
+/// Approximate enthalpy of solution for anhydrous Na₂SO₄ (J/mol), school table.
+pub const NA2SO4_DELTA_H_SOLUTION_J_PER_MOL: f64 = -2340.0;
+
 /// Enthalpy of neutralization H⁺ + OH⁻ → H₂O (exothermic), J/mol.
 pub const H_OH_NEUTRALIZATION_J_PER_MOL: f64 = -55800.0;
 
@@ -143,7 +146,7 @@ pub const H_OH_NEUTRALIZATION_J_PER_MOL: f64 = -55800.0;
 pub const WATER_SPECIFIC_HEAT_J_PER_G_K: f64 = 4.184;
 
 fn is_stock_solid(substance_id: &str) -> bool {
-    matches!(substance_id, "nacl" | "cacl2" | "sand" | "naoh")
+    matches!(substance_id, "nacl" | "cacl2" | "sand" | "naoh" | "na2so4")
 }
 
 /// One substance entry in an item's composition or holding list.
@@ -433,6 +436,7 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
             h2so4_stock_beaker(),
             solid_stock_beaker("beaker-nacl", "Sodium chloride", "nacl"),
             solid_stock_beaker("beaker-naoh", "Sodium hydroxide", "naoh"),
+            solid_stock_beaker("beaker-na2so4", "Sodium sulfate", "na2so4"),
             solid_stock_beaker("beaker-cacl2", "Calcium chloride", "cacl2"),
             solid_stock_beaker("beaker-sand", "Sand", "sand"),
             empty_bench_beaker("beaker-water", "Beaker", WATER_CAPACITY_ML, 20.0),
@@ -1211,6 +1215,12 @@ fn author_dissolved_salt_ions(
             add_or_increase_mol_in(composition, "oh-", "aqueous", moles);
             Some((moles, NAOH_DELTA_H_SOLUTION_J_PER_MOL))
         }
+        "na2so4" => {
+            let moles = mass_g / NA2SO4_MOLAR_MASS_G_PER_MOL;
+            add_or_increase_mol_in(composition, "na+", "aqueous", 2.0 * moles);
+            add_or_increase_mol_in(composition, "so4^2-", "aqueous", moles);
+            Some((moles, NA2SO4_DELTA_H_SOLUTION_J_PER_MOL))
+        }
         _ => None,
     }
 }
@@ -1605,7 +1615,7 @@ fn apply_pipette_put_away(scene: &mut Scene, tool_idx: usize) -> Result<(), Scen
 fn is_solid_stock_beaker(item: &SceneItem) -> bool {
     matches!(
         item.id.as_str(),
-        "beaker-nacl" | "beaker-cacl2" | "beaker-sand" | "beaker-naoh"
+        "beaker-nacl" | "beaker-cacl2" | "beaker-sand" | "beaker-naoh" | "beaker-na2so4"
     )
 }
 
@@ -1675,6 +1685,7 @@ fn stock_species_for_beaker(item: &SceneItem) -> Option<&'static str> {
         "beaker-cacl2" => Some("cacl2"),
         "beaker-sand" => Some("sand"),
         "beaker-naoh" => Some("naoh"),
+        "beaker-na2so4" => Some("na2so4"),
         _ => None,
     }
 }
@@ -1934,6 +1945,8 @@ fn remove_solid_mass(item: &mut SceneItem, substance_id: &str, mass_g: f64) {
         existing.amount_mol = Some(remain / CACL2_MOLAR_MASS_G_PER_MOL);
     } else if substance_id == "naoh" {
         existing.amount_mol = Some(remain / NAOH_MOLAR_MASS_G_PER_MOL);
+    } else if substance_id == "na2so4" {
+        existing.amount_mol = Some(remain / NA2SO4_MOLAR_MASS_G_PER_MOL);
     }
 }
 

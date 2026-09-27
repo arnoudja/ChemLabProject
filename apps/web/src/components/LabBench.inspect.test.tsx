@@ -62,6 +62,20 @@ describe('LabBench inspect', () => {
     expect(panel).toHaveTextContent(`${STOCK_FULL_MASS_G.toFixed(2)} g`)
   })
 
+  it('idle sodium sulfate inspect shows Na2SO4(s) and 2.00 g', async () => {
+    vi.stubGlobal('fetch', stubLabFetch())
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+
+    clickStock('Sodium sulfate (Na2SO4)')
+
+    const panel = await screen.findByRole('dialog', { name: 'Contents of Sodium sulfate' })
+    expect(panel).toHaveTextContent('Na2SO4 (s)')
+    expect(panel).toHaveTextContent('2.00 g')
+    expect(panel.querySelectorAll('sub')).toHaveLength(2)
+  })
+
   it('after scoop, salt inspect shows depleted server stock mass', async () => {
     const scooped = withScoop(initialScene(), 'nacl')
     const fetchMock = stubLabFetch({ scene: scooped })

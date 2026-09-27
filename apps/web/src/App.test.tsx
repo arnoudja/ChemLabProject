@@ -110,6 +110,21 @@ const EMPTY_LAB_SCENE = {
       },
     },
     {
+      id: 'beaker-na2so4',
+      kind: 'beaker',
+      label: 'Sodium sulfate',
+      location: 'bench',
+      properties: {
+        volume_ml: 250,
+        fill_ml: 100,
+        transparent: true,
+        colourless: true,
+        temperature_c: 20,
+        composition: [{ substance_id: 'na2so4', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
+        holding: [],
+      },
+    },
+    {
       id: 'beaker-cacl2',
       kind: 'beaker',
       label: 'Calcium chloride',
@@ -164,9 +179,9 @@ const CREATE_TABLE_SALT_ID = 'create-table-salt'
 function sceneForMode(mode: string) {
   const omit =
     mode === CHALLENGE_ID
-      ? ['beaker-cacl2', 'beaker-hcl', 'beaker-naoh']
+      ? ['beaker-cacl2', 'beaker-hcl', 'beaker-naoh', 'beaker-na2so4']
       : mode === CREATE_TABLE_SALT_ID
-        ? ['beaker-cacl2', 'beaker-sand']
+        ? ['beaker-cacl2', 'beaker-sand', 'beaker-na2so4']
         : []
   return {
     ...EMPTY_LAB_SCENE,

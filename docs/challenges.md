@@ -23,8 +23,9 @@ in the web mirror + tests.
   outside the allowed list are removed, listed stocks start empty, and the main beaker
   (`beaker-water`) is preloaded with the listed dry solids. Optional `distilled_water_ml`
   overrides the Free-mode H2O stock fill (capacity stays 100 ml). Free mode also
-  includes a 10 ml 30% w/w HCl stock (`beaker-hcl`) and a 2.00 g solid NaOH stock
-  (`beaker-naoh`); challenges omit them unless listed.
+  includes a 10 ml 30% w/w HCl stock (`beaker-hcl`), a 2.00 g solid NaOH stock
+  (`beaker-naoh`), and a 2.00 g solid Na₂SO₄ stock (`beaker-na2so4`); challenges omit
+  them unless listed.
 
 | Mode | Id | Selected by default |
 | --- | --- | --- |
@@ -41,9 +42,9 @@ in the web mirror + tests.
 | Prompt | The previous student accidentally put all the salt and sand in the main beaker, can you please separate them and put them back in their containers? |
 | Done | Thank you. |
 | Main beaker (`beaker-water`) | 2.0 g solid `nacl` + 2.0 g solid `sand`, dry (no water) |
-| Allowed ingredient stocks | `beaker-h2o` (10 ml; Free keeps 100 ml), `beaker-nacl`, `beaker-sand` (no `beaker-hcl`, no `beaker-naoh`) |
+| Allowed ingredient stocks | `beaker-h2o` (10 ml; Free keeps 100 ml), `beaker-nacl`, `beaker-sand` (no `beaker-hcl`, no `beaker-naoh`, no `beaker-na2so4`) |
 | Empty at start | `beaker-nacl`, `beaker-sand` |
-| Removed from the bench | `beaker-cacl2`, `beaker-hcl`, `beaker-naoh` |
+| Removed from the bench | `beaker-cacl2`, `beaker-hcl`, `beaker-naoh`, `beaker-na2so4`, `beaker-h2so4` |
 | Win | `beaker-nacl` holds ~2.0 g solid `nacl` **and** `beaker-sand` holds ~2.0 g solid `sand` (Exact mass compare with the core float tolerance) |
 | Tools | Full set |
 
@@ -61,7 +62,7 @@ salt, then spoon each solid back into its own stock beaker.
 | Main beaker (`beaker-water`) | Empty (no preload) |
 | Allowed ingredient stocks | `beaker-h2o` (full 100 ml), `beaker-hcl` (full), `beaker-naoh` (full), `beaker-nacl` |
 | Empty at start | `beaker-nacl` |
-| Removed from the bench | `beaker-cacl2`, `beaker-sand` |
+| Removed from the bench | `beaker-cacl2`, `beaker-sand`, `beaker-na2so4`, `beaker-h2so4` |
 | Win | `beaker-nacl` holds **at least** 0.20 g solid `nacl` (AtLeast; aqueous NaCl does not count) |
 | Tools | Full set |
 

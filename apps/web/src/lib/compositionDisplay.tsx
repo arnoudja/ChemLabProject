@@ -204,7 +204,15 @@ export function CompositionInspectLine({
 }
 
 /** Stock jar captions under salt / sand / distilled-water beakers (display only). */
-export type StockSubstanceId = 'nacl' | 'cacl2' | 'sand' | 'naoh' | 'water' | 'hcl' | 'h2so4'
+export type StockSubstanceId =
+  | 'nacl'
+  | 'cacl2'
+  | 'sand'
+  | 'naoh'
+  | 'na2so4'
+  | 'water'
+  | 'hcl'
+  | 'h2so4'
 
 const STOCK_SUBSTANCE_LABELS: Record<
   StockSubstanceId,
@@ -229,6 +237,11 @@ const STOCK_SUBSTANCE_LABELS: Record<
     chemicalName: 'Sodium hydroxide',
     commonName: 'Caustic soda',
     ariaName: 'Sodium hydroxide (NaOH)',
+  },
+  na2so4: {
+    chemicalName: 'Sodium sulfate',
+    commonName: "Glauber's salt",
+    ariaName: 'Sodium sulfate (Na2SO4)',
   },
   water: {
     chemicalName: 'Water',

@@ -54,6 +54,7 @@ import {
   H2SO4_ID,
   NACL_ID,
   NAOH_ID,
+  NA2SO4_ID,
   PAPER_ID,
   PIPETTE_ID,
   SAND_ID,
@@ -115,6 +116,7 @@ const INGREDIENT_CAROUSEL: { itemId: string; kind: IngredientKind }[] = [
   { itemId: H2SO4_ID, kind: 'h2so4' },
   { itemId: NACL_ID, kind: 'nacl' },
   { itemId: NAOH_ID, kind: 'naoh' },
+  { itemId: NA2SO4_ID, kind: 'na2so4' },
   { itemId: CACL2_ID, kind: 'cacl2' },
   { itemId: SAND_ID, kind: 'sand' },
 ]

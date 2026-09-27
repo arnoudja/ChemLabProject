@@ -8,7 +8,7 @@ import {
   FILTRATE_CAPACITY_ML,
 } from '../lib/benchAmounts'
 
-export type StockSolid = 'nacl' | 'cacl2' | 'sand' | 'naoh'
+export type StockSolid = 'nacl' | 'cacl2' | 'sand' | 'naoh' | 'na2so4'
 
 /** Fill fraction 0..1 from server amount_ml relative to initial water volume. */
 export function waterFillRatio(amountMl: number | null | undefined): number {
@@ -93,7 +93,9 @@ export function WaterBeakerSvg({
                 ? '#F2F7FF'
                 : leftoverSolid === 'naoh'
                   ? '#E8F5E9'
-                  : '#F4FBFF'
+                  : leftoverSolid === 'na2so4'
+                    ? '#F7F3E8'
+                    : '#F4FBFF'
           }
           opacity="0.9"
         >
@@ -132,7 +134,9 @@ export function SolidBeakerSvg({
         ? '#EEF4FF'
         : solid === 'naoh'
           ? '#C8E6C9'
-          : '#F4FBFF'
+          : solid === 'na2so4'
+            ? '#F7F3E8'
+            : '#F4FBFF'
   const speck =
     solid === 'sand'
       ? '#8C6A3A'
@@ -140,7 +144,9 @@ export function SolidBeakerSvg({
         ? '#C4D2ED'
         : solid === 'naoh'
           ? '#81C784'
-          : '#DDF7FF'
+          : solid === 'na2so4'
+            ? '#D9CFB8'
+            : '#DDF7FF'
   const fill = stockFillRatio(amountG)
   // Full pile top ~72; empty sits near the beaker floor (~100).
   const topY = 100 - 28 * fill
@@ -317,7 +323,9 @@ export function SpoonSvg({ fill, floating }: { fill: StockSolid | null; floating
           ? '#C9A36A'
           : fill === 'naoh'
             ? '#C8E6C9'
-            : '#C4D2ED'
+            : fill === 'na2so4'
+              ? '#F7F3E8'
+              : '#C4D2ED'
   return (
     <svg
       viewBox="0 0 132 40"

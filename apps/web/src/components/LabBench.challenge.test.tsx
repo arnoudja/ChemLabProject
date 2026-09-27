@@ -58,6 +58,7 @@ describe('LabBench challenge mode', () => {
       'Sulfuric acid',
       'Sodium chloride (NaCl)',
       'Sodium hydroxide (NaOH)',
+      'Sodium sulfate (Na2SO4)',
       'Calcium chloride (CaCl2)',
       'Sand',
     ]
@@ -72,15 +73,17 @@ describe('LabBench challenge mode', () => {
 
     render(<LabBench />)
     expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
+    expect(challengeScene().items.find((item) => item.id === 'beaker-na2so4')).toBeUndefined()
 
     const seen: string[] = []
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < 12; i += 1) {
       for (const stock of [
         'Distilled water (H2O)',
         'Hydrochloric acid (30%)',
         'Sulfuric acid',
         'Sodium chloride (NaCl)',
         'Sodium hydroxide (NaOH)',
+        'Sodium sulfate (Na2SO4)',
         'Calcium chloride (CaCl2)',
         'Sand',
       ]) {
@@ -92,6 +95,7 @@ describe('LabBench challenge mode', () => {
     expect(new Set(seen)).toEqual(new Set(['Distilled water (H2O)', 'Sodium chloride (NaCl)', 'Sand']))
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
     expect(seen).not.toContain('Sodium hydroxide (NaOH)')
+    expect(seen).not.toContain('Sodium sulfate (Na2SO4)')
     expect(seen).not.toContain('Hydrochloric acid (30%)')
     expect(seen).not.toContain('Sulfuric acid')
   })
@@ -147,15 +151,17 @@ describe('LabBench challenge mode', () => {
 
     render(<LabBench />)
     expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
+    expect(createTableSaltScene().items.find((item) => item.id === 'beaker-na2so4')).toBeUndefined()
 
     const seen: string[] = []
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < 12; i += 1) {
       for (const stock of [
         'Distilled water (H2O)',
         'Hydrochloric acid (30%)',
         'Sulfuric acid',
         'Sodium chloride (NaCl)',
         'Sodium hydroxide (NaOH)',
+        'Sodium sulfate (Na2SO4)',
         'Calcium chloride (CaCl2)',
         'Sand',
       ]) {
@@ -173,6 +179,7 @@ describe('LabBench challenge mode', () => {
       ]),
     )
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
+    expect(seen).not.toContain('Sodium sulfate (Na2SO4)')
     expect(seen).not.toContain('Sand')
     expect(seen).not.toContain('Sulfuric acid')
   })
@@ -190,5 +197,6 @@ describe('LabBench challenge mode', () => {
 
     expect(scene.items.find((item) => item.id === 'beaker-sand')).toBeUndefined()
     expect(scene.items.find((item) => item.id === 'beaker-cacl2')).toBeUndefined()
+    expect(scene.items.find((item) => item.id === 'beaker-na2so4')).toBeUndefined()
   })
 })

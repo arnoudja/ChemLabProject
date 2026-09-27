@@ -60,7 +60,7 @@ describe('LabBench load / carousel / layout', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('wraps the ingredient carousel H2O → HCl → H2SO4 → NaCl → NaOH → CaCl2 → SiO2 and hides other stocks from the DOM', async () => {
+  it('wraps the ingredient carousel H2O → HCl → H2SO4 → NaCl → NaOH → Na2SO4 → CaCl2 → SiO2 and hides other stocks from the DOM', async () => {
     vi.stubGlobal('fetch', stubLabFetch())
 
     render(<LabBench />)
@@ -107,9 +107,22 @@ describe('LabBench load / carousel / layout', () => {
     expect(document.querySelector('[data-stock-solid="naoh"]')).toHaveAttribute('data-stock-fill', '1.00')
 
     clickCarousel('next')
-    expect(screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sodium sulfate (Na2SO4)' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Sodium hydroxide (NaOH)' })).not.toBeInTheDocument()
     expect(document.querySelector('[data-stock-solid="naoh"]')).toBeNull()
+    const na2so4Label = document.querySelector('[data-stock-label="na2so4"]')
+    expect(na2so4Label?.textContent).toMatch(/Na\s*2\s*SO\s*4/)
+    expect(na2so4Label?.textContent).toContain('(Sodium sulfate)')
+    expect(na2so4Label?.textContent).toContain("(Glauber's salt)")
+    expect(document.querySelector('[data-stock-solid="na2so4"]')).toHaveAttribute(
+      'data-stock-fill',
+      '1.00',
+    )
+
+    clickCarousel('next')
+    expect(screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sodium sulfate (Na2SO4)' })).not.toBeInTheDocument()
+    expect(document.querySelector('[data-stock-solid="na2so4"]')).toBeNull()
     const cacl2Label = document.querySelector('[data-stock-label="cacl2"]')
     expect(cacl2Label?.querySelector('sub')?.textContent).toBe('2')
     expect(cacl2Label?.textContent).toContain('(Calcium chloride)')
@@ -273,6 +286,20 @@ describe('LabBench load / carousel / layout', () => {
             colourless: true,
             temperature_c: 20,
             composition: [{ substance_id: 'naoh', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
+          },
+        },
+        {
+          id: 'beaker-na2so4',
+          kind: 'beaker',
+          label: 'Sodium sulfate',
+          location: 'bench',
+          properties: {
+            volume_ml: 250,
+            fill_ml: 100,
+            transparent: true,
+            colourless: true,
+            temperature_c: 20,
+            composition: [{ substance_id: 'na2so4', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
           },
         },
         {
@@ -509,6 +536,10 @@ describe('LabBench load / carousel / layout', () => {
     expect(screen.getByRole('button', { name: 'Sodium hydroxide (NaOH)' }).parentElement).toHaveClass(
       'lab-stock-carousel-slot',
     )
+    clickCarousel('next')
+    expect(
+      screen.getByRole('button', { name: 'Sodium sulfate (Na2SO4)' }).parentElement,
+    ).toHaveClass('lab-stock-carousel-slot')
     clickCarousel('next')
     expect(
       screen.getByRole('button', { name: 'Calcium chloride (CaCl2)' }).parentElement,

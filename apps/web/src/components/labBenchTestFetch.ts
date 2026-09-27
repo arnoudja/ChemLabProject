@@ -134,7 +134,14 @@ export function stubLabFetch(options?: {
         scene = applyTongsPutAway(scene)
         return jsonResponse({ scene })
       }
-      if (action.type === 'use_tool' && (action.target_item_id === 'beaker-nacl' || action.target_item_id === 'beaker-cacl2' || action.target_item_id === 'beaker-sand' || action.target_item_id === 'beaker-naoh')) {
+      if (
+        action.type === 'use_tool' &&
+        (action.target_item_id === 'beaker-nacl' ||
+          action.target_item_id === 'beaker-cacl2' ||
+          action.target_item_id === 'beaker-sand' ||
+          action.target_item_id === 'beaker-naoh' ||
+          action.target_item_id === 'beaker-na2so4')
+      ) {
         const targetSubstance =
           action.target_item_id === 'beaker-nacl'
             ? 'nacl'
@@ -142,7 +149,9 @@ export function stubLabFetch(options?: {
               ? 'cacl2'
               : action.target_item_id === 'beaker-naoh'
                 ? 'naoh'
-                : 'sand'
+                : action.target_item_id === 'beaker-na2so4'
+                  ? 'na2so4'
+                  : 'sand'
         const held = optionalArray(
           scene.items.find((item) => item.id === 'spoon-1')?.properties.holding,
         )
@@ -172,7 +181,14 @@ export function stubLabFetch(options?: {
           return jsonResponse({ scene })
         }
         const held = optionalArray(spoon?.properties.holding)[0]
-        if (held && (held.substance_id === 'nacl' || held.substance_id === 'cacl2' || held.substance_id === 'sand' || held.substance_id === 'naoh')) {
+        if (
+          held &&
+          (held.substance_id === 'nacl' ||
+            held.substance_id === 'cacl2' ||
+            held.substance_id === 'sand' ||
+            held.substance_id === 'naoh' ||
+            held.substance_id === 'na2so4')
+        ) {
           scene = withPutBack(scene, held.substance_id)
           return jsonResponse({ scene })
         }

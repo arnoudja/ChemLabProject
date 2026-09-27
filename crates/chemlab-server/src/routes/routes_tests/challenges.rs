@@ -68,6 +68,8 @@ async fn new_lab_starts_in_free_mode() {
     assert_eq!(scene["mode"], "free");
     assert_eq!(scene["challenge_completed"], false);
     assert!(scene_ids(&scene).contains(&"beaker-cacl2".to_string()));
+    assert!(scene_ids(&scene).contains(&"beaker-na2so4".to_string()));
+    assert_eq!(solid_g(&scene, "beaker-na2so4", "na2so4"), 2.0);
 }
 
 #[tokio::test]
@@ -88,6 +90,7 @@ async fn select_mode_switches_to_the_challenge_setup_and_persists_it() {
     assert!(!ids.contains(&"beaker-cacl2".to_string()));
     assert!(!ids.contains(&"beaker-hcl".to_string()));
     assert!(!ids.contains(&"beaker-naoh".to_string()));
+    assert!(!ids.contains(&"beaker-na2so4".to_string()));
     assert!(ids.contains(&"beaker-h2o".to_string()));
     assert_eq!(
         scene_item(&scene, "beaker-h2o")["properties"]["fill_ml"],
@@ -259,6 +262,7 @@ async fn select_mode_switches_to_create_table_salt_layout() {
     assert!(ids.contains(&"beaker-nacl".to_string()));
     assert!(!ids.contains(&"beaker-cacl2".to_string()));
     assert!(!ids.contains(&"beaker-sand".to_string()));
+    assert!(!ids.contains(&"beaker-na2so4".to_string()));
     assert_eq!(
         scene_item(&scene, "beaker-h2o")["properties"]["fill_ml"],
         100.0

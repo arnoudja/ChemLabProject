@@ -39,6 +39,7 @@ describe('formatCompositionLabel', () => {
     expect(formatCompositionLabel('cacl2', 'solid')).toBe('CaCl2 (s)')
     expect(formatCompositionLabel('sand', 'solid')).toBe('SiO2 (s)')
     expect(formatCompositionLabel('naoh', 'solid')).toBe('NaOH (s)')
+    expect(formatCompositionLabel('na2so4', 'solid')).toBe('Na2SO4 (s)')
     expect(formatCompositionLabel('oh-', 'aqueous')).toBe('OH- (aq)')
     expect(formatCompositionLabel('na+', 'aqueous')).toBe('Na+ (aq)')
     expect(formatCompositionLabel('ca2+', 'aqueous')).toBe('Ca2+ (aq)')
@@ -240,6 +241,13 @@ describe('StockSubstanceLabel', () => {
     expect(sand.container.textContent).toContain('(Sand)')
     expect(stockSubstanceAriaLabel('sand')).toBe('Sand')
     expect(stockSubstanceAriaLabel('naoh')).toBe('Sodium hydroxide (NaOH)')
+
+    cleanup()
+    const na2so4 = render(<StockSubstanceLabel substanceId="na2so4" />)
+    expect(na2so4.container.textContent).toMatch(/Na\s*2\s*SO\s*4/)
+    expect(na2so4.container.textContent).toContain('(Sodium sulfate)')
+    expect(na2so4.container.textContent).toContain("(Glauber's salt)")
+    expect(stockSubstanceAriaLabel('na2so4')).toBe('Sodium sulfate (Na2SO4)')
 
     cleanup()
     const water = render(<StockSubstanceLabel substanceId="water" />)

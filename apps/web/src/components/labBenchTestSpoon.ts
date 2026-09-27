@@ -111,7 +111,10 @@ export function applySolidsPutAway(scene: LabScene, sourceId: string): LabScene 
   return next
 }
 
-export function withScoop(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand' | 'naoh'): LabScene {
+export function withScoop(
+  scene: LabScene,
+  substance: 'nacl' | 'cacl2' | 'sand' | 'naoh' | 'na2so4',
+): LabScene {
   const next = cloneScene(scene)
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
   const stockId =
@@ -121,7 +124,9 @@ export function withScoop(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand' 
         ? 'beaker-cacl2'
         : substance === 'naoh'
           ? 'beaker-naoh'
-          : 'beaker-sand'
+          : substance === 'na2so4'
+            ? 'beaker-na2so4'
+            : 'beaker-sand'
   const stock = next.items.find((item) => item.id === stockId)!
   const solid = optionalArray(stock.properties.composition).find(
     (entry) => entry.substance_id === substance && entry.phase === 'solid',
@@ -147,7 +152,10 @@ export function withScoop(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand' 
   return next
 }
 
-export function withPutBack(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand' | 'naoh'): LabScene {
+export function withPutBack(
+  scene: LabScene,
+  substance: 'nacl' | 'cacl2' | 'sand' | 'naoh' | 'na2so4',
+): LabScene {
   const next = cloneScene(scene)
   const spoon = next.items.find((item) => item.id === 'spoon-1')!
   const stockId =
@@ -157,7 +165,9 @@ export function withPutBack(scene: LabScene, substance: 'nacl' | 'cacl2' | 'sand
         ? 'beaker-cacl2'
         : substance === 'naoh'
           ? 'beaker-naoh'
-          : 'beaker-sand'
+          : substance === 'na2so4'
+            ? 'beaker-na2so4'
+            : 'beaker-sand'
   const stock = next.items.find((item) => item.id === stockId)!
   const solid = optionalArray(stock.properties.composition).find(
     (entry) => entry.substance_id === substance && entry.phase === 'solid',

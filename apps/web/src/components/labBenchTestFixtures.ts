@@ -182,6 +182,21 @@ export function initialScene(): LabScene {
         },
       },
       {
+        id: 'beaker-na2so4',
+        kind: 'beaker',
+        label: 'Sodium sulfate',
+        location: 'bench',
+        properties: {
+          volume_ml: 250,
+          fill_ml: 100,
+          transparent: true,
+          colourless: true,
+          temperature_c: 20,
+          composition: [{ substance_id: 'na2so4', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
+          holding: [],
+        },
+      },
+      {
         id: 'beaker-cacl2',
         kind: 'beaker',
         label: 'Calcium chloride',
@@ -363,6 +378,7 @@ const FREE_STOCK_ITEM_IDS = [
   'beaker-h2so4',
   'beaker-nacl',
   'beaker-naoh',
+  'beaker-na2so4',
   'beaker-cacl2',
   'beaker-sand',
 ] as const
@@ -441,7 +457,7 @@ export function createTableSaltScene(): LabScene {
 
 export function withDryDishSolids(
   scene: LabScene,
-  solids: { substance_id: 'nacl' | 'cacl2' | 'sand' | 'naoh'; amount_g: number }[],
+  solids: { substance_id: 'nacl' | 'cacl2' | 'sand' | 'naoh' | 'na2so4'; amount_g: number }[],
 ): LabScene {
   const next = cloneScene(scene)
   const dish = next.items.find((item) => item.id === 'dish-1')!

@@ -35,14 +35,14 @@ pub(super) fn bench_with_water(lab_id: &str) -> Scene {
 }
 
 #[test]
-fn initial_bench_scene_has_fifteen_items_with_water_acids_naoh_and_evaporation_bench() {
+fn initial_bench_scene_has_sixteen_items_with_water_acids_salts_and_evaporation_bench() {
     let scene = initial_bench_scene("lab-test");
     assert_eq!(scene.lab_id, "lab-test");
     assert_eq!(scene.temperature_c, 20.0);
     assert_eq!(scene.version, 0);
     assert!(scene.last_events.is_empty());
     assert_eq!(scene.last_applied_unix_ms, None);
-    assert_eq!(scene.items.len(), 15);
+    assert_eq!(scene.items.len(), 16);
 
     let ids: Vec<_> = scene.items.iter().map(|i| i.id.as_str()).collect();
     assert!(ids.contains(&"spoon-1"));
@@ -51,6 +51,7 @@ fn initial_bench_scene_has_fifteen_items_with_water_acids_naoh_and_evaporation_b
     assert!(ids.contains(&"beaker-h2so4"));
     assert!(ids.contains(&"beaker-nacl"));
     assert!(ids.contains(&"beaker-naoh"));
+    assert!(ids.contains(&"beaker-na2so4"));
     assert!(ids.contains(&"beaker-cacl2"));
     assert!(ids.contains(&"beaker-sand"));
     assert!(ids.contains(&"beaker-water"));
@@ -110,6 +111,15 @@ fn initial_bench_scene_has_fifteen_items_with_water_acids_naoh_and_evaporation_b
     assert_eq!(naoh.label, "Sodium hydroxide");
     assert!(naoh.properties.composition.iter().any(|c| {
         c.substance_id == "naoh"
+            && c.phase == "solid"
+            && c.amount_g == Some(2.0)
+            && c.amount_scoop == Some(10)
+    }));
+
+    let na2so4 = item(&scene, "beaker-na2so4");
+    assert_eq!(na2so4.label, "Sodium sulfate");
+    assert!(na2so4.properties.composition.iter().any(|c| {
+        c.substance_id == "na2so4"
             && c.phase == "solid"
             && c.amount_g == Some(2.0)
             && c.amount_scoop == Some(10)

@@ -156,11 +156,7 @@ fn hcl_boil_temperature_peaks_at_azeotrope() {
 #[test]
 fn sulfuric_protons_do_not_count_as_hcl_inventory() {
     let n = 0.1;
-    let sulfuric = vec![
-        water(50.0),
-        aq("h+", 2.0 * n),
-        aq("so4^2-", n),
-    ];
+    let sulfuric = vec![water(50.0), aq("h+", 2.0 * n), aq("so4^2-", n)];
     assert!(hcl_inventory_moles_entries(&sulfuric) < 1e-15);
     let inv = HclInventory::from_entries(&sulfuric);
     assert!(inv.n_h < 1e-15);
@@ -182,9 +178,7 @@ fn mixed_hcl_and_h2so4_phi_v_splits_inventories() {
         aq("so4^2-", n_h2so4),
     ];
     assert!((hcl_inventory_moles_entries(&entries) - n_hcl).abs() < 1e-12);
-    let expected = 40.0
-        + n_hcl * PHI_V_HCL_ML_PER_MOL
-        + n_h2so4 * PHI_V_H2SO4_ML_PER_MOL;
+    let expected = 40.0 + n_hcl * PHI_V_HCL_ML_PER_MOL + n_h2so4 * PHI_V_H2SO4_ML_PER_MOL;
     assert!((solution_volume_ml_of_entries(&entries) - expected).abs() < 1e-9);
 }
 

@@ -259,5 +259,7 @@ fn stock_volume_is_ten_ml() {
     let scene = initial_bench_scene("lab-test");
     let stock = item(&scene, "beaker-h2so4");
     assert!((hcl::solution_volume_ml(stock) - H2SO4_STOCK_CAPACITY_ML).abs() < 1e-9);
-    assert!(h2so4::composition_is_stock_h2so4(&stock.properties.composition));
+    assert!(h2so4::composition_is_stock_h2so4(
+        &stock.properties.composition
+    ));
 }

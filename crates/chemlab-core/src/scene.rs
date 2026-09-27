@@ -2188,9 +2188,9 @@ fn add_or_increase_liquid_h2so4(item: &mut SceneItem, entry: &CompositionEntry) 
     let add_mol = entry
         .amount_mol
         .unwrap_or_else(|| crate::h2so4::liquid_h2so4_mol_entries(std::slice::from_ref(entry)));
-    let add_g = entry.amount_g.unwrap_or_else(|| {
-        add_mol * crate::h2so4::H2SO4_MOLAR_MASS_G_PER_MOL
-    });
+    let add_g = entry
+        .amount_g
+        .unwrap_or(add_mol * crate::h2so4::H2SO4_MOLAR_MASS_G_PER_MOL);
     if add_ml <= AMOUNT_EPS && add_mol <= AMOUNT_EPS && add_g <= AMOUNT_EPS {
         return;
     }

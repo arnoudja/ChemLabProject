@@ -312,7 +312,15 @@ fn dry_sulfate_chloride_split(
     let cl_after_ca = (total_cl - 2.0 * solid_cacl2).max(0.0);
     let solid_nacl = na_left.min(cl_after_ca).max(0.0);
     let _ = so4_aq; // dry: no aqueous solvent for leftover sulfate
-    (0.0, 0.0, 0.0, solid_nacl, solid_cacl2, solid_na2so4, solid_caso4)
+    (
+        0.0,
+        0.0,
+        0.0,
+        solid_nacl,
+        solid_cacl2,
+        solid_na2so4,
+        solid_caso4,
+    )
 }
 
 /// log₁₀(SI) tolerance ≈ SI within 10⁻⁸ of 1.
@@ -451,12 +459,7 @@ fn log10_iap_caso4(mix: Mixture, a_dh: f64) -> Option<f64> {
         return None;
     }
     let i = mix.ionic_strength();
-    Some(
-        log10_gamma(2, i, a_dh)
-            + mix.m_ca.log10()
-            + log10_gamma(2, i, a_dh)
-            + mix.m_so4.log10(),
-    )
+    Some(log10_gamma(2, i, a_dh) + mix.m_ca.log10() + log10_gamma(2, i, a_dh) + mix.m_so4.log10())
 }
 
 fn log10_k_na2so4(temperature_c: f64) -> f64 {
@@ -639,6 +642,7 @@ fn bisect_dissolved(n_tot: f64, log_si: impl Fn(f64) -> f64) -> f64 {
 }
 
 /// Returns `(aq_na_salt, aq_ca, aq_so4, solid_nacl, solid_cacl2, solid_na2so4, solid_caso4)`.
+#[allow(clippy::too_many_arguments)]
 fn mixed_sulfate_chloride_equilibrium(
     total_na_salt: f64,
     total_ca: f64,
@@ -709,20 +713,37 @@ fn mixed_sulfate_chloride_equilibrium(
         if over_n && over_c {
             if log_si_n >= log_si_c {
                 n_na = dissolved_nacl_at_si1(
-                    total_nacl, n_ca, aq_so4, n_hcl, n_oh, litres, temperature_c,
+                    total_nacl,
+                    n_ca,
+                    aq_so4,
+                    n_hcl,
+                    n_oh,
+                    litres,
+                    temperature_c,
                 );
             } else {
                 n_ca = dissolved_cacl2_at_si1(
-                    total_cacl2, n_na, aq_so4, n_hcl, n_oh, litres, temperature_c,
+                    total_cacl2,
+                    n_na,
+                    aq_so4,
+                    n_hcl,
+                    n_oh,
+                    litres,
+                    temperature_c,
                 );
             }
         } else if over_n || under_n {
-            n_na = dissolved_nacl_at_si1(
-                total_nacl, n_ca, aq_so4, n_hcl, n_oh, litres, temperature_c,
-            );
+            n_na =
+                dissolved_nacl_at_si1(total_nacl, n_ca, aq_so4, n_hcl, n_oh, litres, temperature_c);
         } else {
             n_ca = dissolved_cacl2_at_si1(
-                total_cacl2, n_na, aq_so4, n_hcl, n_oh, litres, temperature_c,
+                total_cacl2,
+                n_na,
+                aq_so4,
+                n_hcl,
+                n_oh,
+                litres,
+                temperature_c,
             );
         }
     }

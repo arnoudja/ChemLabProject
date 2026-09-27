@@ -30,6 +30,7 @@ in the web mirror + tests.
 | --- | --- | --- |
 | Free mode | `free` | yes |
 | Separate salt from sand | `separate-nacl-sio2` | no |
+| Create table salt | `create-table-salt` | no |
 
 ## `separate-nacl-sio2` — Separate salt from sand
 
@@ -43,8 +44,26 @@ in the web mirror + tests.
 | Allowed ingredient stocks | `beaker-h2o` (10 ml; Free keeps 100 ml), `beaker-nacl`, `beaker-sand` (no `beaker-hcl`, no `beaker-naoh`) |
 | Empty at start | `beaker-nacl`, `beaker-sand` |
 | Removed from the bench | `beaker-cacl2`, `beaker-hcl`, `beaker-naoh` |
-| Win | `beaker-nacl` holds ~2.0 g solid `nacl` **and** `beaker-sand` holds ~2.0 g solid `sand` (mass compared with the core float tolerance) |
+| Win | `beaker-nacl` holds ~2.0 g solid `nacl` **and** `beaker-sand` holds ~2.0 g solid `sand` (Exact mass compare with the core float tolerance) |
 | Tools | Full set |
 
 Intended solution: dissolve the salt, filter off the sand, evaporate the filtrate to recover the
 salt, then spoon each solid back into its own stock beaker.
+
+## `create-table-salt` — Create table salt
+
+| Field | Value |
+| --- | --- |
+| Id | `create-table-salt` |
+| Title | Create table salt |
+| Prompt | We're out of NaCl again, can you create some for us? |
+| Done | Thank you again. |
+| Main beaker (`beaker-water`) | Empty (no preload) |
+| Allowed ingredient stocks | `beaker-h2o` (full 100 ml), `beaker-hcl` (full), `beaker-naoh` (full), `beaker-nacl` |
+| Empty at start | `beaker-nacl` |
+| Removed from the bench | `beaker-cacl2`, `beaker-sand` |
+| Win | `beaker-nacl` holds **at least** 0.20 g solid `nacl` (AtLeast; aqueous NaCl does not count) |
+| Tools | Full set |
+
+Intended solution: combine aqueous HCl with solid NaOH (acid excess preferred), evaporate the brine
+to dryness, then spoon pure solid NaCl back into the empty NaCl stock.

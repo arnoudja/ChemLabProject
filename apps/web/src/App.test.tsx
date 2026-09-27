@@ -158,19 +158,23 @@ const EMPTY_LAB_SCENE = {
 }
 
 const CHALLENGE_ID = 'separate-nacl-sio2'
+const CREATE_TABLE_SALT_ID = 'create-table-salt'
 
 /** Mirror of the server's mode-aware start scene, minus the items App does not read. */
 function sceneForMode(mode: string) {
+  const omit =
+    mode === CHALLENGE_ID
+      ? ['beaker-cacl2', 'beaker-hcl', 'beaker-naoh']
+      : mode === CREATE_TABLE_SALT_ID
+        ? ['beaker-cacl2', 'beaker-sand']
+        : []
   return {
     ...EMPTY_LAB_SCENE,
     mode,
     items:
       mode === 'free'
         ? EMPTY_LAB_SCENE.items
-        : EMPTY_LAB_SCENE.items.filter(
-            (item) =>
-              item.id !== 'beaker-cacl2' && item.id !== 'beaker-hcl' && item.id !== 'beaker-naoh',
-          ),
+        : EMPTY_LAB_SCENE.items.filter((item) => !omit.includes(item.id)),
   }
 }
 
@@ -289,8 +293,29 @@ describe('App', () => {
     const free = await screen.findByRole('radio', { name: 'Free mode' })
     expect(free).toBeChecked()
     expect(screen.getByRole('radio', { name: 'Separate salt from sand' })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Create table salt' })).not.toBeChecked()
     expect(screen.queryByText(/lab bench below/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/pick a solid/i)).not.toBeInTheDocument()
+  })
+
+  it('selecting create-table-salt posts select_mode and shows its prompt', async () => {
+    const fetchMock = stubAppFetch({ authenticated: true })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Create table salt' }))
+
+    expect(await screen.findByText(/out of NaCl again/i)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Create table salt' })).toBeChecked()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/lab/action',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ type: 'select_mode', mode: CREATE_TABLE_SALT_ID }),
+      }),
+    )
   })
 
   it('selecting a challenge posts select_mode and reloads the bench into it', async () => {

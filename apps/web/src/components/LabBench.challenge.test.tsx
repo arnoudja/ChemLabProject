@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LabBench } from './LabBench'
 import { clearCsrfTokenCache } from '../lib/api'
 import {
+  CREATE_TABLE_SALT_CHALLENGE,
   SEPARATE_CHALLENGE,
   challengeScene,
   cloneScene,
+  createTableSaltScene,
   expectCsrfLabAction,
   clickCarousel,
   stubLabFetch,
@@ -115,5 +117,71 @@ describe('LabBench challenge mode', () => {
     expect(screen.getByText(SEPARATE_CHALLENGE.prompt)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Calcium chloride (CaCl2)' })).not.toBeInTheDocument()
     expect(onModeChange).not.toHaveBeenCalledWith('free')
+  })
+
+  it('shows the create-table-salt prompt and done copy', async () => {
+    vi.stubGlobal('fetch', stubLabFetch({ scene: createTableSaltScene() }))
+
+    render(<LabBench />)
+
+    expect(await screen.findByText(CREATE_TABLE_SALT_CHALLENGE.prompt)).toBeInTheDocument()
+    expect(screen.queryByText(CREATE_TABLE_SALT_CHALLENGE.done)).not.toBeInTheDocument()
+
+    const won = cloneScene(createTableSaltScene())
+    won.challenge_completed = true
+    vi.stubGlobal('fetch', stubLabFetch({ scene: won }))
+    cleanup()
+    render(<LabBench />)
+
+    expect(await screen.findByText(CREATE_TABLE_SALT_CHALLENGE.done)).toBeInTheDocument()
+    expect(screen.queryByText(CREATE_TABLE_SALT_CHALLENGE.prompt)).not.toBeInTheDocument()
+  })
+
+  it('create-table-salt carousel keeps H2O, HCl, NaCl, and NaOH only', async () => {
+    vi.stubGlobal('fetch', stubLabFetch({ scene: createTableSaltScene() }))
+
+    render(<LabBench />)
+    expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
+
+    const seen: string[] = []
+    for (let i = 0; i < 6; i += 1) {
+      for (const stock of [
+        'Distilled water (H2O)',
+        'Hydrochloric acid (30%)',
+        'Sodium chloride (NaCl)',
+        'Sodium hydroxide (NaOH)',
+        'Calcium chloride (CaCl2)',
+        'Sand',
+      ]) {
+        if (screen.queryByRole('button', { name: stock })) seen.push(stock)
+      }
+      clickCarousel('next')
+    }
+
+    expect(new Set(seen)).toEqual(
+      new Set([
+        'Distilled water (H2O)',
+        'Hydrochloric acid (30%)',
+        'Sodium chloride (NaCl)',
+        'Sodium hydroxide (NaOH)',
+      ]),
+    )
+    expect(seen).not.toContain('Calcium chloride (CaCl2)')
+    expect(seen).not.toContain('Sand')
+  })
+
+  it('create-table-salt starts with full distilled water and empty NaCl', () => {
+    const scene = createTableSaltScene()
+    const h2o = scene.items.find((item) => item.id === 'beaker-h2o')!
+    expect(h2o.properties.volume_ml).toBe(100)
+    expect(h2o.properties.fill_ml).toBe(100)
+    expect(h2o.properties.composition?.[0]?.amount_ml).toBe(100)
+
+    const nacl = scene.items.find((item) => item.id === 'beaker-nacl')!
+    expect(nacl.properties.composition?.[0]?.amount_g).toBe(0)
+    expect(nacl.properties.composition?.[0]?.amount_scoop).toBe(0)
+
+    expect(scene.items.find((item) => item.id === 'beaker-sand')).toBeUndefined()
+    expect(scene.items.find((item) => item.id === 'beaker-cacl2')).toBeUndefined()
   })
 })

@@ -6,6 +6,7 @@ import { FREE_MODE } from '../lib/challenges'
 import {
   challengeScene,
   cloneScene,
+  createTableSaltScene,
   initialScene,
   withFilledMainBeaker,
 } from './labBenchTestFixtures'
@@ -31,7 +32,9 @@ import {
 
 /** Mirror of the server's mode-aware reset: back to the start scene of the current mode. */
 function startSceneForMode(mode: string): LabScene {
-  return mode === FREE_MODE ? initialScene() : challengeScene()
+  if (mode === FREE_MODE) return initialScene()
+  if (mode === 'create-table-salt') return createTableSaltScene()
+  return challengeScene()
 }
 
 export function jsonResponse(body: unknown, status = 200) {

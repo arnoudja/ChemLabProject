@@ -67,6 +67,7 @@ import {
   distilledWaterAmountMl,
   hclStockAmountMl,
   h2so4StockAmountMl,
+  CLOCK_POLL_MS,
   filtrateAmountMl,
   findItem,
   outcomeLabel,
@@ -107,8 +108,6 @@ export {
   stockFillRatio,
   waterFillRatio,
 }
-
-const CLOCK_POLL_MS = 300
 
 type IngredientKind = 'h2o' | 'hcl' | 'h2so4' | StockSolid
 

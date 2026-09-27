@@ -2,6 +2,7 @@
 
 use super::super::super::*;
 use super::super::helpers::*;
+use crate::NACL_DELTA_H_SOLUTION_J_PER_MOL;
 
 #[test]
 fn pour_nacl_into_water_dissolves_without_leftover_grains() {

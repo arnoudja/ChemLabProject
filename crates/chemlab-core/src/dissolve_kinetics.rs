@@ -5,14 +5,18 @@
 //! NaOH is highly soluble (no SI capacity gate). Qualitative [`crate::dissolve`]
 //! stays a boolean soluble/insoluble flag only.
 
+use crate::aqueous_pipeline::{apply_dissolution_temperature_change, author_dissolved_salt_ions};
 use crate::composition::{aqueous_mol_entries, solvent_water_ml_for_si};
 use crate::scene::{
-    apply_dissolution_temperature_change, author_dissolved_salt_ions, heat_capacity_of_entries,
-    remove_solid_mass, solid_amount_g, CompositionEntry, SceneItem, AMBIENT_TEMPERATURE_C,
+    heat_capacity_of_entries, remove_solid_mass, solid_amount_g, CompositionEntry, SceneItem,
+    AMBIENT_TEMPERATURE_C,
 };
 use crate::solubility::{unsaturated_capacity_g, Salt};
 
 const AMOUNT_EPS: f64 = 1e-12;
+
+/// Kinetically soluble salts (vessel + wash iteration order).
+const KINETIC_SALTS: &[&str] = &["naoh", "cacl2", "nacl", "na2so4", "caso4"];
 
 /// Pour / tongs / pipette contact time applied once in finalize (s).
 pub(crate) const POUR_CONTACT_TAU_S: f64 = 0.25;
@@ -68,6 +72,31 @@ pub(crate) fn dissolve_fraction(k: f64, tau_s: f64) -> f64 {
     1.0 - (-k * tau_s).exp()
 }
 
+/// Mass dissolved for one salt contact step (vessel or wash).
+///
+/// NaOH ignores SI `cap`; others use `min(avail, cap)`. Near-complete and
+/// sub-milligram leftovers snap so Exact mass / ion asserts stay clean.
+fn dissolve_mass_for_contact(avail: f64, cap: f64, k: f64, tau_s: f64, is_naoh: bool) -> f64 {
+    let frac = dissolve_fraction(k, tau_s);
+    if avail <= AMOUNT_EPS || frac <= AMOUNT_EPS {
+        return 0.0;
+    }
+    let max_diss = if is_naoh { avail } else { avail.min(cap) };
+    let mut m_diss = max_diss * frac;
+    // Snap near-complete steps and sub-milligram leftovers so Exact mass /
+    // ion asserts stay clean under the ≤2 s clock clamp.
+    if (max_diss - m_diss > 0.0 && max_diss - m_diss < 1e-7)
+        || (max_diss > AMOUNT_EPS && max_diss < 1e-3)
+    {
+        m_diss = max_diss;
+    }
+    if m_diss <= AMOUNT_EPS {
+        0.0
+    } else {
+        m_diss
+    }
+}
+
 /// Kinetic dissolve of soluble solids in a wet vessel for contact time `τ`.
 ///
 /// Authors ions + ΔH only for the mass that dissolves this call; remainder stays
@@ -91,7 +120,7 @@ fn apply_kinetic_dissolve_step(item: &mut SceneItem, tau_s: f64) {
         return;
     }
 
-    for salt_id in ["naoh", "cacl2", "nacl", "na2so4", "caso4"] {
+    for salt_id in KINETIC_SALTS {
         // Refresh T each salt so earlier dissolve ΔH is not wiped by a frozen snapshot.
         let t = item
             .properties
@@ -101,36 +130,12 @@ fn apply_kinetic_dissolve_step(item: &mut SceneItem, tau_s: f64) {
             .properties
             .composition
             .iter()
-            .find(|c| c.substance_id == salt_id && c.phase == "solid")
+            .find(|c| c.substance_id == *salt_id && c.phase == "solid")
             .map(solid_amount_g)
             .unwrap_or(0.0);
-        if avail <= AMOUNT_EPS {
-            continue;
-        }
         let k = k_salt_t(salt_id, t);
-        let frac = dissolve_fraction(k, tau_s);
-        if frac <= AMOUNT_EPS {
-            continue;
-        }
         let cap = vessel_unsaturated_cap_g(item, salt_id, water_ml, t);
-        let mut m_diss = if salt_id == "naoh" {
-            avail * frac
-        } else {
-            avail.min(cap) * frac
-        };
-        // Snap microscopic leftovers so challenge Exact mass and ion asserts stay clean.
-        let max_diss = if salt_id == "naoh" {
-            avail
-        } else {
-            avail.min(cap)
-        };
-        // Snap near-complete steps and sub-milligram leftovers so Exact mass /
-        // ion asserts stay clean under the ≤2 s clock clamp.
-        if (max_diss - m_diss > 0.0 && max_diss - m_diss < 1e-7)
-            || (max_diss > AMOUNT_EPS && max_diss < 1e-3)
-        {
-            m_diss = max_diss;
-        }
+        let m_diss = dissolve_mass_for_contact(avail, cap, k, tau_s, *salt_id == "naoh");
         if m_diss <= AMOUNT_EPS {
             continue;
         }
@@ -170,40 +175,17 @@ pub(crate) fn wash_paper_solids_into_fluid(
 
     let tau = FILTER_WASH_TAU_S_PER_ML * v_fluid;
 
-    for salt_id in ["naoh", "cacl2", "nacl", "na2so4", "caso4"] {
+    for salt_id in KINETIC_SALTS {
         let avail = paper
             .properties
             .composition
             .iter()
-            .find(|c| c.substance_id == salt_id && c.phase == "solid")
+            .find(|c| c.substance_id == *salt_id && c.phase == "solid")
             .map(solid_amount_g)
             .unwrap_or(0.0);
-        if avail <= AMOUNT_EPS {
-            continue;
-        }
         let k = k_salt_t(salt_id, t_wash);
-        let frac = dissolve_fraction(k, tau);
-        if frac <= AMOUNT_EPS {
-            continue;
-        }
         let cap = entries_unsaturated_cap_g(fluid, salt_id, v_fluid, t_wash);
-        let mut m_diss = if salt_id == "naoh" {
-            avail * frac
-        } else {
-            avail.min(cap) * frac
-        };
-        let max_diss = if salt_id == "naoh" {
-            avail
-        } else {
-            avail.min(cap)
-        };
-        // Snap near-complete steps and sub-milligram leftovers so Exact mass /
-        // ion asserts stay clean under the ≤2 s clock clamp.
-        if (max_diss - m_diss > 0.0 && max_diss - m_diss < 1e-7)
-            || (max_diss > AMOUNT_EPS && max_diss < 1e-3)
-        {
-            m_diss = max_diss;
-        }
+        let m_diss = dissolve_mass_for_contact(avail, cap, k, tau, *salt_id == "naoh");
         if m_diss <= AMOUNT_EPS {
             continue;
         }
@@ -268,6 +250,7 @@ pub(crate) fn vessel_needs_kinetic_dissolve(item: &SceneItem) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::aqueous_pipeline::NACL_DELTA_H_SOLUTION_J_PER_MOL;
     use crate::composition::aqueous_mol;
     use crate::scene::ItemProperties;
 
@@ -296,6 +279,15 @@ mod tests {
         assert!(k_salt_t("cacl2", t) > k_salt_t("nacl", t));
         assert!(k_salt_t("nacl", t) > k_salt_t("caso4", t));
         assert_eq!(k_salt_t("sand", t), 0.0);
+    }
+
+    #[test]
+    fn dissolve_mass_for_contact_naoh_ignores_cap() {
+        let m = dissolve_mass_for_contact(0.2, 0.0, 100.0, POUR_CONTACT_TAU_S, true);
+        assert!(
+            m > 0.19,
+            "NaOH must dissolve nearly all despite zero cap: {m}"
+        );
     }
 
     #[test]
@@ -444,7 +436,7 @@ mod tests {
         // Frozen-T wipe would apply only NaCl ΔH from 20 °C (net cool or near-ambient).
         // Combined CaCl₂ exo + NaCl endo must leave a clearly warmer beaker.
         let c_eff = crate::scene::effective_heat_capacity(&beaker);
-        let t_nacl_only = 20.0 - (na * crate::scene::NACL_DELTA_H_SOLUTION_J_PER_MOL) / c_eff;
+        let t_nacl_only = 20.0 - (na * NACL_DELTA_H_SOLUTION_J_PER_MOL) / c_eff;
         assert!(
             t > t_nacl_only + 0.02,
             "CaCl₂ heat must survive subsequent NaCl dissolve: T={t} vs NaCl-only {t_nacl_only}"

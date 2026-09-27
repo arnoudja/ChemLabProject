@@ -76,9 +76,20 @@ When the scene pours a soluble salt into water, `chemlab-core` deposits the soli
 | `naoh` | `na+`, `oh-` | 1:1 | `−44500` (exothermic) |
 | `na2so4` | `na+`, `so4^2-` | 2:1 | `−2340` (mildly exothermic) |
 
-Molar masses: NaCl `58.44` g/mol, CaCl₂ `110.98` g/mol, NaOH `40.00` g/mol, Na₂SO₄ `142.04` g/mol. Water mass ≈ liquid `amount_ml` (1 g/ml); c_p = `4.184` J/(g·K). Solid NaOH c_p ≈ `1.49` J/(g·K).
+**First-order rate at 20 °C** (`k₂₀`, 1/s) — matches `dissolve_kinetics::k20`:
 
-**Neutralization:** after mix/dissolve, aqueous speciation (`K_w` + sulfuric `K_a2`) equilibrates `h+` / `oh-` / `hso4-` / `so4^2-` and applies neutralization heat from `0.5 · Δ(n_h + n_oh + n_hso4)` (ΔH_neut = `−55800` J/mol) **before** precipitate-only `enforce_saturation`. Spectators `na+`/`cl-` remain; excess acid or base stays as the solved inventory. Inspect pH is from solved `[H⁺]` (~7 for pure water / exact neutral salt). Na⁺ paired with OH⁻ is **not** counted as NaCl inventory (so SI does not invent Cl⁻). Solid NaOH / NaCl / CaCl₂ / gypsum share the same kinetic helper on tongs dump, water-onto-solid, spoon pour, filter wash, and elapsed ticks; SI never instant-redissolves under-saturated solids.
+| `substance_id` | `k₂₀` (1/s) | Notes |
+| --- | --- | --- |
+| `naoh` | `100` | Scoop finishes within pour-contact τ |
+| `cacl2` | `1.5` | |
+| `nacl` | `1.0` | |
+| `na2so4` | `0.5` | |
+| `caso4` | `0.05` | Gypsum — **kinetic / SI only** (not in the qualitative `dissolve()` id table; precip redissolve + filter-wash path) |
+| `sand` | `0` | Never dissolves |
+
+Molar masses: NaCl `58.44` g/mol, CaCl₂ `110.98` g/mol, NaOH `40.00` g/mol, Na₂SO₄ `142.04` g/mol, CaSO₄ `136.14` g/mol. Water mass ≈ liquid `amount_ml` (1 g/ml); c_p = `4.184` J/(g·K). Solid NaOH c_p ≈ `1.49` J/(g·K).
+
+**Neutralization:** after mix/dissolve, aqueous speciation (`K_w` + sulfuric `K_a2`) equilibrates `h+` / `oh-` / `hso4-` / `so4^2-` and applies neutralization heat from `0.5 · Δ(n_h + n_oh + n_hso4)` (ΔH_neut = `−55800` J/mol) **before** precipitate-only `enforce_saturation`. Spectators `na+`/`cl-` remain; excess acid or base stays as the solved inventory. Inspect pH is from solved `[H⁺]` (~7 for pure water / exact neutral salt). Na⁺ paired with OH⁻ is **not** counted as NaCl inventory (so SI does not invent Cl⁻). Solid NaOH / NaCl / CaCl₂ / Na₂SO₄ / gypsum share the same kinetic helper on tongs dump, water-onto-solid, spoon pour, filter wash, and elapsed ticks; SI never instant-redissolves under-saturated solids.
 
 ## Errors (not dissolve results)
 
@@ -86,7 +97,7 @@ Anything outside the table is an error. Unknown materials must **not** be treate
 
 | Case | Suggested code | Meaning |
 | --- | --- | --- |
-| `substance_id` not `nacl`, `cacl2`, `naoh`, or `sand` | `unknown_substance` | Not in this slice |
+| `substance_id` not `nacl`, `cacl2`, `naoh`, `na2so4`, or `sand` | `unknown_substance` | Not in this slice |
 | `solvent_id` not `water` | `unsupported_solvent` | Only water |
 | empty or whitespace-only ids | `invalid_input` | Reject, do not guess |
 
@@ -101,6 +112,7 @@ Do not invent ethanol or “mystery powder” chemistry. Wrong solvent fails; it
 | `nacl` | Sodium chloride (NaCl) / Table salt |
 | `cacl2` | Calcium chloride (CaCl₂) / De-icing salt |
 | `naoh` | Sodium hydroxide (NaOH) / Caustic soda |
+| `na2so4` | Sodium sulfate (Na₂SO₄) |
 | `sand` | Sand |
 | `water` | Water (implicit; no solvent picker in this slice) |
 

@@ -2,7 +2,9 @@
 
 import type { ReactNode } from 'react'
 import type { CompositionEntry } from '../generated/contracts'
-import { solutionVolumeMl } from '../components/labBenchScene'
+import { phFromComposition, solutionVolumeMl } from './solutionChemistry'
+
+export { phFromComposition }
 
 const PHASE_ABBREV: Record<string, string> = {
   solid: 's',
@@ -127,30 +129,6 @@ export function solventVolumeLitres(composition: CompositionEntry[]): number | n
 /** Strong-acid / strong-base approximate pH display. */
 export function formatPh(ph: number): string {
   return ph.toFixed(2)
-}
-
-export function phFromComposition(composition: CompositionEntry[]): number | null {
-  const hEntry = composition.find((c) => c.substance_id === 'h+' && c.phase === 'aqueous')
-  const ohEntry = composition.find((c) => c.substance_id === 'oh-' && c.phase === 'aqueous')
-  const nH = hEntry?.amount_mol ?? 0
-  const nOh = ohEntry?.amount_mol ?? 0
-  const volumeMl = solutionVolumeMl(composition)
-  if (volumeMl <= 0) return null
-  const volumeL = volumeMl / 1000
-  // Prefer solved [H+] (post-speciation both h+ and oh- are present at Kw levels).
-  if (nH > 0) {
-    const conc = nH / volumeL
-    if (conc <= 0) return null
-    return -Math.log10(conc)
-  }
-  if (nOh > 0) {
-    const conc = nOh / volumeL
-    if (conc <= 0) return null
-    return 14 + Math.log10(conc)
-  }
-  const water = composition.find((c) => c.substance_id === 'water' && c.phase === 'liquid')
-  if ((water?.amount_ml ?? 0) > 0) return 7
-  return null
 }
 
 /** Format molarity, mass, or volume suffix from server amounts (display only). */

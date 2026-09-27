@@ -25,8 +25,10 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
     let mut heating_dish = false;
     if let (Some(burner_idx), Some(dish_idx)) = (burner_idx, dish_idx) {
         if scene.items[burner_idx].properties.on == Some(true) {
+            // Heat only while liquid water remains. Leftover liquid H₂SO₄ after
+            // dry-out must not keep the burner on (T would stall with no water).
             if scene.items[dish_idx].location != "bench"
-                || !crate::solubility::dish_has_liquid(&scene.items[dish_idx])
+                || !crate::solubility::dish_has_liquid_water(&scene.items[dish_idx])
             {
                 scene.items[burner_idx].properties.on = Some(false);
             } else {
@@ -43,7 +45,7 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
             finalize_aqueous_vessel(&mut scene.items[dish_idx]);
             if let Some(burner_idx) = burner_idx {
                 if scene.items[burner_idx].properties.on == Some(true)
-                    && !crate::solubility::dish_has_liquid(&scene.items[dish_idx])
+                    && !crate::solubility::dish_has_liquid_water(&scene.items[dish_idx])
                 {
                     scene.items[burner_idx].properties.on = Some(false);
                 }
@@ -289,6 +291,18 @@ pub(super) fn heat_capacity_of_entries(entries: &[CompositionEntry]) -> f64 {
     for entry in entries {
         if entry.substance_id == "water" && entry.phase == "liquid" {
             c += entry.amount_ml.unwrap_or(0.0) * WATER_SPECIFIC_HEAT_J_PER_G_K;
+        } else if entry.substance_id == "h2so4" && entry.phase == "liquid" {
+            let mass_g = entry.amount_g.unwrap_or_else(|| {
+                entry
+                    .amount_mol
+                    .map(|n| n * crate::h2so4::H2SO4_MOLAR_MASS_G_PER_MOL)
+                    .unwrap_or_else(|| {
+                        entry.amount_ml.unwrap_or(0.0)
+                            * crate::h2so4::H2SO4_STOCK_DENSITY_G_PER_ML
+                            * crate::h2so4::H2SO4_STOCK_W_W
+                    })
+            });
+            c += mass_g.max(0.0) * CP_H2SO4_LIQUID;
         } else if entry.phase == "solid" {
             if let Some(cp) = solid_specific_heat(&entry.substance_id) {
                 c += solid_amount_g(entry) * cp;

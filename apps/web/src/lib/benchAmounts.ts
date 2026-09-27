@@ -25,6 +25,18 @@ export const HCL_STOCK_DENSITY_G_PER_ML = 1.149
 /** Moles of HCl (= H⁺ = Cl⁻) in the filled Free-mode stock. */
 export const HCL_STOCK_HCL_MOLES = 3.447 / 36.46
 
+/** H₂SO₄ stock beaker capacity (ml of liquid acid). */
+export const H2SO4_STOCK_CAPACITY_ML = 10
+
+/** Density of ~98% w/w H₂SO₄ at RT (g/ml). */
+export const H2SO4_STOCK_DENSITY_G_PER_ML = 1.83
+
+/** Stock mass fraction (~98% w/w). */
+export const H2SO4_STOCK_W_W = 0.98
+
+/** Moles of H₂SO₄ in the filled Free-mode stock: (V·ρ·w)/M. */
+export const H2SO4_STOCK_H2SO4_MOLES = (10.0 * 1.83 * 0.98) / 98.079
+
 /** Pipette aliquot volume (ml). */
 export const PIPETTE_VOLUME_ML = 1
 

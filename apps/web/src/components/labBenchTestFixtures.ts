@@ -12,6 +12,12 @@ import {
   PIPETTE_VOLUME_ML,
   FILTRATE_CAPACITY_ML,
 } from './LabBench'
+import {
+  H2SO4_STOCK_CAPACITY_ML,
+  H2SO4_STOCK_H2SO4_MOLES,
+  H2SO4_STOCK_DENSITY_G_PER_ML,
+  H2SO4_STOCK_W_W,
+} from '../lib/benchAmounts'
 
 export const NACL_EXPLANATION =
   'Sodium chloride (NaCl) dissolves in water at bench temperature.'
@@ -116,6 +122,30 @@ export function initialScene(): LabScene {
               amount_scoop: null,
               amount_g: null,
               amount_mol: HCL_STOCK_HCL_MOLES,
+            },
+          ],
+          holding: [],
+        },
+      },
+      {
+        id: 'beaker-h2so4',
+        kind: 'beaker',
+        label: 'Sulfuric acid',
+        location: 'bench',
+        properties: {
+          volume_ml: H2SO4_STOCK_CAPACITY_ML,
+          fill_ml: H2SO4_STOCK_CAPACITY_ML,
+          transparent: true,
+          colourless: true,
+          temperature_c: 20,
+          composition: [
+            {
+              substance_id: 'h2so4',
+              phase: 'liquid',
+              amount_ml: H2SO4_STOCK_CAPACITY_ML,
+              amount_scoop: null,
+              amount_g: H2SO4_STOCK_CAPACITY_ML * H2SO4_STOCK_DENSITY_G_PER_ML * H2SO4_STOCK_W_W,
+              amount_mol: H2SO4_STOCK_H2SO4_MOLES,
             },
           ],
           holding: [],
@@ -330,6 +360,7 @@ export type ChallengeStartLayout = {
 const FREE_STOCK_ITEM_IDS = [
   'beaker-h2o',
   'beaker-hcl',
+  'beaker-h2so4',
   'beaker-nacl',
   'beaker-naoh',
   'beaker-cacl2',

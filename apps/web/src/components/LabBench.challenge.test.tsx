@@ -55,6 +55,7 @@ describe('LabBench challenge mode', () => {
     const stocks = [
       'Distilled water (H2O)',
       'Hydrochloric acid (30%)',
+      'Sulfuric acid',
       'Sodium chloride (NaCl)',
       'Sodium hydroxide (NaOH)',
       'Calcium chloride (CaCl2)',
@@ -73,10 +74,11 @@ describe('LabBench challenge mode', () => {
     expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
 
     const seen: string[] = []
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < 8; i += 1) {
       for (const stock of [
         'Distilled water (H2O)',
         'Hydrochloric acid (30%)',
+        'Sulfuric acid',
         'Sodium chloride (NaCl)',
         'Sodium hydroxide (NaOH)',
         'Calcium chloride (CaCl2)',
@@ -91,6 +93,7 @@ describe('LabBench challenge mode', () => {
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
     expect(seen).not.toContain('Sodium hydroxide (NaOH)')
     expect(seen).not.toContain('Hydrochloric acid (30%)')
+    expect(seen).not.toContain('Sulfuric acid')
   })
 
   it('starts the challenge distilled-water stock at 10 ml', () => {
@@ -146,10 +149,11 @@ describe('LabBench challenge mode', () => {
     expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
 
     const seen: string[] = []
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < 8; i += 1) {
       for (const stock of [
         'Distilled water (H2O)',
         'Hydrochloric acid (30%)',
+        'Sulfuric acid',
         'Sodium chloride (NaCl)',
         'Sodium hydroxide (NaOH)',
         'Calcium chloride (CaCl2)',
@@ -170,6 +174,7 @@ describe('LabBench challenge mode', () => {
     )
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
     expect(seen).not.toContain('Sand')
+    expect(seen).not.toContain('Sulfuric acid')
   })
 
   it('create-table-salt starts with full distilled water and empty NaCl', () => {

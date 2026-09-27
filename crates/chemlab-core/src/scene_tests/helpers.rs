@@ -35,19 +35,20 @@ pub(super) fn bench_with_water(lab_id: &str) -> Scene {
 }
 
 #[test]
-fn initial_bench_scene_has_fourteen_items_with_water_hcl_naoh_and_evaporation_bench() {
+fn initial_bench_scene_has_fifteen_items_with_water_acids_naoh_and_evaporation_bench() {
     let scene = initial_bench_scene("lab-test");
     assert_eq!(scene.lab_id, "lab-test");
     assert_eq!(scene.temperature_c, 20.0);
     assert_eq!(scene.version, 0);
     assert!(scene.last_events.is_empty());
     assert_eq!(scene.last_applied_unix_ms, None);
-    assert_eq!(scene.items.len(), 14);
+    assert_eq!(scene.items.len(), 15);
 
     let ids: Vec<_> = scene.items.iter().map(|i| i.id.as_str()).collect();
     assert!(ids.contains(&"spoon-1"));
     assert!(ids.contains(&"beaker-h2o"));
     assert!(ids.contains(&"beaker-hcl"));
+    assert!(ids.contains(&"beaker-h2so4"));
     assert!(ids.contains(&"beaker-nacl"));
     assert!(ids.contains(&"beaker-naoh"));
     assert!(ids.contains(&"beaker-cacl2"));
@@ -218,7 +219,11 @@ pub(super) fn assert_fill_ml_matches_phi_v(scene: &Scene) {
         let tracks = matches!(item.kind.as_str(), "evaporation_dish" | "pipette")
             || matches!(
                 item.id.as_str(),
-                MAIN_BEAKER_ID | DISTILLED_WATER_ID | "beaker-filtrate" | "beaker-hcl"
+                MAIN_BEAKER_ID
+                    | DISTILLED_WATER_ID
+                    | "beaker-filtrate"
+                    | "beaker-hcl"
+                    | "beaker-h2so4"
             );
         if !tracks {
             continue;

@@ -26,6 +26,7 @@ import {
   BurnerSvg,
   DistilledWaterBeakerSvg,
   HclBeakerSvg,
+  H2so4BeakerSvg,
   EvaporationDishSvg,
   FiltrateBeakerSvg,
   FunnelPaperSvg,
@@ -37,6 +38,7 @@ import {
   dishFillRatio,
   distilledWaterFillRatio,
   hclFillRatio,
+  h2so4FillRatio,
   filtrateFillRatio,
   stockFillRatio,
   waterFillRatio,
@@ -49,6 +51,7 @@ import {
   FILTRATE_ID,
   H2O_ID,
   HCL_ID,
+  H2SO4_ID,
   NACL_ID,
   NAOH_ID,
   PAPER_ID,
@@ -62,6 +65,7 @@ import {
   dissolveCueFromEvents,
   distilledWaterAmountMl,
   hclStockAmountMl,
+  h2so4StockAmountMl,
   filtrateAmountMl,
   findItem,
   outcomeLabel,
@@ -94,6 +98,7 @@ export {
   dishFillRatio,
   distilledWaterFillRatio,
   hclFillRatio,
+  h2so4FillRatio,
   filtrateFillRatio,
   sceneNeedsThermalPoll,
   stockFillRatio,
@@ -102,11 +107,12 @@ export {
 
 const THERMAL_POLL_MS = 300
 
-type IngredientKind = 'h2o' | 'hcl' | StockSolid
+type IngredientKind = 'h2o' | 'hcl' | 'h2so4' | StockSolid
 
 const INGREDIENT_CAROUSEL: { itemId: string; kind: IngredientKind }[] = [
   { itemId: H2O_ID, kind: 'h2o' },
   { itemId: HCL_ID, kind: 'hcl' },
+  { itemId: H2SO4_ID, kind: 'h2so4' },
   { itemId: NACL_ID, kind: 'nacl' },
   { itemId: NAOH_ID, kind: 'naoh' },
   { itemId: CACL2_ID, kind: 'cacl2' },
@@ -365,6 +371,10 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
     return onVessel(HCL_ID, event, { allowSpoon: false })
   }
 
+  async function onH2so4Stock(event: MouseEvent<HTMLButtonElement>) {
+    return onVessel(H2SO4_ID, event, { allowSpoon: false })
+  }
+
   async function onWater(event: MouseEvent<HTMLButtonElement>) {
     return onVessel(WATER_ID, event, { spoonPourIfHolding: true })
   }
@@ -449,6 +459,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
   const dishHeld = dish?.location === 'held'
   const h2oHeld = scene ? findItem(scene, H2O_ID)?.location === 'held' : false
   const hclHeld = scene ? findItem(scene, HCL_ID)?.location === 'held' : false
+  const h2so4Held = scene ? findItem(scene, H2SO4_ID)?.location === 'held' : false
   const filtrateHeld = filtrate?.location === 'held'
   const paperHeld = paper?.location === 'held'
   const lastEvents = scene ? optionalArray(scene.last_events) : []
@@ -642,6 +653,21 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
                   )}
                   <StockSubstanceLabel substanceId="hcl" />
                 </button>
+              ) : visibleIngredient.kind === 'h2so4' ? (
+                <button
+                  type="button"
+                  className="lab-item"
+                  aria-label={stockSubstanceAriaLabel('h2so4')}
+                  disabled={busy}
+                  onClick={onH2so4Stock}
+                >
+                  {h2so4Held ? (
+                    <svg viewBox="0 0 80 118" className="h-28 w-20" aria-hidden />
+                  ) : (
+                    <H2so4BeakerSvg amountMl={scene ? h2so4StockAmountMl(scene) : null} />
+                  )}
+                  <StockSubstanceLabel substanceId="h2so4" />
+                </button>
               ) : (
                 <button
                   type="button"
@@ -762,6 +788,8 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
               <DistilledWaterBeakerSvg amountMl={distilledWaterAmountMl(scene)} floating />
             ) : heldVesselId === HCL_ID && scene ? (
               <HclBeakerSvg amountMl={hclStockAmountMl(scene)} floating />
+            ) : heldVesselId === H2SO4_ID && scene ? (
+              <H2so4BeakerSvg amountMl={h2so4StockAmountMl(scene)} floating />
             ) : heldSolid && heldVesselId && scene ? (
               <SolidBeakerSvg
                 solid={heldSolid}

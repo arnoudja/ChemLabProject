@@ -1,26 +1,27 @@
-//! Mixed NaCl / CaCl₂ saturation (common-ion Cl⁻) for every aqueous vessel.
+//! Mixed NaCl / CaCl₂ / Na₂SO₄ / CaSO₄ saturation for every aqueous vessel.
 //!
-//! Pure-water solubilities are literature g / 100 g H₂O, converted with ρ_water = 1.000 g/mL
-//! so concentrations are **mol per litre of liquid water** (the core’s solvent-volume basis,
-//! numerically ≈ molality). In a mixture the salts share Cl⁻: ion activity products are
-//! compared to T-fitted K(T) from the pure curves with a Davies activity correction.
-//! SiO₂ / sand never enters the ion balance.
+//! Pure-water solubilities are literature g / 100 g H₂O (chlorides, Na₂SO₄) or a
+//! school gypsum solubility (CaSO₄), converted with ρ_water = 1.000 g/mL so
+//! concentrations are **mol per litre of liquid water**. Chloride salts share Cl⁻;
+//! gypsum uses Ca²⁺×SO₄²⁻. SiO₂ / sand never enters the ion balance.
 //!
 //! **Activity model (Davies + soft-cap I):**
 //! `log₁₀ γᵢ = −A zᵢ² [√I_eff/(1+√I_eff) − 0.3 I_eff]` with
 //! `I_eff = I / (1 + I / I_STAR)`, `I_STAR = 3.0` mol/kg, and
-//! `I = ½ Σ mᵢ zᵢ²` from Na⁺, Ca²⁺, H⁺, Cl⁻, and OH⁻
+//! `I = m_Na_salt + 3 m_Ca + m_H_total + m_OH + m_SO4` (all aqueous H⁺, including
+//! free sulfuric protons; SO₄²⁻ contributes as m_SO4 with z²=4 folded into the
+//! coefficient choice above)
 //! (Debye–Hückel A(T) from Malmberg–Maryott ε_r(water), ρ = 1.000 g/cm³).
-//! Davies is designed for I ≲ 0.5 mol/kg; saturated NaCl/CaCl₂ are much higher.
-//! The soft cap keeps γ continuous and finite at school brine strengths (not a
-//! substitute for Pitzer). K(T) is fitted with the same `I_eff` so a **pure**
-//! saturated solution still matches the literature curve; mixed SI is dominated
-//! by the ion product (extra Cl⁻ suppresses NaCl in the correct direction).
-//! Solvent basis for SI stays **water litres**, not solution volume.
+//! **HCl common-ion** uses `min(n(h+), n_Cl_total)`, never bare `h+`, so sulfuric
+//! acid cannot invent chloride. Chloride IAP uses partitioned salt Na/Ca + HCl
+//! inventory only — sulfate Na is split out before the chloride SI pass so
+//! `m_cl` is not understated by a `-2 m_SO4` term. Solvent basis for SI stays
+//! **water litres**.
 
 use crate::composition::{aqueous_mol, set_aqueous_mol};
 use crate::scene::{
-    CompositionEntry, SceneItem, CACL2_MOLAR_MASS_G_PER_MOL, NACL_MOLAR_MASS_G_PER_MOL,
+    CompositionEntry, SceneItem, CACL2_MOLAR_MASS_G_PER_MOL, CASO4_MOLAR_MASS_G_PER_MOL,
+    NA2SO4_MOLAR_MASS_G_PER_MOL, NACL_MOLAR_MASS_G_PER_MOL,
 };
 
 /// NaCl g / 100 g water vs T. CRC Handbook (Haynes, ed.).
@@ -42,23 +43,58 @@ const CACL2_G_PER_100G_WATER: &[(f64, f64)] = &[
     (100.0, 159.0),
 ];
 
+/// Anhydrous Na₂SO₄ g / 100 g water vs T (school / CRC-style; hydrate collapse).
+const NA2SO4_G_PER_100G_WATER: &[(f64, f64)] = &[
+    (20.0, 19.5),
+    (30.0, 40.8),
+    (40.0, 48.8),
+    (60.0, 45.3),
+    (80.0, 43.7),
+    (100.0, 42.5),
+];
+
+/// Gypsum-style CaSO₄ solubility (mol per litre water) vs T — school table.
+const CASO4_MOL_PER_L: &[(f64, f64)] = &[
+    (20.0, 0.015),
+    (40.0, 0.014),
+    (60.0, 0.013),
+    (80.0, 0.012),
+    (100.0, 0.011),
+];
+
 const AMOUNT_EPS: f64 = 1e-12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Salt {
     Nacl,
     Cacl2,
+    Na2so4,
+    Caso4,
 }
 
 /// Pure-water formula-unit solubility (mol per litre of water) at vessel T.
 ///
 /// Piecewise-linear between literature table points; clamped to 20–100 °C.
 pub fn solubility_mol_per_l(salt: Salt, temperature_c: f64) -> f64 {
-    let (table, molar_mass) = match salt {
-        Salt::Nacl => (NACL_G_PER_100G_WATER, NACL_MOLAR_MASS_G_PER_MOL),
-        Salt::Cacl2 => (CACL2_G_PER_100G_WATER, CACL2_MOLAR_MASS_G_PER_MOL),
-    };
-    interpolate_g_per_100g(table, temperature_c) * 10.0 / molar_mass
+    match salt {
+        Salt::Nacl => {
+            interpolate_g_per_100g(NACL_G_PER_100G_WATER, temperature_c) * 10.0
+                / NACL_MOLAR_MASS_G_PER_MOL
+        }
+        Salt::Cacl2 => {
+            interpolate_g_per_100g(CACL2_G_PER_100G_WATER, temperature_c) * 10.0
+                / CACL2_MOLAR_MASS_G_PER_MOL
+        }
+        Salt::Na2so4 => {
+            interpolate_g_per_100g(NA2SO4_G_PER_100G_WATER, temperature_c) * 10.0
+                / NA2SO4_MOLAR_MASS_G_PER_MOL
+        }
+        Salt::Caso4 => interpolate_mol_per_l(CASO4_MOL_PER_L, temperature_c),
+    }
+}
+
+fn interpolate_mol_per_l(table: &[(f64, f64)], temperature_c: f64) -> f64 {
+    interpolate_g_per_100g(table, temperature_c)
 }
 
 fn interpolate_g_per_100g(table: &[(f64, f64)], temperature_c: f64) -> f64 {
@@ -84,6 +120,12 @@ fn interpolate_g_per_100g(table: &[(f64, f64)], temperature_c: f64) -> f64 {
 pub use crate::composition::{liquid_water_ml, sync_fill_ml};
 
 pub fn dish_has_liquid(item: &SceneItem) -> bool {
+    liquid_water_ml(item) > AMOUNT_EPS || crate::h2so4::liquid_h2so4_ml(item) > AMOUNT_EPS
+}
+
+/// Liquid water (H₂O) in the dish — burner heat gate. Liquid molecular H₂SO₄ alone
+/// does not count; the burner auto-offs (and stays off) when water is gone.
+pub fn dish_has_liquid_water(item: &SceneItem) -> bool {
     liquid_water_ml(item) > AMOUNT_EPS
 }
 
@@ -142,19 +184,22 @@ fn has_aqueous_ions(item: &SceneItem) -> bool {
 }
 
 /// Additional grams of `salt` that could dissolve into water with the given aqueous
-/// Na⁺ / Ca²⁺ / H⁺ / OH⁻ inventory at `temperature_c` before mixed SI = 1 (0 if already saturated).
+/// inventory at `temperature_c` before mixed SI = 1 (0 if already saturated).
 ///
-/// `n_h_aq` contributes Cl⁻ common-ion (and ionic strength) from aqueous HCl without
-/// mutating the fluid. `n_oh_aq` contributes to ionic strength only (not to NaCl/CaCl₂ IAP).
-/// Holds the other cation fixed (no precipitation sidelight during the probe) so filter
-/// wash capacity matches common-ion suppression.
+/// HCl common-ion is `min(n_h_aq, n_cl_aq)` — bare sulfuric `h+` never invents Cl⁻.
+/// `n_h_aq` and `n_so4_aq` still contribute to ionic strength. `n_oh_aq` contributes
+/// to I only (not to NaCl/CaCl₂ IAP). Holds the other cation fixed (no precipitation
+/// sidelight during the probe) so filter wash capacity matches common-ion suppression.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn unsaturated_capacity_g(
     salt: Salt,
     water_ml: f64,
     n_na_aq: f64,
     n_ca_aq: f64,
     n_h_aq: f64,
+    n_cl_aq: f64,
     n_oh_aq: f64,
+    n_so4_aq: f64,
     temperature_c: f64,
 ) -> f64 {
     let litres = water_ml / 1000.0;
@@ -162,35 +207,56 @@ pub(crate) fn unsaturated_capacity_g(
         return 0.0;
     }
     let n_h = n_h_aq.max(0.0);
+    let n_hcl = n_h.min(n_cl_aq.max(0.0));
     let n_oh = n_oh_aq.max(0.0);
+    let n_so4 = n_so4_aq.max(0.0);
     match salt {
         Salt::Nacl => {
             let pure_max = solubility_mol_per_l(Salt::Nacl, temperature_c) * litres;
             let probe = n_na_aq.max(0.0) + pure_max * 2.0 + 1.0;
-            let max_aq =
-                dissolved_nacl_at_si1(probe, n_ca_aq.max(0.0), n_h, n_oh, litres, temperature_c);
+            let max_aq = dissolved_nacl_at_si1(
+                probe,
+                n_ca_aq.max(0.0),
+                n_so4,
+                n_hcl,
+                n_h,
+                n_oh,
+                litres,
+                temperature_c,
+            );
             (max_aq - n_na_aq).max(0.0) * NACL_MOLAR_MASS_G_PER_MOL
         }
         Salt::Cacl2 => {
             let pure_max = solubility_mol_per_l(Salt::Cacl2, temperature_c) * litres;
             let probe = n_ca_aq.max(0.0) + pure_max * 2.0 + 1.0;
-            let max_aq =
-                dissolved_cacl2_at_si1(probe, n_na_aq.max(0.0), n_h, n_oh, litres, temperature_c);
+            let max_aq = dissolved_cacl2_at_si1(
+                probe,
+                n_na_aq.max(0.0),
+                n_so4,
+                n_hcl,
+                n_h,
+                n_oh,
+                litres,
+                temperature_c,
+            );
             (max_aq - n_ca_aq).max(0.0) * CACL2_MOLAR_MASS_G_PER_MOL
         }
+        // Filter wash does not currently dissolve sulfate solids.
+        Salt::Na2so4 | Salt::Caso4 => 0.0,
     }
 }
 
-/// Convert aqueous ↔ solid so both saturation indices are ≤ 1 at the item's current T.
+/// Convert aqueous ↔ solid so saturation indices are ≤ 1 at the item's current T.
 ///
-/// Same mixed NaCl/CaCl₂ equilibrium on every aqueous vessel. Dry stock solids (no water,
-/// no aqueous ions, not an evaporation dish) are left untouched. Precipitating NaCl
-/// removes 1 Na⁺ + 1 Cl⁻; CaCl₂ removes 1 Ca²⁺ + 2 Cl⁻. Aqueous H⁺ from HCl is preserved
-/// and contributes its Cl⁻ (common ion) to the SI solver.
+/// Mixed NaCl/CaCl₂/Na₂SO₄/CaSO₄ equilibrium on every aqueous vessel. Dry stock solids
+/// (no water, no aqueous ions, not an evaporation dish) are left untouched.
 ///
-/// **NaOH / OH⁻:** aqueous Na⁺ paired 1:1 with OH⁻ is **not** counted as NaCl inventory
-/// (otherwise SI would invent matching Cl⁻ and can precipitate solid `nacl`). Callers must
-/// run H⁺+OH⁻ neutralization before this when both are present. Excess OH⁻ is preserved.
+/// **Charge-safe Cl⁻:** total chloride is conserved from aq Cl⁻ + solid NaCl/CaCl₂.
+/// HCl common-ion for SI is `min(n(h+), total_cl)` — bare sulfuric `h+` never invents Cl⁻.
+/// Sulfate is conserved across aq SO₄²⁻ + solid Na₂SO₄/CaSO₄.
+///
+/// **NaOH / OH⁻:** aqueous Na⁺ paired 1:1 with OH⁻ is **not** counted as NaCl/Na₂SO₄
+/// inventory. Callers must run H⁺+OH⁻ neutralization before this when both are present.
 pub fn enforce_saturation(item: &mut SceneItem) {
     let temperature_c = item.properties.temperature_c.unwrap_or(20.0);
     let water_ml = liquid_water_ml(item);
@@ -201,30 +267,81 @@ pub fn enforce_saturation(item: &mut SceneItem) {
     }
 
     let n_oh = aqueous_mol(item, "oh-");
-    let n_na_total = aqueous_mol(item, "na+");
-    // Na⁺ beyond OH⁻-paired inventory is the NaCl (and free Na⁺) pool for SI.
-    let n_na_salt = (n_na_total - n_oh).max(0.0);
-    let total_nacl = n_na_salt + solid_mol(item, "nacl", NACL_MOLAR_MASS_G_PER_MOL);
-    let total_cacl2 =
-        aqueous_mol(item, "ca2+") + solid_mol(item, "cacl2", CACL2_MOLAR_MASS_G_PER_MOL);
     let n_h = aqueous_mol(item, "h+");
+    let s_nacl = solid_mol(item, "nacl", NACL_MOLAR_MASS_G_PER_MOL);
+    let s_cacl2 = solid_mol(item, "cacl2", CACL2_MOLAR_MASS_G_PER_MOL);
+    let s_na2so4 = solid_mol(item, "na2so4", NA2SO4_MOLAR_MASS_G_PER_MOL);
+    let s_caso4 = solid_mol(item, "caso4", CASO4_MOLAR_MASS_G_PER_MOL);
 
-    let (aq_nacl, solid_nacl, aq_cacl2, solid_cacl2) = if litres <= AMOUNT_EPS {
-        (0.0, total_nacl, 0.0, total_cacl2)
-    } else {
-        mixed_equilibrium(total_nacl, total_cacl2, n_h, n_oh, litres, temperature_c)
-    };
+    let total_cl = aqueous_mol(item, "cl-") + s_nacl + 2.0 * s_cacl2;
+    let total_so4 = aqueous_mol(item, "so4^2-") + s_na2so4 + s_caso4;
+    let total_ca = aqueous_mol(item, "ca2+") + s_cacl2 + s_caso4;
+    let n_na_total = aqueous_mol(item, "na+");
+    let total_na_salt = (n_na_total - n_oh).max(0.0) + s_nacl + 2.0 * s_na2so4;
+    let n_hcl = n_h.min(total_cl).max(0.0);
 
-    set_aqueous_mol(item, "na+", aq_nacl + n_oh);
-    set_aqueous_mol(item, "ca2+", aq_cacl2);
-    set_aqueous_mol(item, "cl-", aq_nacl + 2.0 * aq_cacl2 + n_h);
-    // Preserve H⁺ and OH⁻ (set explicitly so a wiped Cl⁻ line does not imply lost acid/base).
+    let (aq_na_salt, aq_ca, aq_so4, solid_nacl, solid_cacl2, solid_na2so4, solid_caso4) =
+        if litres <= AMOUNT_EPS {
+            dry_sulfate_chloride_split(total_na_salt, total_ca, total_so4, total_cl)
+        } else {
+            mixed_sulfate_chloride_equilibrium(
+                total_na_salt,
+                total_ca,
+                total_so4,
+                total_cl,
+                n_hcl,
+                n_h,
+                n_oh,
+                litres,
+                temperature_c,
+            )
+        };
+
+    let aq_cl = (total_cl - solid_nacl - 2.0 * solid_cacl2).max(0.0);
+
+    set_aqueous_mol(item, "na+", aq_na_salt + n_oh);
+    set_aqueous_mol(item, "ca2+", aq_ca);
+    set_aqueous_mol(item, "so4^2-", aq_so4);
+    set_aqueous_mol(item, "cl-", aq_cl);
     set_aqueous_mol(item, "h+", n_h);
     set_aqueous_mol(item, "oh-", n_oh);
     set_salt_solid(item, "nacl", solid_nacl, NACL_MOLAR_MASS_G_PER_MOL);
     set_salt_solid(item, "cacl2", solid_cacl2, CACL2_MOLAR_MASS_G_PER_MOL);
+    set_salt_solid(item, "na2so4", solid_na2so4, NA2SO4_MOLAR_MASS_G_PER_MOL);
+    set_salt_solid(item, "caso4", solid_caso4, CASO4_MOLAR_MASS_G_PER_MOL);
     remove_near_zero_water(item);
     sync_fill_ml(item);
+}
+
+/// Dry-out split: prefer CaSO₄, then Na₂SO₄, then chloride solids.
+///
+/// Leftover free SO₄²⁻ (e.g. non-volatile H₂SO₄ with no Ca/Na partner) stays as
+/// aqueous inventory — same conservation rule as leftover aq HCl ions when dry.
+fn dry_sulfate_chloride_split(
+    total_na_salt: f64,
+    total_ca: f64,
+    total_so4: f64,
+    total_cl: f64,
+) -> (f64, f64, f64, f64, f64, f64, f64) {
+    let solid_caso4 = total_ca.min(total_so4).max(0.0);
+    let ca_left = (total_ca - solid_caso4).max(0.0);
+    let so4_left = (total_so4 - solid_caso4).max(0.0);
+    let solid_na2so4 = (total_na_salt * 0.5).min(so4_left).max(0.0);
+    let na_left = (total_na_salt - 2.0 * solid_na2so4).max(0.0);
+    let so4_aq = (so4_left - solid_na2so4).max(0.0);
+    // Remaining Ca / Na with Cl → chloride solids.
+    let solid_cacl2 = ca_left.min(total_cl * 0.5).max(0.0);
+    let cl_after_ca = (total_cl - 2.0 * solid_cacl2).max(0.0);
+    let solid_nacl = na_left.min(cl_after_ca).max(0.0);
+    (
+        0.0,
+        0.0,
+        so4_aq,
+        solid_nacl,
+        solid_cacl2,
+        solid_na2so4,
+        solid_caso4,
+    )
 }
 
 /// log₁₀(SI) tolerance ≈ SI within 10⁻⁸ of 1.
@@ -236,31 +353,47 @@ const MIXED_BISECT_ITERS: usize = 80;
 struct Mixture {
     m_na: f64,
     m_ca: f64,
-    /// Molality of H⁺ from aqueous HCl (paired Cl⁻ included in `m_cl`).
+    /// Molality of H⁺ counted as HCl common-ion (`min(h+, cl-)` inventory) for `m_cl`.
+    m_hcl: f64,
+    /// Molality of all aqueous H⁺ (HCl + free sulfuric protons) for ionic strength.
     m_h: f64,
-    /// Molality of OH⁻ (contributes to I only; not to NaCl/CaCl₂ IAP / `m_cl`).
+    /// Molality of OH⁻ (contributes to I only; not to chloride IAP / `m_cl`).
     m_oh: f64,
+    m_so4: f64,
 }
 
 impl Mixture {
-    fn from_moles(n_na: f64, n_ca: f64, n_h: f64, n_oh: f64, litres: f64) -> Self {
+    fn from_moles(
+        n_na: f64,
+        n_ca: f64,
+        n_so4: f64,
+        n_hcl: f64,
+        n_h_total: f64,
+        n_oh: f64,
+        litres: f64,
+    ) -> Self {
+        let n_hcl = n_hcl.max(0.0);
+        let n_h = n_h_total.max(n_hcl);
         Self {
             m_na: (n_na / litres).max(0.0),
             m_ca: (n_ca / litres).max(0.0),
+            m_hcl: (n_hcl / litres).max(0.0),
             m_h: (n_h / litres).max(0.0),
             m_oh: (n_oh / litres).max(0.0),
+            m_so4: (n_so4 / litres).max(0.0),
         }
     }
 
     fn m_cl(self) -> f64 {
-        self.m_na + 2.0 * self.m_ca + self.m_h
+        // Chloride molality from Cl-bearing inventory only. Callers partition
+        // sulfate-paired Na out of `m_na` before chloride SI, so do **not**
+        // subtract `2·m_so4` here (that understates Cl when SO₄ Na is excluded).
+        (self.m_na + 2.0 * self.m_ca + self.m_hcl).max(0.0)
     }
 
     fn ionic_strength(self) -> f64 {
-        // I = ½ (m_Na_total + 4 m_Ca + m_H + m_Cl + m_OH) with
-        // m_Na_total = m_na (salt) + m_oh and m_Cl = m_na + 2 m_Ca + m_H
-        // → m_na + 3 m_Ca + m_h + m_oh.
-        self.m_na + 3.0 * self.m_ca + self.m_h + self.m_oh
+        // I = m_na + 3 m_ca + m_h_total + m_oh + m_so4 (see module docs).
+        self.m_na + 3.0 * self.m_ca + self.m_h + self.m_oh + self.m_so4
     }
 }
 
@@ -317,8 +450,10 @@ fn log10_k_nacl(temperature_c: f64) -> f64 {
         Mixture {
             m_na: s,
             m_ca: 0.0,
+            m_hcl: 0.0,
             m_h: 0.0,
             m_oh: 0.0,
+            m_so4: 0.0,
         },
         a_dh,
     )
@@ -332,12 +467,70 @@ fn log10_k_cacl2(temperature_c: f64) -> f64 {
         Mixture {
             m_na: 0.0,
             m_ca: s,
+            m_hcl: 0.0,
             m_h: 0.0,
             m_oh: 0.0,
+            m_so4: 0.0,
         },
         a_dh,
     )
     .expect("pure CaCl2 solubility is positive")
+}
+
+fn log10_iap_na2so4(mix: Mixture, a_dh: f64) -> Option<f64> {
+    if mix.m_na <= 0.0 || mix.m_so4 <= 0.0 {
+        return None;
+    }
+    let i = mix.ionic_strength();
+    // IAP = (γ_Na m_Na)² (γ_SO4 m_SO4)
+    Some(
+        2.0 * log10_gamma(1, i, a_dh)
+            + 2.0 * mix.m_na.log10()
+            + log10_gamma(2, i, a_dh)
+            + mix.m_so4.log10(),
+    )
+}
+
+fn log10_iap_caso4(mix: Mixture, a_dh: f64) -> Option<f64> {
+    if mix.m_ca <= 0.0 || mix.m_so4 <= 0.0 {
+        return None;
+    }
+    let i = mix.ionic_strength();
+    Some(log10_gamma(2, i, a_dh) + mix.m_ca.log10() + log10_gamma(2, i, a_dh) + mix.m_so4.log10())
+}
+
+fn log10_k_na2so4(temperature_c: f64) -> f64 {
+    let s = solubility_mol_per_l(Salt::Na2so4, temperature_c);
+    let a_dh = debye_huckel_a(temperature_c);
+    log10_iap_na2so4(
+        Mixture {
+            m_na: 2.0 * s,
+            m_ca: 0.0,
+            m_hcl: 0.0,
+            m_h: 0.0,
+            m_oh: 0.0,
+            m_so4: s,
+        },
+        a_dh,
+    )
+    .expect("pure Na2SO4 solubility is positive")
+}
+
+fn log10_k_caso4(temperature_c: f64) -> f64 {
+    let s = solubility_mol_per_l(Salt::Caso4, temperature_c);
+    let a_dh = debye_huckel_a(temperature_c);
+    log10_iap_caso4(
+        Mixture {
+            m_na: 0.0,
+            m_ca: s,
+            m_hcl: 0.0,
+            m_h: 0.0,
+            m_oh: 0.0,
+            m_so4: s,
+        },
+        a_dh,
+    )
+    .expect("pure CaSO4 solubility is positive")
 }
 
 fn log10_si_nacl(mix: Mixture, temperature_c: f64) -> f64 {
@@ -354,10 +547,29 @@ fn log10_si_cacl2(mix: Mixture, temperature_c: f64) -> f64 {
     }
 }
 
+#[allow(dead_code)]
+fn log10_si_na2so4(mix: Mixture, temperature_c: f64) -> f64 {
+    match log10_iap_na2so4(mix, debye_huckel_a(temperature_c)) {
+        None => f64::NEG_INFINITY,
+        Some(log_iap) => log_iap - log10_k_na2so4(temperature_c),
+    }
+}
+
+#[allow(dead_code)]
+fn log10_si_caso4(mix: Mixture, temperature_c: f64) -> f64 {
+    match log10_iap_caso4(mix, debye_huckel_a(temperature_c)) {
+        None => f64::NEG_INFINITY,
+        Some(log_iap) => log_iap - log10_k_caso4(temperature_c),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn dissolved_nacl_at_si1(
     n_na_tot: f64,
     n_ca: f64,
-    n_h: f64,
+    n_so4: f64,
+    n_hcl: f64,
+    n_h_total: f64,
     n_oh: f64,
     litres: f64,
     temperature_c: f64,
@@ -365,30 +577,23 @@ fn dissolved_nacl_at_si1(
     let a_dh = debye_huckel_a(temperature_c);
     let log_k = log10_k_nacl(temperature_c);
     let log_si = |n_na: f64| {
-        log10_iap_nacl(Mixture::from_moles(n_na, n_ca, n_h, n_oh, litres), a_dh)
-            .map(|log_iap| log_iap - log_k)
-            .unwrap_or(f64::NEG_INFINITY)
+        log10_iap_nacl(
+            Mixture::from_moles(n_na, n_ca, n_so4, n_hcl, n_h_total, n_oh, litres),
+            a_dh,
+        )
+        .map(|log_iap| log_iap - log_k)
+        .unwrap_or(f64::NEG_INFINITY)
     };
-    if log_si(n_na_tot) <= LOG10_SI_TOL {
-        return n_na_tot;
-    }
-    let mut lo = 0.0;
-    let mut hi = n_na_tot;
-    for _ in 0..MIXED_BISECT_ITERS {
-        let mid = 0.5 * (lo + hi);
-        if log_si(mid) > 0.0 {
-            hi = mid;
-        } else {
-            lo = mid;
-        }
-    }
-    0.5 * (lo + hi)
+    bisect_dissolved(n_na_tot, log_si)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn dissolved_cacl2_at_si1(
     n_ca_tot: f64,
     n_na: f64,
-    n_h: f64,
+    n_so4: f64,
+    n_hcl: f64,
+    n_h_total: f64,
     n_oh: f64,
     litres: f64,
     temperature_c: f64,
@@ -396,15 +601,82 @@ fn dissolved_cacl2_at_si1(
     let a_dh = debye_huckel_a(temperature_c);
     let log_k = log10_k_cacl2(temperature_c);
     let log_si = |n_ca: f64| {
-        log10_iap_cacl2(Mixture::from_moles(n_na, n_ca, n_h, n_oh, litres), a_dh)
-            .map(|log_iap| log_iap - log_k)
-            .unwrap_or(f64::NEG_INFINITY)
+        log10_iap_cacl2(
+            Mixture::from_moles(n_na, n_ca, n_so4, n_hcl, n_h_total, n_oh, litres),
+            a_dh,
+        )
+        .map(|log_iap| log_iap - log_k)
+        .unwrap_or(f64::NEG_INFINITY)
     };
-    if log_si(n_ca_tot) <= LOG10_SI_TOL {
-        return n_ca_tot;
+    bisect_dissolved(n_ca_tot, log_si)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn dissolved_na2so4_at_si1(
+    n_so4_tot: f64,
+    n_na_budget: f64,
+    n_ca: f64,
+    n_hcl: f64,
+    n_h_total: f64,
+    n_oh: f64,
+    litres: f64,
+    temperature_c: f64,
+) -> f64 {
+    // n_so4_tot is the SO₄ pool available for Na₂SO₄; each unit needs 2 Na⁺.
+    // IAP uses the full Na budget (incl. coexisting NaCl Na) for common-ion.
+    let max_units = n_so4_tot.min(n_na_budget * 0.5).max(0.0);
+    let a_dh = debye_huckel_a(temperature_c);
+    let log_k = log10_k_na2so4(temperature_c);
+    let log_si = |n_so4: f64| {
+        log10_iap_na2so4(
+            Mixture::from_moles(n_na_budget, n_ca, n_so4, n_hcl, n_h_total, n_oh, litres),
+            a_dh,
+        )
+        .map(|log_iap| log_iap - log_k)
+        .unwrap_or(f64::NEG_INFINITY)
+    };
+    bisect_dissolved(max_units, log_si)
+}
+
+/// Max aqueous CaSO₄ formula-unit pairs at SI ≈ 1 (common-ion aware).
+#[allow(clippy::too_many_arguments)]
+fn dissolved_caso4_pair_at_si1(
+    n_ca_tot: f64,
+    n_so4_tot: f64,
+    n_na: f64,
+    n_hcl: f64,
+    n_h_total: f64,
+    n_oh: f64,
+    litres: f64,
+    temperature_c: f64,
+) -> f64 {
+    let max_pair = n_ca_tot.min(n_so4_tot).max(0.0);
+    let excess_ca = (n_ca_tot - n_so4_tot).max(0.0);
+    let excess_so4 = (n_so4_tot - n_ca_tot).max(0.0);
+    let a_dh = debye_huckel_a(temperature_c);
+    let log_k = log10_k_caso4(temperature_c);
+    let log_si_aq = |aq_pair: f64| {
+        let n_ca = aq_pair + excess_ca;
+        let n_so4 = aq_pair + excess_so4;
+        log10_iap_caso4(
+            Mixture::from_moles(n_na, n_ca, n_so4, n_hcl, n_h_total, n_oh, litres),
+            a_dh,
+        )
+        .map(|log_iap| log_iap - log_k)
+        .unwrap_or(f64::NEG_INFINITY)
+    };
+    bisect_dissolved(max_pair, log_si_aq)
+}
+
+fn bisect_dissolved(n_tot: f64, log_si: impl Fn(f64) -> f64) -> f64 {
+    if n_tot <= AMOUNT_EPS {
+        return 0.0;
+    }
+    if log_si(n_tot) <= LOG10_SI_TOL {
+        return n_tot;
     }
     let mut lo = 0.0;
-    let mut hi = n_ca_tot;
+    let mut hi = n_tot;
     for _ in 0..MIXED_BISECT_ITERS {
         let mid = 0.5 * (lo + hi);
         if log_si(mid) > 0.0 {
@@ -416,20 +688,79 @@ fn dissolved_cacl2_at_si1(
     0.5 * (lo + hi)
 }
 
-fn mixed_equilibrium(
-    total_nacl: f64,
-    total_cacl2: f64,
-    n_h: f64,
+/// Returns `(aq_na_salt, aq_ca, aq_so4, solid_nacl, solid_cacl2, solid_na2so4, solid_caso4)`.
+#[allow(clippy::too_many_arguments)]
+fn mixed_sulfate_chloride_equilibrium(
+    total_na_salt: f64,
+    total_ca: f64,
+    total_so4: f64,
+    total_cl: f64,
+    n_hcl: f64,
+    n_h_total: f64,
     n_oh: f64,
     litres: f64,
     temperature_c: f64,
-) -> (f64, f64, f64, f64) {
-    let mut n_na = total_nacl.max(0.0);
-    let mut n_ca = total_cacl2.max(0.0);
-    let n_h = n_h.max(0.0);
+) -> (f64, f64, f64, f64, f64, f64, f64) {
+    let total_na_salt = total_na_salt.max(0.0);
+    let total_ca = total_ca.max(0.0);
+    let total_so4 = total_so4.max(0.0);
+    let total_cl = total_cl.max(0.0);
+    let n_hcl = n_hcl.min(total_cl).max(0.0);
+    let n_h_total = n_h_total.max(n_hcl);
     let n_oh = n_oh.max(0.0);
+
+    // 1) Gypsum: precipitate excess Ca×SO₄ beyond SI ≈ 1.
+    let aq_caso4_pair = dissolved_caso4_pair_at_si1(
+        total_ca,
+        total_so4,
+        0.0,
+        n_hcl,
+        n_h_total,
+        n_oh,
+        litres,
+        temperature_c,
+    );
+    let max_pair = total_ca.min(total_so4);
+    let solid_caso4 = (max_pair - aq_caso4_pair).max(0.0);
+    let excess_ca = (total_ca - total_so4).max(0.0);
+    let excess_so4 = (total_so4 - total_ca).max(0.0);
+    let mut aq_ca = aq_caso4_pair + excess_ca;
+    let mut aq_so4 = aq_caso4_pair + excess_so4;
+    // Numerical clamp to totals.
+    aq_ca = aq_ca.min(total_ca - solid_caso4).max(0.0);
+    aq_so4 = aq_so4.min(total_so4 - solid_caso4).max(0.0);
+
+    // 2) Na₂SO₄ SI on remaining SO₄ and Na budget.
+    let aq_na2so4_cap = dissolved_na2so4_at_si1(
+        aq_so4,
+        total_na_salt,
+        aq_ca,
+        n_hcl,
+        n_h_total,
+        n_oh,
+        litres,
+        temperature_c,
+    );
+    let max_na2so4 = aq_so4.min(total_na_salt * 0.5);
+    let solid_na2so4 = (max_na2so4 - aq_na2so4_cap).max(0.0);
+    aq_so4 = (aq_so4 - solid_na2so4).max(0.0);
+    let na_after_solid = (total_na_salt - 2.0 * solid_na2so4).max(0.0);
+    let aq_na2so4_units = aq_so4.min(na_after_solid * 0.5).min(aq_na2so4_cap);
+    let n_na_for_chloride = (na_after_solid - 2.0 * aq_na2so4_units).max(0.0);
+    let n_ca_for_chloride = aq_ca;
+
+    // 3) Chloride SI — Cl reserved for HCl inventory first.
+    // `m_na` here is chloride-budget Na only; SO₄ still contributes to I via m_so4,
+    // while `m_cl` no longer subtracts 2·m_so4 (Na already partitioned).
+    let cl_for_salts = (total_cl - n_hcl).max(0.0);
+    let total_nacl = n_na_for_chloride.min(cl_for_salts);
+    let cl_after_nacl_cap = (cl_for_salts - total_nacl).max(0.0);
+    let total_cacl2 = n_ca_for_chloride.min(cl_after_nacl_cap * 0.5);
+
+    let mut n_na = total_nacl;
+    let mut n_ca = total_cacl2;
     for _ in 0..MIXED_OUTER_ITERS {
-        let mix = Mixture::from_moles(n_na, n_ca, n_h, n_oh, litres);
+        let mix = Mixture::from_moles(n_na, n_ca, aq_so4, n_hcl, n_h_total, n_oh, litres);
         let log_si_n = log10_si_nacl(mix, temperature_c);
         let log_si_c = log10_si_cacl2(mix, temperature_c);
         let over_n = log_si_n > LOG10_SI_TOL;
@@ -441,23 +772,68 @@ fn mixed_equilibrium(
         }
         if over_n && over_c {
             if log_si_n >= log_si_c {
-                n_na = dissolved_nacl_at_si1(total_nacl, n_ca, n_h, n_oh, litres, temperature_c);
+                n_na = dissolved_nacl_at_si1(
+                    total_nacl,
+                    n_ca,
+                    aq_so4,
+                    n_hcl,
+                    n_h_total,
+                    n_oh,
+                    litres,
+                    temperature_c,
+                );
             } else {
-                n_ca = dissolved_cacl2_at_si1(total_cacl2, n_na, n_h, n_oh, litres, temperature_c);
+                n_ca = dissolved_cacl2_at_si1(
+                    total_cacl2,
+                    n_na,
+                    aq_so4,
+                    n_hcl,
+                    n_h_total,
+                    n_oh,
+                    litres,
+                    temperature_c,
+                );
             }
         } else if over_n || under_n {
-            n_na = dissolved_nacl_at_si1(total_nacl, n_ca, n_h, n_oh, litres, temperature_c);
+            n_na = dissolved_nacl_at_si1(
+                total_nacl,
+                n_ca,
+                aq_so4,
+                n_hcl,
+                n_h_total,
+                n_oh,
+                litres,
+                temperature_c,
+            );
         } else {
-            n_ca = dissolved_cacl2_at_si1(total_cacl2, n_na, n_h, n_oh, litres, temperature_c);
+            n_ca = dissolved_cacl2_at_si1(
+                total_cacl2,
+                n_na,
+                aq_so4,
+                n_hcl,
+                n_h_total,
+                n_oh,
+                litres,
+                temperature_c,
+            );
         }
     }
     n_na = n_na.clamp(0.0, total_nacl);
     n_ca = n_ca.clamp(0.0, total_cacl2);
+    let solid_nacl = (total_nacl - n_na).max(0.0);
+    let solid_cacl2 = (total_cacl2 - n_ca).max(0.0);
+
+    let aq_ca_out = (n_ca + (n_ca_for_chloride - total_cacl2).max(0.0)).min(aq_ca);
+    let aq_na_salt = n_na + 2.0 * aq_na2so4_units;
+
     (
-        n_na,
-        (total_nacl - n_na).max(0.0),
-        n_ca,
-        (total_cacl2 - n_ca).max(0.0),
+        aq_na_salt,
+        aq_ca_out,
+        aq_so4,
+        solid_nacl,
+        solid_cacl2,
+        solid_na2so4,
+        solid_caso4,
     )
 }
 

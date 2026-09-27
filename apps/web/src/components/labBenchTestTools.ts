@@ -130,6 +130,7 @@ export function liquidCapacityMl(itemId: string): number {
   if (itemId === 'dish-1') return DISH_CAPACITY_ML
   if (itemId === 'beaker-h2o') return DISTILLED_WATER_CAPACITY_ML
   if (itemId === 'beaker-hcl') return HCL_STOCK_CAPACITY_ML
+  if (itemId === 'beaker-h2so4') return 10
   if (itemId === 'beaker-filtrate') return FILTRATE_CAPACITY_ML
   return 250
 }
@@ -357,9 +358,10 @@ export function withBurnerToggle(scene: LabScene): LabScene {
   const next = cloneScene(scene)
   const burner = next.items.find((item) => item.id === 'burner-1')!
   const dish = next.items.find((item) => item.id === 'dish-1')!
-  const hasLiquid = solutionMlOf(dish) > 0
+  // Mirror server: toggle-on / heat require liquid water; liquid H₂SO₄ alone is not enough.
+  const hasWater = (liquidWaterEntry(dish)?.amount_ml ?? 0) > 0
   const currentlyOn = burner.properties.on === true
-  const nextOn = currentlyOn ? false : hasLiquid
+  const nextOn = currentlyOn ? false : hasWater
   burner.properties.on = nextOn
   if (nextOn !== currentlyOn) {
     next.last_events = [{ kind: 'toggled', message: nextOn ? 'Burner on.' : 'Burner off.' }]

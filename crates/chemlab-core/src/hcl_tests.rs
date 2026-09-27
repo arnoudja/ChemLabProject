@@ -1,4 +1,5 @@
 use super::*;
+use super::{hcl_inventory_moles_entries, PHI_V_CASO4_ML_PER_MOL, PHI_V_H2SO4_ML_PER_MOL};
 
 fn aq(substance_id: &str, amount_mol: f64) -> CompositionEntry {
     CompositionEntry {
@@ -150,6 +151,48 @@ fn hcl_boil_temperature_peaks_at_azeotrope() {
         "dilute ~5% should boil ~100–102 °C, got {t_dilute}"
     );
     assert!(t_az > t_stock && t_az > t_dilute && t_az > t0);
+}
+
+#[test]
+fn sulfuric_protons_do_not_count_as_hcl_inventory() {
+    let n = 0.1;
+    let sulfuric = vec![water(50.0), aq("h+", 2.0 * n), aq("so4^2-", n)];
+    assert!(hcl_inventory_moles_entries(&sulfuric) < 1e-15);
+    let inv = HclInventory::from_entries(&sulfuric);
+    assert!(inv.n_h < 1e-15);
+    assert!(inv.relative_enthalpy_j().abs() < 1e-12);
+    // Φ_V uses H₂SO₄ pairing, not HCl.
+    let v = solution_volume_ml_of_entries(&sulfuric);
+    let expected = 50.0 + n * PHI_V_H2SO4_ML_PER_MOL;
+    assert!((v - expected).abs() < 1e-9);
+}
+
+#[test]
+fn mixed_hcl_and_h2so4_phi_v_splits_inventories() {
+    let n_hcl = 0.05;
+    let n_h2so4 = 0.02;
+    let entries = vec![
+        water(40.0),
+        aq("h+", n_hcl + 2.0 * n_h2so4),
+        aq("cl-", n_hcl),
+        aq("so4^2-", n_h2so4),
+    ];
+    assert!((hcl_inventory_moles_entries(&entries) - n_hcl).abs() < 1e-12);
+    let expected = 40.0 + n_hcl * PHI_V_HCL_ML_PER_MOL + n_h2so4 * PHI_V_H2SO4_ML_PER_MOL;
+    assert!((solution_volume_ml_of_entries(&entries) - expected).abs() < 1e-9);
+}
+
+#[test]
+fn dissolved_gypsum_uses_phi_v_caso4_not_cacl2() {
+    let n = 0.01;
+    let entries = vec![water(50.0), aq("ca2+", n), aq("so4^2-", n)];
+    let expected = 50.0 + n * PHI_V_CASO4_ML_PER_MOL;
+    assert!((solution_volume_ml_of_entries(&entries) - expected).abs() < 1e-9);
+    // Must not attribute CaCl₂ Φ_V without Cl⁻.
+    assert!(
+        (solution_volume_ml_of_entries(&entries) - (50.0 + n * PHI_V_CACL2_ML_PER_MOL)).abs()
+            > 1e-6
+    );
 }
 
 #[test]

@@ -17,6 +17,15 @@ pub(crate) const NAOH_MOLAR_MASS_G_PER_MOL: f64 = 40.00;
 /// Molar mass of anhydrous CaCl₂ (g/mol).
 pub(crate) const CACL2_MOLAR_MASS_G_PER_MOL: f64 = 110.98;
 
+/// Molar mass of anhydrous Na₂SO₄ (g/mol).
+pub(crate) const NA2SO4_MOLAR_MASS_G_PER_MOL: f64 = 142.04;
+
+/// Molar mass of anhydrous CaSO₄ (g/mol).
+pub(crate) const CASO4_MOLAR_MASS_G_PER_MOL: f64 = 136.14;
+
+/// Specific heat of liquid H₂SO₄ (order-of-magnitude), J/(g·K).
+pub const CP_H2SO4_LIQUID: f64 = 1.4;
+
 /// Pipette aliquot volume (ml).
 pub const PIPETTE_VOLUME_ML: f64 = 1.00;
 
@@ -219,7 +228,7 @@ pub enum Action {
     /// Replace the scene with a fresh start scene for the scene's current mode
     /// (same `lab_id` / `version`).
     Reset,
-    /// Idle click on the burner. Stays off when the dish has no liquid.
+    /// Idle click on the burner. Stays off when the dish has no liquid water.
     ToggleBurner { burner_item_id: String },
     /// Switch to Free mode or a challenge; always a hard reset into that mode's start scene.
     SelectMode { mode: String },
@@ -344,6 +353,25 @@ fn hcl_stock_beaker() -> SceneItem {
     }
 }
 
+fn h2so4_stock_beaker() -> SceneItem {
+    SceneItem {
+        id: "beaker-h2so4".into(),
+        kind: "beaker".into(),
+        label: "Sulfuric acid".into(),
+        location: "bench".into(),
+        properties: ItemProperties {
+            volume_ml: Some(crate::h2so4::H2SO4_STOCK_CAPACITY_ML),
+            fill_ml: Some(crate::h2so4::H2SO4_STOCK_CAPACITY_ML),
+            transparent: Some(true),
+            colourless: Some(true),
+            temperature_c: Some(20.0),
+            composition: crate::h2so4::stock_h2so4_composition(),
+            holding: Vec::new(),
+            ..ItemProperties::default()
+        },
+    }
+}
+
 fn empty_bench_beaker(
     id: impl Into<String>,
     label: impl Into<String>,
@@ -402,6 +430,7 @@ pub fn initial_bench_scene(lab_id: impl Into<String>) -> Scene {
             },
             distilled_water_stock_beaker(),
             hcl_stock_beaker(),
+            h2so4_stock_beaker(),
             solid_stock_beaker("beaker-nacl", "Sodium chloride", "nacl"),
             solid_stock_beaker("beaker-naoh", "Sodium hydroxide", "naoh"),
             solid_stock_beaker("beaker-cacl2", "Calcium chloride", "cacl2"),
@@ -743,7 +772,7 @@ fn apply_spoon_use_while_holding(
     target_idx: usize,
 ) -> Result<(), SceneError> {
     let target = &scene.items[target_idx];
-    if is_distilled_water_stock(target) || is_hcl_stock(target) {
+    if is_distilled_water_stock(target) || is_hcl_stock(target) || is_h2so4_stock(target) {
         return Err(SceneError::InvalidAction);
     }
 
@@ -1013,6 +1042,7 @@ fn apply_pour(
 
     if is_distilled_water_stock(&scene.items[target_idx])
         || is_hcl_stock(&scene.items[target_idx])
+        || is_h2so4_stock(&scene.items[target_idx])
         || scene.items[target_idx].kind == "filter_paper"
     {
         return Err(SceneError::InvalidAction);
@@ -1211,16 +1241,22 @@ fn apply_neutralization(item: &mut SceneItem) {
     }
 }
 
-/// Dissolve any solid NaOH into aqueous `na+`/`oh-` when liquid water is present,
-/// neutralize acid/base, then run mixed-salt saturation.
+/// Ionize liquid H₂SO₄, dissolve solid NaOH, neutralize acid/base, SI, then reform.
 ///
-/// NaOH is highly soluble and is not in the NaCl/CaCl₂ SI table, so tongs dumps /
+/// NaOH is highly soluble and is not chloride-SI capped, so tongs dumps /
 /// water-onto-solid paths must author ions here (spoon pour already dissolves via
-/// the qualitative table before this runs).
+/// the qualitative table before this runs). Liquid H₂SO₄ ionizes to
+/// `2 H⁺ + SO₄²⁻` (full-dissociation school approx) when the water:acid ratio is
+/// above the ~98% w/w reform threshold; after SI, free sulfuric below that
+/// threshold reforms to liquid `h2so4`. SI syncs `fill_ml` before reform, so
+/// reform re-syncs so dish/beaker UI height matches post-reform Φ_V.
 fn finalize_aqueous_vessel(item: &mut SceneItem) {
+    crate::h2so4::ionize_liquid_h2so4_in_water(item);
     dissolve_solid_naoh_in_water(item);
     apply_neutralization(item);
     crate::solubility::enforce_saturation(item);
+    crate::h2so4::reform_aqueous_h2so4_to_liquid(item);
+    crate::solubility::sync_fill_ml(item);
 }
 
 /// Convert all solid `naoh` in a vessel to aqueous ions when liquid water is present.
@@ -1352,6 +1388,10 @@ fn is_hcl_stock(item: &SceneItem) -> bool {
     item.id == "beaker-hcl"
 }
 
+fn is_h2so4_stock(item: &SceneItem) -> bool {
+    item.id == "beaker-h2so4"
+}
+
 fn is_filtrate_beaker(item: &SceneItem) -> bool {
     item.id == "beaker-filtrate"
 }
@@ -1383,6 +1423,7 @@ fn is_liquid_vessel(item: &SceneItem) -> bool {
     item.id == "beaker-water"
         || is_distilled_water_stock(item)
         || is_hcl_stock(item)
+        || is_h2so4_stock(item)
         || is_filtrate_beaker(item)
         || item.kind == "evaporation_dish"
 }
@@ -1401,9 +1442,10 @@ fn apply_toggle_burner(scene: &mut Scene, burner_item_id: &str) -> Result<(), Sc
         .iter()
         .position(|item| item.kind == "evaporation_dish")
         .ok_or(SceneError::InvalidAction)?;
-    let has_liquid = crate::solubility::dish_has_liquid(&scene.items[dish_idx]);
+    // Toggle-on requires liquid water; liquid H₂SO₄ alone is not enough heat fuel.
+    let has_water = crate::solubility::dish_has_liquid_water(&scene.items[dish_idx]);
     let currently_on = scene.items[burner_idx].properties.on.unwrap_or(false);
-    let next_on = if currently_on { false } else { has_liquid };
+    let next_on = if currently_on { false } else { has_water };
     scene.items[burner_idx].properties.on = Some(next_on);
     if next_on != currently_on {
         scene.last_events.push(SceneEvent {
@@ -1523,6 +1565,19 @@ fn apply_pipette_empty(
             return Err(SceneError::InvalidAction);
         }
     }
+    if is_h2so4_stock(&scene.items[target_idx]) {
+        if !crate::h2so4::composition_is_stock_h2so4(&scene.items[tool_idx].properties.holding) {
+            return Err(SceneError::InvalidAction);
+        }
+        let current = crate::hcl::transfer_volume_ml(&scene.items[target_idx]);
+        let cap = scene.items[target_idx]
+            .properties
+            .volume_ml
+            .unwrap_or(crate::h2so4::H2SO4_STOCK_CAPACITY_ML);
+        if current + PIPETTE_VOLUME_ML > cap + AMOUNT_EPS {
+            return Err(SceneError::InvalidAction);
+        }
+    }
     if is_filtrate_beaker(&scene.items[target_idx]) {
         if scene.items[target_idx].location != "bench" {
             return Err(SceneError::InvalidAction);
@@ -1577,7 +1632,10 @@ fn is_solid_stock_beaker(item: &SceneItem) -> bool {
 /// Any ingredient stock on the Free bench, so a challenge layout that does not list
 /// a stock drops it — including stocks added to the bench later.
 fn is_ingredient_stock(item: &SceneItem) -> bool {
-    is_distilled_water_stock(item) || is_hcl_stock(item) || is_solid_stock_beaker(item)
+    is_distilled_water_stock(item)
+        || is_hcl_stock(item)
+        || is_h2so4_stock(item)
+        || is_solid_stock_beaker(item)
 }
 
 fn is_filter_paper(item: &SceneItem) -> bool {
@@ -1588,6 +1646,7 @@ fn is_tongs_vessel(item: &SceneItem) -> bool {
     item.id == "beaker-water"
         || is_distilled_water_stock(item)
         || is_hcl_stock(item)
+        || is_h2so4_stock(item)
         || is_filtrate_beaker(item)
         || item.kind == "evaporation_dish"
 }
@@ -1820,8 +1879,11 @@ fn wash_paper_solids_into_fluid(
         let n_na = (crate::composition::aqueous_mol_entries(fluid, "na+") - n_oh).max(0.0);
         let n_ca = crate::composition::aqueous_mol_entries(fluid, "ca2+");
         let n_h = crate::composition::aqueous_mol_entries(fluid, "h+");
-        let cap =
-            crate::solubility::unsaturated_capacity_g(salt, v_fluid, n_na, n_ca, n_h, n_oh, t_wash);
+        let n_cl = crate::composition::aqueous_mol_entries(fluid, "cl-");
+        let n_so4 = crate::composition::aqueous_mol_entries(fluid, "so4^2-");
+        let cap = crate::solubility::unsaturated_capacity_g(
+            salt, v_fluid, n_na, n_ca, n_h, n_cl, n_oh, n_so4, t_wash,
+        );
         let m_diss = avail.min(cap) * frac;
         if m_diss <= AMOUNT_EPS {
             continue;
@@ -1955,6 +2017,16 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
             return Err(SceneError::InvalidAction);
         }
         if !crate::hcl::composition_is_stock_hcl(&scene.items[source_idx].properties.composition) {
+            return Err(SceneError::InvalidAction);
+        }
+    }
+    if is_h2so4_stock(&scene.items[dest_idx]) {
+        if dest_room <= AMOUNT_EPS {
+            return Err(SceneError::InvalidAction);
+        }
+        if !crate::h2so4::composition_is_stock_h2so4(
+            &scene.items[source_idx].properties.composition,
+        ) {
             return Err(SceneError::InvalidAction);
         }
     }
@@ -2100,6 +2172,8 @@ fn merge_composition_into(
     for entry in entries {
         if entry.substance_id == "water" && entry.phase == "liquid" {
             add_or_increase_water(target, entry.amount_ml.unwrap_or(0.0));
+        } else if entry.substance_id == "h2so4" && entry.phase == "liquid" {
+            add_or_increase_liquid_h2so4(target, entry);
         } else if entry.phase == "aqueous" {
             add_or_increase_mol(
                 target,
@@ -2118,13 +2192,47 @@ fn merge_composition_into(
     }
 }
 
+fn add_or_increase_liquid_h2so4(item: &mut SceneItem, entry: &CompositionEntry) {
+    let add_ml = entry.amount_ml.unwrap_or(0.0).max(0.0);
+    let add_mol = entry
+        .amount_mol
+        .unwrap_or_else(|| crate::h2so4::liquid_h2so4_mol_entries(std::slice::from_ref(entry)));
+    let add_g = entry
+        .amount_g
+        .unwrap_or(add_mol * crate::h2so4::H2SO4_MOLAR_MASS_G_PER_MOL);
+    if add_ml <= AMOUNT_EPS && add_mol <= AMOUNT_EPS && add_g <= AMOUNT_EPS {
+        return;
+    }
+    if let Some(existing) = item
+        .properties
+        .composition
+        .iter_mut()
+        .find(|c| c.substance_id == "h2so4" && c.phase == "liquid")
+    {
+        existing.amount_ml = Some(existing.amount_ml.unwrap_or(0.0) + add_ml);
+        existing.amount_mol = Some(existing.amount_mol.unwrap_or(0.0) + add_mol);
+        existing.amount_g = Some(existing.amount_g.unwrap_or(0.0) + add_g);
+        return;
+    }
+    item.properties.composition.push(CompositionEntry {
+        substance_id: "h2so4".into(),
+        phase: "liquid".into(),
+        amount_ml: Some(add_ml).filter(|&v| v > AMOUNT_EPS),
+        amount_scoop: None,
+        amount_g: Some(add_g).filter(|&v| v > AMOUNT_EPS),
+        amount_mol: Some(add_mol).filter(|&v| v > AMOUNT_EPS),
+    });
+}
+
 fn mix_transfer_into(
     target: &mut SceneItem,
     transferred: &[CompositionEntry],
     source_t: Option<f64>,
 ) {
-    let dest_before = crate::hcl::HclInventory::from_item(target);
-    let added = crate::hcl::HclInventory::from_entries(transferred);
+    let dest_hcl_before = crate::hcl::HclInventory::from_item(target);
+    let added_hcl = crate::hcl::HclInventory::from_entries(transferred);
+    let dest_h2so4_before = crate::h2so4::H2so4Inventory::from_item(target);
+    let added_h2so4 = crate::h2so4::H2so4Inventory::from_entries(transferred);
     if let Some(source_t) = source_t {
         let c_add = heat_capacity_of_entries(transferred);
         if c_add > AMOUNT_EPS {
@@ -2132,13 +2240,17 @@ fn mix_transfer_into(
         }
     }
     merge_composition_into(target, transferred, true);
+    crate::h2so4::ionize_liquid_h2so4_in_water(target);
     crate::solubility::sync_fill_ml(target);
-    apply_hcl_dilution_temperature(target, dest_before, added);
+    apply_hcl_dilution_temperature(target, dest_hcl_before, added_hcl);
+    apply_h2so4_dilution_temperature(target, dest_h2so4_before, added_h2so4);
 }
 
 fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquot_t: f64) {
-    let dest_before = crate::hcl::HclInventory::from_item(target);
-    let added = crate::hcl::HclInventory::from_entries(aliquot);
+    let dest_hcl_before = crate::hcl::HclInventory::from_item(target);
+    let added_hcl = crate::hcl::HclInventory::from_entries(aliquot);
+    let dest_h2so4_before = crate::h2so4::H2so4Inventory::from_item(target);
+    let added_h2so4 = crate::h2so4::H2so4Inventory::from_entries(aliquot);
     let c_add = heat_capacity_of_entries(aliquot);
     // Pipette always blends with aliquot T (even when dest is empty / add_ml is tiny).
     if c_add > AMOUNT_EPS {
@@ -2147,8 +2259,10 @@ fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquo
         target.properties.temperature_c = Some(aliquot_t);
     }
     merge_composition_into(target, aliquot, false);
+    crate::h2so4::ionize_liquid_h2so4_in_water(target);
     crate::solubility::sync_fill_ml(target);
-    apply_hcl_dilution_temperature(target, dest_before, added);
+    apply_hcl_dilution_temperature(target, dest_hcl_before, added_hcl);
+    apply_h2so4_dilution_temperature(target, dest_h2so4_before, added_h2so4);
 }
 
 fn apply_hcl_dilution_temperature(
@@ -2156,12 +2270,30 @@ fn apply_hcl_dilution_temperature(
     dest_before: crate::hcl::HclInventory,
     added: crate::hcl::HclInventory,
 ) {
+    // Gated on HCl inventory (`min(h+, cl-)`), not bare protons.
     if dest_before.n_h <= AMOUNT_EPS && added.n_h <= AMOUNT_EPS {
         return;
     }
     let after = crate::hcl::HclInventory::from_item(target);
     let q = crate::hcl::hcl_dilution_heat_j(dest_before, added, after);
-    if q.abs() <= AMOUNT_EPS {
+    apply_chemical_heat(target, q);
+}
+
+fn apply_h2so4_dilution_temperature(
+    target: &mut SceneItem,
+    dest_before: crate::h2so4::H2so4Inventory,
+    added: crate::h2so4::H2so4Inventory,
+) {
+    if dest_before.n_h2so4 <= AMOUNT_EPS && added.n_h2so4 <= AMOUNT_EPS {
+        return;
+    }
+    let after = crate::h2so4::H2so4Inventory::from_item(target);
+    let q = crate::h2so4::h2so4_dilution_heat_j(dest_before, added, after);
+    apply_chemical_heat(target, q);
+}
+
+fn apply_chemical_heat(target: &mut SceneItem, q_j: f64) {
+    if q_j.abs() <= AMOUNT_EPS {
         return;
     }
     let c_eff = effective_heat_capacity(target);
@@ -2172,7 +2304,7 @@ fn apply_hcl_dilution_temperature(
         .properties
         .temperature_c
         .unwrap_or(AMBIENT_TEMPERATURE_C);
-    target.properties.temperature_c = Some(t - q / c_eff);
+    target.properties.temperature_c = Some(t - q_j / c_eff);
 }
 
 fn add_or_increase_water(item: &mut SceneItem, ml: f64) {
@@ -2231,6 +2363,36 @@ fn take_liquid_aliquot(
             if rest > AMOUNT_EPS {
                 remaining.push(CompositionEntry {
                     amount_ml: Some(rest),
+                    ..entry
+                });
+            }
+            continue;
+        }
+        if entry.substance_id == "h2so4" && entry.phase == "liquid" {
+            let ml = entry.amount_ml.unwrap_or(0.0).max(0.0);
+            let mol = entry.amount_mol.unwrap_or(0.0).max(0.0);
+            let g = entry.amount_g.unwrap_or(0.0).max(0.0);
+            let taken_ml = ml * frac;
+            let taken_mol = mol * frac;
+            let taken_g = g * frac;
+            if taken_ml > AMOUNT_EPS || taken_mol > AMOUNT_EPS || taken_g > AMOUNT_EPS {
+                aliquot.push(CompositionEntry {
+                    substance_id: "h2so4".into(),
+                    phase: "liquid".into(),
+                    amount_ml: Some(taken_ml).filter(|&v| v > AMOUNT_EPS),
+                    amount_scoop: None,
+                    amount_g: Some(taken_g).filter(|&v| v > AMOUNT_EPS),
+                    amount_mol: Some(taken_mol).filter(|&v| v > AMOUNT_EPS),
+                });
+            }
+            let rest_ml = ml - taken_ml;
+            let rest_mol = mol - taken_mol;
+            let rest_g = g - taken_g;
+            if rest_ml > AMOUNT_EPS || rest_mol > AMOUNT_EPS || rest_g > AMOUNT_EPS {
+                remaining.push(CompositionEntry {
+                    amount_ml: Some(rest_ml).filter(|&v| v > AMOUNT_EPS),
+                    amount_g: Some(rest_g).filter(|&v| v > AMOUNT_EPS),
+                    amount_mol: Some(rest_mol).filter(|&v| v > AMOUNT_EPS),
                     ..entry
                 });
             }

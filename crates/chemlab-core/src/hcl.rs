@@ -100,10 +100,23 @@ pub fn hcl_aq_density_g_per_ml(w_hcl: f64) -> f64 {
     TABLE[TABLE.len() - 1].1
 }
 
+/// Aqueous HCl formula-unit moles: `min(n(h+), n(cl-))`.
+///
+/// Bare `h+` is **not** HCl — sulfuric and other acids may author free protons
+/// without chloride. VLE, dilution Φ_L, and Φ_V_HCl all key on this inventory.
+pub fn hcl_inventory_moles_entries(entries: &[CompositionEntry]) -> f64 {
+    let n_h = aqueous_mol_entries(entries, "h+");
+    let n_cl = aqueous_mol_entries(entries, "cl-");
+    n_h.min(n_cl).max(0.0)
+}
+
 /// Inventory of water + aqueous HCl in a composition list.
+///
+/// `n_h` is the **HCl inventory** [`hcl_inventory_moles_entries`], not bare `h+`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HclInventory {
     pub water_ml: f64,
+    /// HCl formula units = `min(n(h+), n(cl-))`.
     pub n_h: f64,
 }
 
@@ -111,7 +124,7 @@ impl HclInventory {
     pub fn from_entries(entries: &[CompositionEntry]) -> Self {
         Self {
             water_ml: liquid_water_ml_entries(entries),
-            n_h: aqueous_mol_entries(entries, "h+"),
+            n_h: hcl_inventory_moles_entries(entries),
         }
     }
 
@@ -209,11 +222,18 @@ pub const PHI_V_NAOH_ML_PER_MOL: f64 = 4.0;
 
 /// Pair aqueous ions into electrolyte formula units for additive Φ_V volume.
 ///
-/// Order matches neutralization / SI inventory: HCl → NaOH → NaCl → CaCl₂.
+/// Order: HCl → H₂SO₄ → NaOH → Na₂SO₄ → CaSO₄ → NaCl → CaCl₂.
+/// HCl is `min(h+, cl-)`; remaining free `h+` pairs with `so4^2-` as H₂SO₄
+/// (fully dissociated school approx: 2 H⁺ per SO₄²⁻). Leftover Ca²⁺ pairs with
+/// remaining SO₄ as CaSO₄(aq) before any CaCl₂ attribution — dissolved gypsum
+/// never borrows Φ_V_CaCl₂ without Cl⁻.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ElectrolyteMoles {
     pub n_hcl: f64,
+    pub n_h2so4: f64,
     pub n_naoh: f64,
+    pub n_na2so4: f64,
+    pub n_caso4: f64,
     pub n_nacl: f64,
     pub n_cacl2: f64,
 }
@@ -224,26 +244,58 @@ impl ElectrolyteMoles {
         let n_oh = aqueous_mol_entries(entries, "oh-");
         let n_na = aqueous_mol_entries(entries, "na+");
         let n_ca = aqueous_mol_entries(entries, "ca2+");
+        let n_cl = aqueous_mol_entries(entries, "cl-");
+        let n_so4 = aqueous_mol_entries(entries, "so4^2-");
+        let n_hcl = n_h.min(n_cl).max(0.0);
+        let n_h_after_hcl = (n_h - n_hcl).max(0.0);
+        let n_h2so4 = (n_h_after_hcl * 0.5).min(n_so4).max(0.0);
+        let n_so4_after_acid = (n_so4 - n_h2so4).max(0.0);
+        let n_naoh = n_oh;
+        let n_na_salt = (n_na - n_oh).max(0.0);
+        let n_na2so4 = (n_na_salt * 0.5).min(n_so4_after_acid).max(0.0);
+        let n_na_after_sulfate = (n_na_salt - 2.0 * n_na2so4).max(0.0);
+        let n_so4_after_na2so4 = (n_so4_after_acid - n_na2so4).max(0.0);
+        let n_caso4 = n_ca.min(n_so4_after_na2so4).max(0.0);
+        let n_ca_after_sulfate = (n_ca - n_caso4).max(0.0);
+        let n_cl_after_hcl = (n_cl - n_hcl).max(0.0);
+        let n_nacl = n_na_after_sulfate.min(n_cl_after_hcl).max(0.0);
+        let n_cl_after_nacl = (n_cl_after_hcl - n_nacl).max(0.0);
+        let n_cacl2 = n_ca_after_sulfate.min(n_cl_after_nacl * 0.5).max(0.0);
         Self {
-            n_hcl: n_h,
-            n_naoh: n_oh,
-            n_nacl: (n_na - n_oh).max(0.0),
-            n_cacl2: n_ca,
+            n_hcl,
+            n_h2so4,
+            n_naoh,
+            n_na2so4,
+            n_caso4,
+            n_nacl,
+            n_cacl2,
         }
     }
 }
 
-/// Solution volume (ml) = liquid water ml + Σ nᵢ · Φ_V,ᵢ for paired electrolytes.
+/// Apparent molar volume of aqueous H₂SO₄ (ml/mol); school mid-range value.
+pub const PHI_V_H2SO4_ML_PER_MOL: f64 = 40.0;
+/// Apparent molar volume of aqueous Na₂SO₄ (ml/mol).
+pub const PHI_V_NA2SO4_ML_PER_MOL: f64 = 20.0;
+/// Apparent molar volume of aqueous CaSO₄ (ml/mol); school mid-range value.
+pub const PHI_V_CASO4_ML_PER_MOL: f64 = 15.0;
+
+/// Solution volume (ml) = liquid water ml + liquid H₂SO₄ ml + Σ nᵢ · Φ_V,ᵢ.
 ///
 /// Φ_V values are T-independent school constants (see module constants). SI / wash
 /// kinetics keep using liquid-water ml; this volume drives `fill_ml`, pipette frac,
 /// tongs capacity, and inspect molarity / pH.
 pub fn solution_volume_ml_of_entries(entries: &[CompositionEntry]) -> f64 {
     let water_ml = liquid_water_ml_entries(entries);
+    let h2so4_l_ml = crate::h2so4::liquid_h2so4_ml_entries(entries);
     let el = ElectrolyteMoles::from_entries(entries);
     water_ml
+        + h2so4_l_ml
         + el.n_hcl * PHI_V_HCL_ML_PER_MOL
+        + el.n_h2so4 * PHI_V_H2SO4_ML_PER_MOL
         + el.n_naoh * PHI_V_NAOH_ML_PER_MOL
+        + el.n_na2so4 * PHI_V_NA2SO4_ML_PER_MOL
+        + el.n_caso4 * PHI_V_CASO4_ML_PER_MOL
         + el.n_nacl * PHI_V_NACL_ML_PER_MOL
         + el.n_cacl2 * PHI_V_CACL2_ML_PER_MOL
 }

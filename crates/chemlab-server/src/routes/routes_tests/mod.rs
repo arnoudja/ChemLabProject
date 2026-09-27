@@ -5,6 +5,7 @@ mod dissolve_http;
 mod dissolve_pour;
 mod distilled_water;
 mod filtration;
+mod h2so4_stock;
 mod hcl_stock;
 mod helpers;
 mod lab_spoon;

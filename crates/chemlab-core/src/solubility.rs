@@ -186,10 +186,12 @@ fn has_aqueous_ions(item: &SceneItem) -> bool {
 /// Additional grams of `salt` that could dissolve into water with the given aqueous
 /// inventory at `temperature_c` before mixed SI = 1 (0 if already saturated).
 ///
-/// HCl common-ion is `min(n_h_aq, n_cl_aq)` — bare sulfuric `h+` never invents Cl⁻.
-/// `n_h_aq` and `n_so4_aq` still contribute to ionic strength. `n_oh_aq` contributes
-/// to I only (not to NaCl/CaCl₂ IAP). Holds the other cation fixed (no precipitation
-/// sidelight during the probe) so filter wash capacity matches common-ion suppression.
+/// HCl common-ion is `min(max(n_h_aq − n_oh_aq, 0), n_cl_aq)` — same free-H⁺ gate as
+/// VLE / Φ_V inventory. Bare sulfuric `h+` / `hso4-` never invents Cl⁻; pass free
+/// `h+` (not collapsed bisulfate) as `n_h_aq`. `n_h_aq` and `n_so4_aq` still
+/// contribute to ionic strength. `n_oh_aq` contributes to I only (not to NaCl/CaCl₂
+/// IAP). Holds the other cation fixed (no precipitation sidelight during the probe)
+/// so filter wash capacity matches common-ion suppression.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn unsaturated_capacity_g(
     salt: Salt,
@@ -207,8 +209,8 @@ pub(crate) fn unsaturated_capacity_g(
         return 0.0;
     }
     let n_h = n_h_aq.max(0.0);
-    let n_hcl = n_h.min(n_cl_aq.max(0.0));
     let n_oh = n_oh_aq.max(0.0);
+    let n_hcl = (n_h - n_oh).max(0.0).min(n_cl_aq.max(0.0));
     let n_so4 = n_so4_aq.max(0.0);
     match salt {
         Salt::Nacl => {
@@ -291,8 +293,8 @@ pub fn enforce_saturation(item: &mut SceneItem) {
         0.0
     };
     let total_na_salt = (n_na_total - n_naoh).max(0.0) + s_nacl + 2.0 * s_na2so4;
-    // HCl common-ion uses excess acid protons (not Kw-paired H⁺↔OH⁻).
-    let n_h_excess = (n_h_free - n_oh).max(0.0) + n_hso4;
+    // HCl common-ion matches VLE inventory: free excess H⁺ only (not hso4-).
+    let n_h_excess = (n_h_free - n_oh).max(0.0);
     let n_hcl = n_h_excess.min(total_cl).max(0.0);
 
     let (aq_na_salt, aq_ca, aq_so4, solid_nacl, solid_cacl2, solid_na2so4, solid_caso4) =
@@ -369,7 +371,7 @@ const MIXED_BISECT_ITERS: usize = 80;
 struct Mixture {
     m_na: f64,
     m_ca: f64,
-    /// Molality of H⁺ counted as HCl common-ion (`min(h+, cl-)` inventory) for `m_cl`.
+    /// Molality of H⁺ counted as HCl common-ion (`min(max(n_h−n_oh,0), n_cl)`) for `m_cl`.
     m_hcl: f64,
     /// Molality of all aqueous H⁺ (HCl + free sulfuric protons) for ionic strength.
     m_h: f64,

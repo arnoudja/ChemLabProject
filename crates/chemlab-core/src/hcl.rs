@@ -102,7 +102,8 @@ pub fn hcl_aq_density_g_per_ml(w_hcl: f64) -> f64 {
 ///
 /// After K_w speciation both `h+` and `oh-` are always present. Inventory is
 /// `min(max(n_h − n_oh, 0), n_cl)` so near-neutral salt water does not invent
-/// HCl. Bare sulfuric protons (no Cl⁻) still yield zero inventory.
+/// HCl. Bare sulfuric protons / `hso4-` (no Cl⁻) still yield zero inventory —
+/// bisulfate is not counted as HCl (SI / VLE / Φ_V share this free-H⁺ gate).
 pub fn hcl_inventory_moles_entries(entries: &[CompositionEntry]) -> f64 {
     let n_h = aqueous_mol_entries(entries, "h+");
     let n_oh = aqueous_mol_entries(entries, "oh-");
@@ -117,7 +118,7 @@ pub fn hcl_inventory_moles_entries(entries: &[CompositionEntry]) -> f64 {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HclInventory {
     pub water_ml: f64,
-    /// HCl formula units = `min(n(h+), n(cl-))`.
+    /// HCl formula units = `min(max(n(h+) − n(oh-), 0), n(cl-))`.
     pub n_h: f64,
 }
 
@@ -223,11 +224,12 @@ pub const PHI_V_NAOH_ML_PER_MOL: f64 = 4.0;
 
 /// Pair aqueous ions into electrolyte formula units for additive Φ_V volume.
 ///
-/// Order: HCl → H₂SO₄ → NaOH → Na₂SO₄ → CaSO₄ → NaCl → CaCl₂.
-/// HCl is `min(h+, cl-)`; free sulfuric is `hso4-` plus free `h+` paired with
-/// `so4^2-` (post-Kₐ₂). Leftover Ca²⁺ pairs with remaining SO₄ as CaSO₄(aq)
-/// before any CaCl₂ attribution — dissolved gypsum never borrows Φ_V_CaCl₂
-/// without Cl⁻.
+/// Order: HCl → NaOH → NaHSO₄ → H₂SO₄ → Na₂SO₄ → CaSO₄ → NaCl → CaCl₂.
+/// HCl inventory is `min(max(n_h − n_oh, 0), n_cl)`. Na⁺ needed for leftover Cl⁻
+/// is reserved before bisulfate salt pairing so NaCl is not stolen by HSO₄⁻.
+/// Free sulfuric is leftover acid `hso4-` plus free `h+` paired with `so4^2-`
+/// (post-Kₐ₂) — salt bisulfate is NaHSO₄, not H₂SO₄. Leftover Ca²⁺ pairs with
+/// remaining SO₄ as CaSO₄(aq) before any CaCl₂ attribution.
 ///
 /// After Kw speciation both `h+` and `oh-` are always tiny-present; NaOH Φ_V
 /// uses excess `oh-` above the water baseline so near-neutral salt does not
@@ -236,6 +238,7 @@ pub const PHI_V_NAOH_ML_PER_MOL: f64 = 4.0;
 pub struct ElectrolyteMoles {
     pub n_hcl: f64,
     pub n_h2so4: f64,
+    pub n_nahso4: f64,
     pub n_naoh: f64,
     pub n_na2so4: f64,
     pub n_caso4: f64,
@@ -255,9 +258,7 @@ impl ElectrolyteMoles {
         let n_h_excess = (n_h - n_oh).max(0.0);
         let n_hcl = n_h_excess.min(n_cl).max(0.0);
         let n_h_after_hcl = (n_h_excess - n_hcl).max(0.0);
-        let n_so4_acid = (n_h_after_hcl - n_hso4).max(0.0).min(n_so4);
-        let n_h2so4 = (n_hso4 + n_so4_acid).max(0.0);
-        let n_so4_after_acid = (n_so4 - n_so4_acid).max(0.0);
+        let n_cl_after_hcl = (n_cl - n_hcl).max(0.0);
         // Strong-base NaOH only when OH⁻ clearly exceeds Kw-scale residual.
         let n_naoh = if n_oh > n_h + 1e-9 {
             (n_oh - n_h).max(0.0)
@@ -265,18 +266,30 @@ impl ElectrolyteMoles {
             0.0
         };
         let n_na_salt = (n_na - n_naoh).max(0.0);
-        let n_na2so4 = (n_na_salt * 0.5).min(n_so4_after_acid).max(0.0);
-        let n_na_after_sulfate = (n_na_salt - 2.0 * n_na2so4).max(0.0);
-        let n_so4_after_na2so4 = (n_so4_after_acid - n_na2so4).max(0.0);
-        let n_caso4 = n_ca.min(n_so4_after_na2so4).max(0.0);
+        // Reserve Na for chloride salts before NaHSO₄ / Na₂SO₄ pairing.
+        let n_na_for_cl = n_na_salt.min(n_cl_after_hcl).max(0.0);
+        let n_na_sulfate_budget = (n_na_salt - n_na_for_cl).max(0.0);
+        let n_nahso4 = n_na_sulfate_budget.min(n_hso4).max(0.0);
+        let n_hso4_acid = (n_hso4 - n_nahso4).max(0.0);
+        let n_na_after_nahso4 = (n_na_sulfate_budget - n_nahso4).max(0.0);
+        // Salt SO₄ before free-acid SO₄ so Ka2 remnants (Na⁺+H⁺+SO₄²⁻) split as
+        // ½ Na₂SO₄ + ½ H₂SO₄ rather than orphaning Na under H₂SO₄.
+        let n_na2so4 = (n_na_after_nahso4 * 0.5).min(n_so4).max(0.0);
+        let n_so4_after_na2so4 = (n_so4 - n_na2so4).max(0.0);
+        let n_so4_acid = (n_h_after_hcl - n_hso4_acid)
+            .max(0.0)
+            .min(n_so4_after_na2so4);
+        let n_h2so4 = (n_hso4_acid + n_so4_acid).max(0.0);
+        let n_so4_after_acid = (n_so4_after_na2so4 - n_so4_acid).max(0.0);
+        let n_caso4 = n_ca.min(n_so4_after_acid).max(0.0);
         let n_ca_after_sulfate = (n_ca - n_caso4).max(0.0);
-        let n_cl_after_hcl = (n_cl - n_hcl).max(0.0);
-        let n_nacl = n_na_after_sulfate.min(n_cl_after_hcl).max(0.0);
+        let n_nacl = n_na_for_cl.max(0.0);
         let n_cl_after_nacl = (n_cl_after_hcl - n_nacl).max(0.0);
         let n_cacl2 = n_ca_after_sulfate.min(n_cl_after_nacl * 0.5).max(0.0);
         Self {
             n_hcl,
             n_h2so4,
+            n_nahso4,
             n_naoh,
             n_na2so4,
             n_caso4,
@@ -288,6 +301,8 @@ impl ElectrolyteMoles {
 
 /// Apparent molar volume of aqueous H₂SO₄ (ml/mol); school mid-range value.
 pub const PHI_V_H2SO4_ML_PER_MOL: f64 = 40.0;
+/// Apparent molar volume of aqueous NaHSO₄ (ml/mol); school midpoint of H₂SO₄/Na₂SO₄.
+pub const PHI_V_NAHSO4_ML_PER_MOL: f64 = 30.0;
 /// Apparent molar volume of aqueous Na₂SO₄ (ml/mol).
 pub const PHI_V_NA2SO4_ML_PER_MOL: f64 = 20.0;
 /// Apparent molar volume of aqueous CaSO₄ (ml/mol); school mid-range value.
@@ -306,6 +321,7 @@ pub fn solution_volume_ml_of_entries(entries: &[CompositionEntry]) -> f64 {
         + h2so4_l_ml
         + el.n_hcl * PHI_V_HCL_ML_PER_MOL
         + el.n_h2so4 * PHI_V_H2SO4_ML_PER_MOL
+        + el.n_nahso4 * PHI_V_NAHSO4_ML_PER_MOL
         + el.n_naoh * PHI_V_NAOH_ML_PER_MOL
         + el.n_na2so4 * PHI_V_NA2SO4_ML_PER_MOL
         + el.n_caso4 * PHI_V_CASO4_ML_PER_MOL

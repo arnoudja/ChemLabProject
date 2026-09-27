@@ -1865,7 +1865,9 @@ fn wash_paper_solids_into_fluid(
         let n_na = (crate::composition::aqueous_mol_entries(fluid, "na+") - n_naoh).max(0.0);
         let n_ca = crate::composition::aqueous_mol_entries(fluid, "ca2+");
         let n_hso4 = crate::composition::aqueous_mol_entries(fluid, "hso4-");
-        let n_h = n_h_free + n_hso4;
+        // Free H⁺ only for HCl common-ion (matches inventory / VLE); SO₄ still
+        // includes collapsed bisulfate sulfur for ionic strength.
+        let n_h = n_h_free;
         let n_cl = crate::composition::aqueous_mol_entries(fluid, "cl-");
         let n_so4 = crate::composition::aqueous_mol_entries(fluid, "so4^2-") + n_hso4;
         let cap = crate::solubility::unsaturated_capacity_g(
@@ -2257,7 +2259,7 @@ fn apply_hcl_dilution_temperature(
     dest_before: crate::hcl::HclInventory,
     added: crate::hcl::HclInventory,
 ) {
-    // Gated on HCl inventory (`min(h+, cl-)`), not bare protons.
+    // Gated on HCl inventory (`min(max(n_h − n_oh, 0), n_cl)`), not bare protons.
     if dest_before.n_h <= AMOUNT_EPS && added.n_h <= AMOUNT_EPS {
         return;
     }

@@ -116,9 +116,10 @@ fn add_water_ml(item: &mut SceneItem, ml: f64) {
 /// Speciate aqueous acid/base in `item`: write equilibrated `h+`/`oh-`/`hso4-`/`so4^2-`.
 ///
 /// When `apply_heat` is true, also forms water and applies neutralization ΔH from the
-/// H⁺+OH⁻ extent implied by the drop in `(n_h + n_oh)` across the solve (subsumes
-/// the old instant neutralization step). Re-equilibrating already-solved Kw water
-/// does not invent water or heat.
+/// H⁺+OH⁻ / HSO₄⁻+OH⁻ extent: `0.5 · Δ(n_h + n_oh + n_hso4)` across the solve
+/// (subsumes the old instant neutralization step). Bound bisulfate must be in the
+/// sum — otherwise HSO₄⁻+OH⁻ → SO₄²⁻+H₂O undercounts heat by ~2×. Re-equilibrating
+/// already-solved Kw water does not invent water or heat.
 ///
 /// Concentrations use **liquid water** ml as the solvent basis (not Φ_V solution
 /// volume, which can include non-aqueous liquid H₂SO₄). No-ops when dry.
@@ -138,6 +139,7 @@ pub fn speciate_aqueous_acid_base(item: &mut SceneItem, apply_heat: bool) {
 
     let n_h_before = aqueous_mol(item, "h+");
     let n_oh_before = aqueous_mol(item, "oh-");
+    let n_hso4_before = aqueous_mol(item, "hso4-");
 
     let n_na = aqueous_mol(item, "na+");
     let n_ca = aqueous_mol(item, "ca2+");
@@ -155,9 +157,10 @@ pub fn speciate_aqueous_acid_base(item: &mut SceneItem, apply_heat: bool) {
     set_aqueous_mol(item, "so4^2-", n_so4);
 
     if apply_heat {
-        // Each H⁺+OH⁻ → H₂O (incl. HSO₄⁻+OH⁻ → SO₄²⁻+H₂O) drops the free
-        // (n_h + n_oh) sum by 2 per water formed.
-        let n_rxn = 0.5 * ((n_h_before + n_oh_before) - (n_h + n_oh)).max(0.0);
+        // Each water formed (H⁺+OH⁻ or HSO₄⁻+OH⁻) drops (n_h + n_oh + n_hso4) by 2.
+        let acid_base_before = n_h_before + n_oh_before + n_hso4_before;
+        let acid_base_after = n_h + n_oh + n_hso4;
+        let n_rxn = 0.5 * (acid_base_before - acid_base_after).max(0.0);
         if n_rxn > AMOUNT_EPS {
             add_water_ml(item, n_rxn * WATER_MOLAR_MASS_G_PER_MOL);
             let c_eff = effective_heat_capacity(item);
@@ -174,6 +177,7 @@ pub fn speciate_aqueous_acid_base(item: &mut SceneItem, apply_heat: bool) {
 }
 
 /// Net charge (mol e⁻) of aqueous ions — should be ~0 after speciation.
+#[cfg(test)]
 pub fn aqueous_charge_mol(item: &SceneItem) -> f64 {
     aqueous_mol(item, "h+") + aqueous_mol(item, "na+") + 2.0 * aqueous_mol(item, "ca2+")
         - aqueous_mol(item, "oh-")
@@ -284,6 +288,55 @@ mod tests {
         assert!(t1 > t0 + 0.5, "expected neutralization heat {t0} → {t1}");
         let ph = ph_of_entries(&item.properties.composition).unwrap();
         assert!((ph - 7.0).abs() < 0.1, "got pH {ph}");
+        assert!(aqueous_charge_mol(&item).abs() < 1e-9);
+    }
+
+    #[test]
+    fn bisulfate_plus_oh_neutralization_heat_matches_stoich() {
+        // NaHSO₄ + NaOH → Na₂SO₄ + H₂O: extent must be ~n, not ~n/2.
+        // (Needs 2 Na⁺ so the post-solve inventory is neutral sulfate salt.)
+        let n = 0.01;
+        let mut item = vessel(vec![
+            water(100.0),
+            aq("hso4-", n),
+            aq("na+", 2.0 * n),
+            aq("oh-", n),
+        ]);
+        let t0 = item.properties.temperature_c.unwrap();
+        let c0 = effective_heat_capacity(&item);
+        speciate_aqueous_acid_base(&mut item, true);
+        let t1 = item.properties.temperature_c.unwrap();
+        let dt = t1 - t0;
+        let dt_expected = -n * H_OH_NEUTRALIZATION_J_PER_MOL / c0;
+        assert!(
+            (dt - dt_expected).abs() < 0.15 * dt_expected.abs(),
+            "HSO₄⁻+OH⁻ heat extent: ΔT={dt} expected~{dt_expected}"
+        );
+        assert!(aqueous_mol(&item, "so4^2-") > n * 0.9);
+        assert!(aqueous_charge_mol(&item).abs() < 1e-9);
+    }
+
+    #[test]
+    fn h2so4_two_eq_naoh_neutralization_heat_matches_stoich() {
+        // H⁺ + HSO₄⁻ + 2 OH⁻ → 2 H₂O + SO₄²⁻: extent ~2n (not 1.5n).
+        let n = 0.01;
+        let mut item = vessel(vec![
+            water(100.0),
+            aq("h+", n),
+            aq("hso4-", n),
+            aq("na+", 2.0 * n),
+            aq("oh-", 2.0 * n),
+        ]);
+        let t0 = item.properties.temperature_c.unwrap();
+        let c0 = effective_heat_capacity(&item);
+        speciate_aqueous_acid_base(&mut item, true);
+        let t1 = item.properties.temperature_c.unwrap();
+        let dt = t1 - t0;
+        let dt_expected = -2.0 * n * H_OH_NEUTRALIZATION_J_PER_MOL / c0;
+        assert!(
+            (dt - dt_expected).abs() < 0.15 * dt_expected.abs(),
+            "2-eq H₂SO₄ heat: ΔT={dt} expected~{dt_expected}"
+        );
         assert!(aqueous_charge_mol(&item).abs() < 1e-9);
     }
 }

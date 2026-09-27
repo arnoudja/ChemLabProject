@@ -140,17 +140,18 @@ fn remove_evaporated_mass(dish: &mut SceneItem, loss_mass_g: f64) {
 
 /// Dish boil temperature.
 ///
-/// With HCl inventory: tabulated `T_hcl(w)`. When non-HCl salt solutes are also
-/// present, take `max(T_hcl(w), T_raoult(x_w))` so salt elevation is not ignored
-/// (no more acid-wins). Concentrated HCl alone stays on the acid table — Raoult
-/// on the acid-depleted `x_w` would falsely soar. Without HCl inventory: Raoult +
-/// Antoine from water mole fraction (sulfuric-only / water path).
+/// With HCl inventory: tabulated `T_hcl(w)`. When non-HCl solutes are also
+/// present (salt metals / salt Cl⁻ / sulfate concentrates), take
+/// `max(T_hcl(w), T_raoult(x_w))` so elevation is not ignored (no more acid-wins).
+/// Concentrated HCl alone stays on the acid table — Raoult on the acid-depleted
+/// `x_w` would falsely soar. Without HCl inventory: Raoult + Antoine from water
+/// mole fraction (sulfuric-only / water path).
 fn dish_boil_temperature_c(item: &SceneItem) -> f64 {
     let inv = crate::hcl::HclInventory::from_item(item);
     let t_water = boiling_temperature_c(water_mole_fraction(item));
     if inv.n_h > AMOUNT_EPS {
         let t_hcl = crate::hcl::hcl_boil_temperature_c(inv.w_hcl());
-        if dish_has_non_hcl_salt(item, inv.n_h) {
+        if dish_has_non_hcl_solute(item) {
             return t_hcl.max(t_water);
         }
         return t_hcl;
@@ -158,13 +159,16 @@ fn dish_boil_temperature_c(item: &SceneItem) -> f64 {
     t_water
 }
 
-/// True when aqueous Na⁺/Ca²⁺ or salt Cl⁻ (beyond acid H⁺) is present.
-fn dish_has_non_hcl_salt(item: &SceneItem, _n_hcl: f64) -> bool {
+/// True when aqueous non-HCl solutes depress `x_w` beyond gated HCl alone:
+/// salt Na⁺/Ca²⁺, salt Cl⁻, or sulfate / bisulfate concentrates.
+fn dish_has_non_hcl_solute(item: &SceneItem) -> bool {
     let n_na = crate::composition::aqueous_mol(item, "na+");
     let n_ca = crate::composition::aqueous_mol(item, "ca2+");
     let n_cl = crate::composition::aqueous_mol(item, "cl-");
     let n_h = crate::composition::aqueous_mol(item, "h+");
     let n_oh = crate::composition::aqueous_mol(item, "oh-");
+    let n_so4 = crate::composition::aqueous_mol(item, "so4^2-")
+        + crate::composition::aqueous_mol(item, "hso4-");
     let n_naoh = if n_oh > n_h + 1e-9 {
         (n_oh - n_h).max(0.0)
     } else {
@@ -174,7 +178,7 @@ fn dish_has_non_hcl_salt(item: &SceneItem, _n_hcl: f64) -> bool {
     // Cl⁻ not charge-balanced by free H⁺ is salt chloride (ignore Kw-scale noise).
     let n_cl_salt = (n_cl - n_h).max(0.0);
     const SALT_EPS: f64 = 1e-9;
-    n_na_salt > SALT_EPS || n_ca > SALT_EPS || n_cl_salt > SALT_EPS
+    n_na_salt > SALT_EPS || n_ca > SALT_EPS || n_cl_salt > SALT_EPS || n_so4 > SALT_EPS
 }
 
 /// Latent heat (J/g) for the vapor leaving `dish` this step.

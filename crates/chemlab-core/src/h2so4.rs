@@ -82,22 +82,38 @@ pub fn liquid_h2so4_mol_entries(entries: &[CompositionEntry]) -> f64 {
         .unwrap_or(0.0)
 }
 
-/// Aqueous H₂SO₄ formula units from free acid inventory (HSO₄⁻ + acid SO₄²⁻).
+/// Aqueous H₂SO₄ formula units from **free acid** inventory (not salt bisulfate).
 ///
-/// HCl inventory (`min(h+, cl-)`) is excluded first so mixed acids do not
-/// double-count. Each `hso4-` is one formula unit; remaining free `h+` pairs
-/// with `so4^2-` as additional H₂SO₄ (post-Kₐ₂ speciation).
+/// HCl inventory (`min(max(n_h − n_oh, 0), n_cl)`) is excluded first. Na⁺ needed
+/// for leftover Cl⁻ is reserved, then remaining Na⁺ pairs with `hso4-` as NaHSO₄
+/// (not free H₂SO₄). Leftover acid `hso4-` plus free `h+` paired with `so4^2-`
+/// count as reformable / Φ_V H₂SO₄ (post-Kₐ₂).
 pub fn aqueous_h2so4_moles_entries(entries: &[CompositionEntry]) -> f64 {
     let n_h = aqueous_mol_entries(entries, "h+");
     let n_oh = aqueous_mol_entries(entries, "oh-");
+    let n_na = aqueous_mol_entries(entries, "na+");
     let n_cl = aqueous_mol_entries(entries, "cl-");
     let n_so4 = aqueous_mol_entries(entries, "so4^2-");
     let n_hso4 = aqueous_mol_entries(entries, "hso4-");
     let n_h_excess = (n_h - n_oh).max(0.0);
     let n_hcl = n_h_excess.min(n_cl).max(0.0);
     let n_h_acid = (n_h_excess - n_hcl).max(0.0);
-    let n_so4_acid = (n_h_acid - n_hso4).max(0.0).min(n_so4);
-    (n_hso4 + n_so4_acid).max(0.0)
+    let n_cl_after_hcl = (n_cl - n_hcl).max(0.0);
+    let n_naoh = if n_oh > n_h + 1e-9 {
+        (n_oh - n_h).max(0.0)
+    } else {
+        0.0
+    };
+    let n_na_salt = (n_na - n_naoh).max(0.0);
+    let n_na_for_cl = n_na_salt.min(n_cl_after_hcl).max(0.0);
+    let n_na_sulfate_budget = (n_na_salt - n_na_for_cl).max(0.0);
+    let n_nahso4 = n_na_sulfate_budget.min(n_hso4).max(0.0);
+    let n_hso4_acid = (n_hso4 - n_nahso4).max(0.0);
+    let n_na_after_nahso4 = (n_na_sulfate_budget - n_nahso4).max(0.0);
+    let n_na2so4 = (n_na_after_nahso4 * 0.5).min(n_so4).max(0.0);
+    let n_so4_after_salt = (n_so4 - n_na2so4).max(0.0);
+    let n_so4_acid = (n_h_acid - n_hso4_acid).max(0.0).min(n_so4_after_salt);
+    (n_hso4_acid + n_so4_acid).max(0.0)
 }
 
 /// Inventory of water + sulfuric acid (liquid + aqueous) for dilution enthalpy.
@@ -288,7 +304,7 @@ pub fn ionize_liquid_h2so4_in_water(item: &mut SceneItem) -> f64 {
 /// (HSO₄⁻ + acid SO₄²⁻) to liquid `h2so4` when the water:acid mole ratio is
 /// at or below [`H2SO4_REFORM_WATER_PER_ACID`].
 ///
-/// HCl inventory (`min(h+, cl-)`) is left aqueous. Call **after** SI so salt
+/// HCl inventory (`min(max(n_h − n_oh, 0), n_cl)`) is left aqueous. Call **after** SI so salt
 /// sulfates claim SO₄ first.
 ///
 /// Returns moles of H₂SO₄ reformed.

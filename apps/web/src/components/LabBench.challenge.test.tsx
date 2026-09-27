@@ -58,6 +58,7 @@ describe('LabBench challenge mode', () => {
       'Sulfuric acid',
       'Sodium chloride (NaCl)',
       'Sodium hydroxide (NaOH)',
+      'Sodium sulfate (Na2SO4)',
       'Calcium chloride (CaCl2)',
       'Sand',
     ]
@@ -74,13 +75,14 @@ describe('LabBench challenge mode', () => {
     expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
 
     const seen: string[] = []
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < 9; i += 1) {
       for (const stock of [
         'Distilled water (H2O)',
         'Hydrochloric acid (30%)',
         'Sulfuric acid',
         'Sodium chloride (NaCl)',
         'Sodium hydroxide (NaOH)',
+        'Sodium sulfate (Na2SO4)',
         'Calcium chloride (CaCl2)',
         'Sand',
       ]) {
@@ -92,6 +94,7 @@ describe('LabBench challenge mode', () => {
     expect(new Set(seen)).toEqual(new Set(['Distilled water (H2O)', 'Sodium chloride (NaCl)', 'Sand']))
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
     expect(seen).not.toContain('Sodium hydroxide (NaOH)')
+    expect(seen).not.toContain('Sodium sulfate (Na2SO4)')
     expect(seen).not.toContain('Hydrochloric acid (30%)')
     expect(seen).not.toContain('Sulfuric acid')
   })
@@ -149,13 +152,14 @@ describe('LabBench challenge mode', () => {
     expect(await screen.findByRole('button', { name: 'Distilled water (H2O)' })).toBeInTheDocument()
 
     const seen: string[] = []
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < 9; i += 1) {
       for (const stock of [
         'Distilled water (H2O)',
         'Hydrochloric acid (30%)',
         'Sulfuric acid',
         'Sodium chloride (NaCl)',
         'Sodium hydroxide (NaOH)',
+        'Sodium sulfate (Na2SO4)',
         'Calcium chloride (CaCl2)',
         'Sand',
       ]) {
@@ -175,6 +179,7 @@ describe('LabBench challenge mode', () => {
     expect(seen).not.toContain('Calcium chloride (CaCl2)')
     expect(seen).not.toContain('Sand')
     expect(seen).not.toContain('Sulfuric acid')
+    expect(seen).not.toContain('Sodium sulfate (Na2SO4)')
   })
 
   it('create-table-salt starts with full distilled water and empty NaCl', () => {

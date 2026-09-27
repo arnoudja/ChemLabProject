@@ -90,11 +90,16 @@ pub fn set_aqueous_mol(item: &mut SceneItem, substance_id: &str, moles: f64) {
 
 /// Keep vessel `fill_ml` aligned with Φ_V solution volume for UI height.
 ///
-/// Only beakers, evaporation dishes, and pipettes carry a fill; other kinds are
-/// left unchanged. Prefer calling this after composition mutators rather than
+/// Beakers and evaporation dishes sync from `composition`. Pipettes sync from
+/// `holding` (pipette fluid never lives in composition). Other kinds are left
+/// unchanged. Prefer calling this after composition/holding mutators rather than
 /// writing `fill_ml` by hand.
 pub fn sync_fill_ml(item: &mut SceneItem) {
-    if item.kind == "beaker" || item.kind == "evaporation_dish" || item.kind == "pipette" {
+    if item.kind == "beaker" || item.kind == "evaporation_dish" {
         item.properties.fill_ml = Some(crate::hcl::solution_volume_ml(item));
+    } else if item.kind == "pipette" {
+        item.properties.fill_ml = Some(crate::hcl::solution_volume_ml_of_entries(
+            &item.properties.holding,
+        ));
     }
 }

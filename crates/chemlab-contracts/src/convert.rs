@@ -1,7 +1,9 @@
 //! `From` / `Into` between wire DTOs and `chemlab-core` domain types.
 //!
 //! `LabScene.challenge_completed` is wire-only and stays derived at the server
-//! boundary — it is not part of [`From<chemlab_core::Scene>`].
+//! boundary — there is no `From<chemlab_core::Scene> for LabScene`. Outbound
+//! mapping (e.g. server `scene_to_contract`) sets `challenge_completed` after
+//! `is_completed`.
 
 use crate::{CompositionEntry, Item, ItemProperties, LabAction, LabEvent, LabScene};
 

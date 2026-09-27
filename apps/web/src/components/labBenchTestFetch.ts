@@ -36,6 +36,7 @@ function startSceneForMode(mode: string): LabScene {
   if (mode === FREE_MODE) return initialScene()
   if (mode === CREATE_TABLE_SALT_LAYOUT.mode) return challengeStartScene(CREATE_TABLE_SALT_LAYOUT)
   if (mode === SEPARATE_NACL_SIO2_LAYOUT.mode) return challengeStartScene(SEPARATE_NACL_SIO2_LAYOUT)
+  // Unknown mode: fall back to Free (safer than inventing a challenge layout).
   return initialScene()
 }
 

@@ -312,7 +312,13 @@ fn tongs_put_away_returns_water_and_dish_home() {
 
 #[test]
 fn tongs_pick_up_and_put_away_each_solid_stock() {
-    for stock_id in ["beaker-nacl", "beaker-cacl2", "beaker-sand", "beaker-naoh"] {
+    for stock_id in [
+        "beaker-nacl",
+        "beaker-cacl2",
+        "beaker-sand",
+        "beaker-naoh",
+        "beaker-na2so4",
+    ] {
         let mut scene = initial_bench_scene("lab-test");
         use_tongs(&mut scene, stock_id).unwrap();
         assert_eq!(item(&scene, stock_id).location, "held");

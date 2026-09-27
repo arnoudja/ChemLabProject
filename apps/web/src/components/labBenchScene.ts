@@ -270,6 +270,7 @@ export function tongsHeldVesselId(
   | typeof CACL2_ID
   | typeof SAND_ID
   | typeof NAOH_ID
+  | typeof NA2SO4_ID
   | null {
   const held = findItem(scene, TONGS_ID)?.properties.source_item_id
   if (
@@ -283,7 +284,8 @@ export function tongsHeldVesselId(
     held === NACL_ID ||
     held === CACL2_ID ||
     held === SAND_ID ||
-    held === NAOH_ID
+    held === NAOH_ID ||
+    held === NA2SO4_ID
   ) {
     return held
   }

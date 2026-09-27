@@ -278,7 +278,12 @@ fn pipette_in_redissolves_solid_salt_up_to_solubility() {
     let dish = item(&scene, "dish-1");
     let max_aq =
         crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, 20.0) * 0.001;
-    assert!((aqueous_mol(dish, "na+") - max_aq).abs() < 1e-9);
+    let na_pour = aqueous_mol(dish, "na+");
+    assert!(na_pour > 1e-6, "pour contact must dissolve some salt");
+    assert!(
+        na_pour <= max_aq + 1e-9,
+        "must not exceed 1 ml capacity on contact"
+    );
     assert!(
         dish.properties
             .composition
@@ -286,6 +291,12 @@ fn pipette_in_redissolves_solid_salt_up_to_solubility() {
             .any(|c| c.substance_id == "nacl" && c.phase == "solid"),
         "leftover solid remains above 1 ml solubility"
     );
+
+    // Further clock time approaches the capacity band.
+    apply_elapsed(&mut scene, 2.0);
+    let dish = item(&scene, "dish-1");
+    assert!((aqueous_mol(dish, "na+") - max_aq).abs() < 1e-4);
+    assert!(solid_g(dish, "nacl") > 1e-6);
 }
 
 #[test]

@@ -8,6 +8,7 @@ mod acid_base;
 pub mod challenges;
 mod composition;
 mod dissolve;
+mod dissolve_kinetics;
 mod h2so4;
 mod hcl;
 mod scene;

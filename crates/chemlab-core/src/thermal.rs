@@ -37,12 +37,14 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
         }
     }
 
+    let mut finalized_dish = false;
     if let Some(dish_idx) = dish_idx {
         if scene.items[dish_idx].location == "bench"
             && crate::solubility::dish_has_liquid(&scene.items[dish_idx])
         {
             apply_dish_evaporation(&mut scene.items[dish_idx], dt, heating_dish);
-            finalize_aqueous_vessel(&mut scene.items[dish_idx]);
+            finalize_aqueous_vessel(&mut scene.items[dish_idx], dt);
+            finalized_dish = true;
             if let Some(burner_idx) = burner_idx {
                 if scene.items[burner_idx].properties.on == Some(true)
                     && !crate::solubility::dish_has_liquid_water(&scene.items[dish_idx])
@@ -59,6 +61,22 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
             continue;
         }
         apply_ambient_cool(&mut scene.items[idx], dt);
+    }
+
+    // Kinetic dissolve on wet vessels holding soluble solids (beakers, etc.).
+    for idx in 0..scene.items.len() {
+        if finalized_dish && dish_id.as_deref() == Some(scene.items[idx].id.as_str()) {
+            continue;
+        }
+        if !matches!(
+            scene.items[idx].kind.as_str(),
+            "beaker" | "evaporation_dish"
+        ) {
+            continue;
+        }
+        if crate::dissolve_kinetics::vessel_needs_kinetic_dissolve(&scene.items[idx]) {
+            finalize_aqueous_vessel(&mut scene.items[idx], dt);
+        }
     }
 }
 
@@ -331,7 +349,7 @@ fn vessel_ua(item: &SceneItem) -> Option<f64> {
     }
 }
 
-pub(super) fn heat_capacity_of_entries(entries: &[CompositionEntry]) -> f64 {
+pub(crate) fn heat_capacity_of_entries(entries: &[CompositionEntry]) -> f64 {
     let mut c = 0.0;
     for entry in entries {
         if entry.substance_id == "water" && entry.phase == "liquid" {

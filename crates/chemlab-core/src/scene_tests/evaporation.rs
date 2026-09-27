@@ -318,14 +318,18 @@ fn heating_below_boil_redissolves_nacl_as_solubility_rises() {
         .unwrap_or(0.0);
     assert!(
         na_after > na_before + 1e-6,
-        "heating must redissolve NaCl as s(T) rises; {na_after} vs {na_before}"
+        "heating must kinetically redissolve NaCl as s(T) rises; {na_after} vs {na_before}"
     );
     assert!(solid_after < solid_before - 1e-6);
     let t_now = dish.properties.temperature_c.unwrap();
     let max_now = crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, t_now)
         * water_ml(dish)
         / 1000.0;
-    assert!((na_after - max_now).abs() < 1e-6);
+    // Rate band: approaches the new cap over ticks (not an instant SI teleport).
+    assert!(
+        na_after <= max_now + 1e-6,
+        "must not exceed the hot capacity: {na_after} vs {max_now}"
+    );
 }
 
 #[test]

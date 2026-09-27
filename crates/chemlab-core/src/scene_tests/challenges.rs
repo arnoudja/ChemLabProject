@@ -295,8 +295,13 @@ fn challenge_ignores_the_wrong_species_and_tolerates_float_dust() {
 fn solved_by_playing_the_challenge_through() {
     let mut scene = separate_scene();
 
-    // Wet the mixture with the distilled-water stock, then filter off the sand.
+    // Wet the mixture with the distilled-water stock, wait for kinetic dissolve, then filter.
     use_tongs_pour(&mut scene, "beaker-h2o", "beaker-water");
+    // 2 g NaCl in 10 ml: a few seconds of kinetic dissolve when unsaturated.
+    // HTTP clock clamps each tick to ≤2 s, so use several ticks.
+    for _ in 0..3 {
+        apply_elapsed(&mut scene, 2.0);
+    }
     use_tongs_pour(&mut scene, "beaker-water", "filter-paper-1");
 
     // Boil the filtrate dry in the dish, one dish-full at a time.

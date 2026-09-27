@@ -67,7 +67,7 @@ A successful call returns `dissolved` (boolean) plus a stable English `explanati
 
 ## Scene ions and heat (server-authored)
 
-When the scene pours a dissolving salt into water, `chemlab-core` authors aqueous ions and adjusts the water beaker temperature (ambient `LabScene.temperature_c` unchanged):
+When the scene pours a soluble salt into water, `chemlab-core` deposits the solid and applies **school first-order kinetic dissolve** (`dissolve_kinetics`) on pour-contact τ and clock `dt`: `Δm = min(avail, unsaturated_cap) · (1 − e^(−k(T)·τ))` with per-salt `k₂₀` (NaOH ≫ CaCl₂ > NaCl ≫ gypsum; sand = 0) and mild `k(T)`. ΔH_sol applies only to moles dissolved this step. The qualitative `dissolve()` boolean stays a soluble/insoluble UI flag — it does **not** author 100% of the scoop instantly.
 
 | Salt | Ions | Stoichiometry | ΔH_sol (J/mol) |
 | --- | --- | --- | --- |
@@ -78,7 +78,7 @@ When the scene pours a dissolving salt into water, `chemlab-core` authors aqueou
 
 Molar masses: NaCl `58.44` g/mol, CaCl₂ `110.98` g/mol, NaOH `40.00` g/mol, Na₂SO₄ `142.04` g/mol. Water mass ≈ liquid `amount_ml` (1 g/ml); c_p = `4.184` J/(g·K). Solid NaOH c_p ≈ `1.49` J/(g·K).
 
-**Neutralization:** after mix/dissolve, aqueous speciation (`K_w` + sulfuric `K_a2`) equilibrates `h+` / `oh-` / `hso4-` / `so4^2-` and applies neutralization heat from `0.5 · Δ(n_h + n_oh + n_hso4)` (ΔH_neut = `−55800` J/mol) **before** `enforce_saturation`. Spectators `na+`/`cl-` remain; excess acid or base stays as the solved inventory. Inspect pH is from solved `[H⁺]` (~7 for pure water / exact neutral salt). Na⁺ paired with OH⁻ is **not** counted as NaCl inventory (so SI does not invent Cl⁻). Solid NaOH also ionizes whenever it meets liquid water outside the spoon qualitative table (tongs dump into a wet vessel, water onto dry solid) via the scene finalize path; filter wash uses contact-time kinetics with no SI cap.
+**Neutralization:** after mix/dissolve, aqueous speciation (`K_w` + sulfuric `K_a2`) equilibrates `h+` / `oh-` / `hso4-` / `so4^2-` and applies neutralization heat from `0.5 · Δ(n_h + n_oh + n_hso4)` (ΔH_neut = `−55800` J/mol) **before** precipitate-only `enforce_saturation`. Spectators `na+`/`cl-` remain; excess acid or base stays as the solved inventory. Inspect pH is from solved `[H⁺]` (~7 for pure water / exact neutral salt). Na⁺ paired with OH⁻ is **not** counted as NaCl inventory (so SI does not invent Cl⁻). Solid NaOH / NaCl / CaCl₂ / gypsum share the same kinetic helper on tongs dump, water-onto-solid, spoon pour, filter wash, and elapsed ticks; SI never instant-redissolves under-saturated solids.
 
 ## Errors (not dissolve results)
 

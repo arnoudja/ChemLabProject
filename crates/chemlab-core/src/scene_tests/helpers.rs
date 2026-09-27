@@ -439,6 +439,8 @@ pub(super) fn set_slurry_in_water(scene: &mut Scene) {
         },
     )
     .unwrap();
+    // Finish kinetic dissolve so slurry tests see dissolved ions + sand only.
+    apply_elapsed(scene, 2.0);
     apply_action(
         scene,
         Action::UseTool {

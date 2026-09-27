@@ -50,14 +50,6 @@ pub const DISTILLED_WATER_CAPACITY_ML: f64 = 100.00;
 /// Filtrate beaker liquid capacity (ml).
 pub const FILTRATE_CAPACITY_ML: f64 = 250.00;
 
-/// Filter-paper wash contact time per ml of transferred fluid (s/ml).
-/// A 10 ml rinse → τ ≈ 0.5 s; a 200 ml pour → τ ≈ 10 s.
-const FILTER_WASH_TAU_S_PER_ML: f64 = 0.05;
-
-/// First-order wash rate (1/s). Fine grains dissolve relatively fast, but small
-/// rinses stay partial (`frac = 1 − exp(−k·τ)`).
-const FILTER_WASH_K: f64 = 0.8;
-
 /// Ambient bench / reset temperature (°C).
 pub const AMBIENT_TEMPERATURE_C: f64 = 20.0;
 
@@ -125,7 +117,7 @@ pub const CP_NAOH: f64 = 1.49;
 /// cooling is not erased on the next clock tick.
 const TEMPERATURE_SNAP_EPS_C: f64 = 0.005;
 
-const AMOUNT_EPS: f64 = 1e-12;
+pub(crate) const AMOUNT_EPS: f64 = 1e-12;
 
 /// Enthalpy of solution of NaCl at bench conditions (endothermic), J/mol.
 pub const NACL_DELTA_H_SOLUTION_J_PER_MOL: f64 = 3880.0;
@@ -1111,7 +1103,10 @@ fn apply_pour(
                 mass_g,
             );
         }
-        finalize_aqueous_vessel(&mut scene.items[target_idx]);
+        finalize_aqueous_vessel(
+            &mut scene.items[target_idx],
+            crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+        );
         return Ok(());
     }
 
@@ -1142,53 +1137,29 @@ fn apply_pour(
         });
     }
 
-    finalize_aqueous_vessel(&mut scene.items[target_idx]);
+    finalize_aqueous_vessel(
+        &mut scene.items[target_idx],
+        crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+    );
     Ok(())
 }
 
 fn mix_held_solid_into_water(
     target: &mut SceneItem,
     held: &CompositionEntry,
-    temperature_c: f64,
-    dissolved: bool,
+    _temperature_c: f64,
+    _dissolved: bool,
 ) {
-    if dissolved {
-        let mass_g = held.amount_g.unwrap_or(SPOON_SCOOP_MASS_G);
-        if let Some((moles, delta_h)) = author_dissolved_salt_ions(
-            &mut target.properties.composition,
-            &held.substance_id,
-            mass_g,
-        ) {
-            apply_dissolution_temperature_change(target, moles, delta_h, temperature_c);
-        } else if let Some(existing) = target
-            .properties
-            .composition
-            .iter_mut()
-            .find(|c| c.substance_id == held.substance_id && c.phase == "aqueous")
-        {
-            existing.amount_scoop =
-                Some(existing.amount_scoop.unwrap_or(0) + held.amount_scoop.unwrap_or(1));
-            existing.amount_g = Some(existing.amount_g.unwrap_or(0.0) + mass_g);
-        } else {
-            target.properties.composition.push(CompositionEntry {
-                substance_id: held.substance_id.clone(),
-                phase: "aqueous".into(),
-                amount_ml: None,
-                amount_scoop: held.amount_scoop,
-                amount_g: Some(mass_g),
-                amount_mol: None,
-            });
-        }
-    } else {
-        let scoops = held.amount_scoop.or(Some(1));
-        let mass_g = held.amount_g.or(Some(SPOON_SCOOP_MASS_G));
-        add_or_increase_solid(target, &held.substance_id, scoops, mass_g);
-    }
+    // Always deposit solid; kinetic dissolve in finalize authors ions over τ.
+    // Qualitative `dissolved` only drives the scene event, not ion authorship.
+    let scoops = held.amount_scoop.or(Some(1));
+    let mass_g = held.amount_g.or(Some(SPOON_SCOOP_MASS_G));
+    add_or_increase_solid(target, &held.substance_id, scoops, mass_g);
 }
 
-/// Author NaCl / CaCl₂ / NaOH aqueous ions into a composition list (shared by spoon
-/// dissolve and filter-paper wash). Returns `(moles_of_salt, ΔH_sol)` for temperature update.
-fn author_dissolved_salt_ions(
+/// Author salt aqueous ions into a composition list (vessel kinetic dissolve and
+/// filter-paper wash). Returns `(moles_of_salt, ΔH_sol)` for temperature update.
+pub(crate) fn author_dissolved_salt_ions(
     composition: &mut Vec<CompositionEntry>,
     substance_id: &str,
     mass_g: f64,
@@ -1221,24 +1192,26 @@ fn author_dissolved_salt_ions(
             add_or_increase_mol_in(composition, "so4^2-", "aqueous", moles);
             Some((moles, NA2SO4_DELTA_H_SOLUTION_J_PER_MOL))
         }
+        "caso4" => {
+            let moles = mass_g / CASO4_MOLAR_MASS_G_PER_MOL;
+            add_or_increase_mol_in(composition, "ca2+", "aqueous", moles);
+            add_or_increase_mol_in(composition, "so4^2-", "aqueous", moles);
+            Some((moles, 0.0))
+        }
         _ => None,
     }
 }
 
-/// Ionize liquid H₂SO₄, dissolve solid NaOH, speciate acid/base, SI, then reform.
+/// Ionize liquid H₂SO₄, kinetic-dissolve solids, speciate acid/base, SI(precip), reform.
 ///
-/// NaOH is highly soluble and is not chloride-SI capped, so tongs dumps /
-/// water-onto-solid paths must author ions here (spoon pour already dissolves via
-/// the qualitative table before this runs). Liquid H₂SO₄ ionizes to
-/// `H⁺ + HSO₄⁻` when the water:acid ratio is above the ~98% w/w reform threshold;
-/// [`crate::acid_base::speciate_aqueous_acid_base`] then solves `K_w` + `K_a2`
-/// (subsuming instant neutralization + heat). SI may pull free SO₄; a second
-/// heat-free speciate restores bisulfate equilibrium before reform. Free sulfuric
-/// below the reform threshold becomes liquid `h2so4`. SI syncs `fill_ml` before
-/// reform, so reform re-syncs so dish/beaker UI height matches post-reform Φ_V.
-fn finalize_aqueous_vessel(item: &mut SceneItem) {
+/// `dissolve_tau_s` is pour-contact or clock `dt` for the kinetic step. Liquid H₂SO₄
+/// ionizes to `H⁺ + HSO₄⁻` when the water:acid ratio is above the ~98% w/w reform
+/// threshold; [`crate::acid_base::speciate_aqueous_acid_base`] then solves `K_w` +
+/// `K_a2`. SI is precipitate-only (under-saturated redissolve is kinetic-owned).
+/// Free sulfuric below the reform threshold becomes liquid `h2so4`.
+pub(crate) fn finalize_aqueous_vessel(item: &mut SceneItem, dissolve_tau_s: f64) {
     crate::h2so4::ionize_liquid_h2so4_in_water(item);
-    dissolve_solid_naoh_in_water(item);
+    crate::dissolve_kinetics::apply_kinetic_dissolve(item, dissolve_tau_s);
     crate::acid_base::speciate_aqueous_acid_base(item, true);
     crate::solubility::enforce_saturation(item);
     // SI can consume SO₄²⁻ (and collapsed HSO₄⁻); re-equilibrate without re-heating.
@@ -1249,41 +1222,11 @@ fn finalize_aqueous_vessel(item: &mut SceneItem) {
     crate::solubility::sync_fill_ml(item);
 }
 
-/// Convert all solid `naoh` in a vessel to aqueous ions when liquid water is present.
-fn dissolve_solid_naoh_in_water(item: &mut SceneItem) {
-    let water_ml = crate::composition::solvent_water_ml_for_si(item);
-    if water_ml <= AMOUNT_EPS {
-        return;
-    }
-    let mass_g = item
-        .properties
-        .composition
-        .iter()
-        .find(|c| c.substance_id == "naoh" && c.phase == "solid")
-        .map(solid_amount_g)
-        .unwrap_or(0.0);
-    if mass_g <= AMOUNT_EPS {
-        return;
-    }
-    item.properties
-        .composition
-        .retain(|c| !(c.substance_id == "naoh" && c.phase == "solid"));
-    if let Some((moles, delta_h)) =
-        author_dissolved_salt_ions(&mut item.properties.composition, "naoh", mass_g)
-    {
-        let t = item
-            .properties
-            .temperature_c
-            .unwrap_or(AMBIENT_TEMPERATURE_C);
-        apply_dissolution_temperature_change(item, moles, delta_h, t);
-    }
-}
-
 /// Apply dissolution heat to the solvent vessel: ΔT = −(n·ΔH_sol) / C_eff.
 ///
 /// `C_eff` is [`effective_heat_capacity`] of the target (vessel + water + solids).
 /// Endothermic ΔH cools; exothermic heats.
-fn apply_dissolution_temperature_change(
+pub(crate) fn apply_dissolution_temperature_change(
     target: &mut SceneItem,
     moles: f64,
     delta_h_j_per_mol: f64,
@@ -1458,7 +1401,8 @@ pub use thermal::{
     water_vapor_pressure_bar,
 };
 
-use thermal::{blend_temperature_capacity, heat_capacity_of_entries};
+use thermal::blend_temperature_capacity;
+pub(crate) use thermal::heat_capacity_of_entries;
 
 fn apply_pipette_use(
     scene: &mut Scene,
@@ -1495,7 +1439,8 @@ fn apply_pipette_fill(
         .temperature_c
         .unwrap_or(scene.temperature_c);
     let aliquot = take_liquid_aliquot(&mut scene.items[target_idx], PIPETTE_VOLUME_ML)?;
-    finalize_aqueous_vessel(&mut scene.items[target_idx]);
+    // Concentration may precipitate; no dissolve contact on the source draw.
+    finalize_aqueous_vessel(&mut scene.items[target_idx], 0.0);
 
     let pipette = &mut scene.items[tool_idx];
     pipette.location = "hand".into();
@@ -1583,7 +1528,10 @@ fn apply_pipette_empty(
         .temperature_c
         .unwrap_or(scene.temperature_c);
     mix_aliquot_into(&mut scene.items[target_idx], &aliquot, aliquot_t);
-    finalize_aqueous_vessel(&mut scene.items[target_idx]);
+    finalize_aqueous_vessel(
+        &mut scene.items[target_idx],
+        crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+    );
 
     let pipette = &mut scene.items[tool_idx];
     pipette.properties.holding.clear();
@@ -1800,10 +1748,15 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
     // eligible for wash with the fluid still about to enter the filtrate.
     mix_transfer_into(&mut scene.items[paper_idx], &solids, None);
     let mut fluid_t = source_t;
-    wash_paper_solids_into_fluid(&mut scene.items[paper_idx], &mut fluid, &mut fluid_t);
+    crate::dissolve_kinetics::wash_paper_solids_into_fluid(
+        &mut scene.items[paper_idx],
+        &mut fluid,
+        &mut fluid_t,
+    );
     mix_transfer_into(&mut scene.items[dest_idx], &fluid, Some(fluid_t));
-    finalize_aqueous_vessel(&mut scene.items[source_idx]);
-    finalize_aqueous_vessel(&mut scene.items[dest_idx]);
+    // Wash already applied contact-time kinetics; finalize is SI/speciate only.
+    finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0);
+    finalize_aqueous_vessel(&mut scene.items[dest_idx], 0.0);
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Filtered into the filtrate beaker.".into(),
@@ -1811,115 +1764,7 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
     Ok(())
 }
 
-/// Partial contact-time wash: dissolve fine soluble solids on the paper into the
-/// fluid parcel before it mixes into the filtrate. Sand stays solid on the paper.
-///
-/// `τ = FILTER_WASH_TAU_S_PER_ML · V_fluid`; for NaCl/CaCl₂
-/// `m_diss = min(avail, unsaturated_cap) · (1 − exp(−k·τ))` at energy-weighted
-/// blend T of fluid + paper solids. NaOH is highly soluble (no SI cap):
-/// `m_diss = avail · (1 − exp(−k·τ))`.
-///
-/// Each salt uses its own unsaturated capacity in sequence (NaCl then CaCl₂),
-/// then NaOH; updating fluid ions between salts. That can slightly overshoot
-/// simultaneous mixed SI=1 when both salts are abundant; callers run
-/// `finalize_aqueous_vessel` on the filtrate after mix, which may leave a small
-/// precipitate in the beaker rather than restoring paper solids.
-fn wash_paper_solids_into_fluid(
-    paper: &mut SceneItem,
-    fluid: &mut Vec<CompositionEntry>,
-    fluid_t: &mut f64,
-) {
-    let v_fluid = crate::composition::solvent_water_ml_for_si_entries(fluid);
-    if v_fluid <= AMOUNT_EPS {
-        return;
-    }
-
-    let c_fluid = heat_capacity_of_entries(fluid);
-    let c_paper = heat_capacity_of_entries(&paper.properties.composition);
-    let paper_t = paper
-        .properties
-        .temperature_c
-        .unwrap_or(AMBIENT_TEMPERATURE_C);
-    let t_wash = if c_fluid + c_paper > AMOUNT_EPS {
-        (c_fluid * *fluid_t + c_paper * paper_t) / (c_fluid + c_paper)
-    } else {
-        *fluid_t
-    };
-
-    let tau = FILTER_WASH_TAU_S_PER_ML * v_fluid;
-    let frac = 1.0 - (-FILTER_WASH_K * tau).exp();
-    if frac <= AMOUNT_EPS {
-        return;
-    }
-
-    for (salt_id, salt) in [
-        ("nacl", crate::solubility::Salt::Nacl),
-        ("cacl2", crate::solubility::Salt::Cacl2),
-    ] {
-        let avail = paper
-            .properties
-            .composition
-            .iter()
-            .find(|c| c.substance_id == salt_id && c.phase == "solid")
-            .map(solid_amount_g)
-            .unwrap_or(0.0);
-        if avail <= AMOUNT_EPS {
-            continue;
-        }
-        let n_oh = crate::composition::aqueous_mol_entries(fluid, "oh-");
-        let n_h_free = crate::composition::aqueous_mol_entries(fluid, "h+");
-        let n_naoh = if n_oh > n_h_free + 1e-9 {
-            (n_oh - n_h_free).max(0.0)
-        } else {
-            0.0
-        };
-        let n_na = (crate::composition::aqueous_mol_entries(fluid, "na+") - n_naoh).max(0.0);
-        let n_ca = crate::composition::aqueous_mol_entries(fluid, "ca2+");
-        let n_hso4 = crate::composition::aqueous_mol_entries(fluid, "hso4-");
-        // Free H⁺ only for HCl common-ion (matches inventory / VLE); SO₄ still
-        // includes collapsed bisulfate sulfur for ionic strength.
-        let n_h = n_h_free;
-        let n_cl = crate::composition::aqueous_mol_entries(fluid, "cl-");
-        let n_so4 = crate::composition::aqueous_mol_entries(fluid, "so4^2-") + n_hso4;
-        let cap = crate::solubility::unsaturated_capacity_g(
-            salt, v_fluid, n_na, n_ca, n_h, n_cl, n_oh, n_so4, t_wash,
-        );
-        let m_diss = avail.min(cap) * frac;
-        if m_diss <= AMOUNT_EPS {
-            continue;
-        }
-        remove_solid_mass(paper, salt_id, m_diss);
-        if let Some((moles, delta_h)) = author_dissolved_salt_ions(fluid, salt_id, m_diss) {
-            let c_eff = heat_capacity_of_entries(fluid);
-            if c_eff > AMOUNT_EPS {
-                *fluid_t -= moles * delta_h / c_eff;
-            }
-        }
-    }
-
-    // Highly soluble NaOH: contact-time fraction only (no SI capacity gate).
-    let avail_naoh = paper
-        .properties
-        .composition
-        .iter()
-        .find(|c| c.substance_id == "naoh" && c.phase == "solid")
-        .map(solid_amount_g)
-        .unwrap_or(0.0);
-    if avail_naoh > AMOUNT_EPS {
-        let m_diss = avail_naoh * frac;
-        if m_diss > AMOUNT_EPS {
-            remove_solid_mass(paper, "naoh", m_diss);
-            if let Some((moles, delta_h)) = author_dissolved_salt_ions(fluid, "naoh", m_diss) {
-                let c_eff = heat_capacity_of_entries(fluid);
-                if c_eff > AMOUNT_EPS {
-                    *fluid_t -= moles * delta_h / c_eff;
-                }
-            }
-        }
-    }
-}
-
-fn remove_solid_mass(item: &mut SceneItem, substance_id: &str, mass_g: f64) {
+pub(crate) fn remove_solid_mass(item: &mut SceneItem, substance_id: &str, mass_g: f64) {
     if mass_g <= AMOUNT_EPS {
         return;
     }
@@ -1947,6 +1792,8 @@ fn remove_solid_mass(item: &mut SceneItem, substance_id: &str, mass_g: f64) {
         existing.amount_mol = Some(remain / NAOH_MOLAR_MASS_G_PER_MOL);
     } else if substance_id == "na2so4" {
         existing.amount_mol = Some(remain / NA2SO4_MOLAR_MASS_G_PER_MOL);
+    } else if substance_id == "caso4" {
+        existing.amount_mol = Some(remain / CASO4_MOLAR_MASS_G_PER_MOL);
     }
 }
 
@@ -2049,8 +1896,11 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
 
     let (taken, source_t) = transfer_liquid_fraction(scene, source_idx, dest_idx, dest_cap)?;
     mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
-    finalize_aqueous_vessel(&mut scene.items[source_idx]);
-    finalize_aqueous_vessel(&mut scene.items[dest_idx]);
+    finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0);
+    finalize_aqueous_vessel(
+        &mut scene.items[dest_idx],
+        crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+    );
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Poured from the held vessel.".into(),
@@ -2069,8 +1919,11 @@ fn dump_all_solids(
         .unwrap_or(scene.temperature_c);
     let taken = take_all_solids(&mut scene.items[source_idx]);
     mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
-    finalize_aqueous_vessel(&mut scene.items[source_idx]);
-    finalize_aqueous_vessel(&mut scene.items[dest_idx]);
+    finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0);
+    finalize_aqueous_vessel(
+        &mut scene.items[dest_idx],
+        crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+    );
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Poured solids into the vessel.".into(),

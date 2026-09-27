@@ -107,19 +107,17 @@ fn excess_nacl_precipitates_and_aqueous_caps_at_saturation() {
 }
 
 #[test]
-fn adding_water_redissolves_solid_nacl_up_to_solubility() {
+fn adding_water_does_not_instant_redissolve_solid_nacl() {
+    // SI is precipitate-only; under-saturated redissolve is kinetic-owned.
     let mut dish = dish_at(20.0, 1.0);
     let max_1ml = solubility_mol_per_l(Salt::Nacl, 20.0) * 0.001;
-    dish.properties.composition.push(CompositionEntry {
-        substance_id: "nacl".into(),
-        phase: "solid".into(),
-        amount_ml: None,
-        amount_scoop: None,
-        amount_g: Some(0.02 * NACL_MOLAR_MASS_G_PER_MOL),
-        amount_mol: Some(0.02),
-    });
+    // Start oversaturated aq so SI precipitates, then dilute — aq must not jump up.
+    push_aq(&mut dish, "na+", max_1ml + 0.01);
+    push_aq(&mut dish, "cl-", max_1ml + 0.01);
     enforce_saturation(&mut dish);
     assert!((aqueous_mol(&dish, "na+") - max_1ml).abs() < 1e-9);
+    assert!(has_solid(&dish, "nacl"));
+    let aq_before = aqueous_mol(&dish, "na+");
 
     if let Some(water) = dish
         .properties
@@ -130,16 +128,11 @@ fn adding_water_redissolves_solid_nacl_up_to_solubility() {
         water.amount_ml = Some(10.0);
     }
     enforce_saturation(&mut dish);
-    let max_10ml = solubility_mol_per_l(Salt::Nacl, 20.0) * 0.010;
-    let expected_aq = 0.02_f64.min(max_10ml);
-    assert!((aqueous_mol(&dish, "na+") - expected_aq).abs() < 1e-9);
     assert!(
-        dish.properties
-            .composition
-            .iter()
-            .all(|c| !(c.substance_id == "nacl" && c.phase == "solid")),
-        "10 ml should dissolve 0.02 mol NaCl at 20 °C"
+        (aqueous_mol(&dish, "na+") - aq_before).abs() < 1e-9,
+        "dilution alone must not pull solid into aq"
     );
+    assert!(has_solid(&dish, "nacl"));
 }
 
 fn push_aq(item: &mut SceneItem, substance_id: &str, moles: f64) {
@@ -250,9 +243,8 @@ fn adding_cacl2_to_near_saturated_nacl_precipitates_extra_nacl() {
 }
 
 #[test]
-fn adding_water_redissolves_mixed_solids_toward_mixed_limit() {
+fn adding_water_keeps_mixed_precipitate_without_instant_redissolve() {
     let mut dish = dish_at(20.0, 2.0);
-    let s_nacl = solubility_mol_per_l(Salt::Nacl, 20.0);
     push_aq(&mut dish, "na+", 0.04);
     push_aq(&mut dish, "cl-", 0.10);
     push_aq(&mut dish, "ca2+", 0.03);
@@ -275,19 +267,11 @@ fn adding_water_redissolves_mixed_solids_toward_mixed_limit() {
     let solid_after = solid_mol(&dish, "nacl", NACL_MOLAR_MASS_G_PER_MOL);
     let aq_na_after = aqueous_mol(&dish, "na+");
     assert!(
-        aq_na_after > aq_na_before + 1e-6,
-        "dilution must redissolve toward the mixed limit"
+        (aq_na_after - aq_na_before).abs() < 1e-9,
+        "precip-only SI must not redissolve on dilution"
     );
-    assert!(solid_after < solid_before - 1e-6);
-    let independent_cap_5ml = s_nacl * 0.005;
-    assert!(
-        has_solid(&dish, "nacl"),
-        "5 ml should not dissolve all mixed NaCl"
-    );
-    assert!(
-            aq_na_after < independent_cap_5ml - 1e-6,
-            "mixed redissolve limit {aq_na_after} must stay below independent cap {independent_cap_5ml}"
-        );
+    assert!((solid_after - solid_before).abs() < 1e-9);
+    assert!(has_solid(&dish, "nacl"));
     let (na2, ca2, cl2) = atom_totals(&dish);
     assert!((na2 - na_tot).abs() < 1e-9);
     assert!((ca2 - ca_tot).abs() < 1e-9);

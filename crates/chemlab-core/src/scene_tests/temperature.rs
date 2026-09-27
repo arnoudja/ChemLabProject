@@ -1,5 +1,6 @@
 use super::super::*;
 use super::helpers::*;
+use crate::NACL_DELTA_H_SOLUTION_J_PER_MOL;
 
 fn dish_c_eff(water_ml: f64) -> f64 {
     C_DISH + water_ml * WATER_SPECIFIC_HEAT_J_PER_G_K

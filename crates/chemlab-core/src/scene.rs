@@ -119,19 +119,7 @@ const TEMPERATURE_SNAP_EPS_C: f64 = 0.005;
 
 pub(crate) const AMOUNT_EPS: f64 = 1e-12;
 
-/// Enthalpy of solution of NaCl at bench conditions (endothermic), J/mol.
-pub const NACL_DELTA_H_SOLUTION_J_PER_MOL: f64 = 3880.0;
-
-/// Enthalpy of solution of anhydrous CaCl₂ (exothermic), J/mol.
-pub const CACL2_DELTA_H_SOLUTION_J_PER_MOL: f64 = -81300.0;
-
-/// Enthalpy of solution of solid NaOH (exothermic), J/mol.
-pub const NAOH_DELTA_H_SOLUTION_J_PER_MOL: f64 = -44500.0;
-
-/// Enthalpy of solution of solid Na₂SO₄ (mildly exothermic), J/mol.
-/// Shared with the Free-mode sulfate stock (#121) so kinetic redissolve and
-/// carousel pour use the same heat.
-pub const NA2SO4_DELTA_H_SOLUTION_J_PER_MOL: f64 = -2340.0;
+pub(crate) use crate::aqueous_pipeline::finalize_aqueous_vessel;
 
 /// Enthalpy of neutralization H⁺ + OH⁻ → H₂O (exothermic), J/mol.
 pub const H_OH_NEUTRALIZATION_J_PER_MOL: f64 = -55800.0;
@@ -1159,100 +1147,6 @@ fn mix_held_solid_into_water(
     add_or_increase_solid(target, &held.substance_id, scoops, mass_g);
 }
 
-/// Author salt aqueous ions into a composition list (vessel kinetic dissolve and
-/// filter-paper wash). Returns `(moles_of_salt, ΔH_sol)` for temperature update.
-pub(crate) fn author_dissolved_salt_ions(
-    composition: &mut Vec<CompositionEntry>,
-    substance_id: &str,
-    mass_g: f64,
-) -> Option<(f64, f64)> {
-    if mass_g <= AMOUNT_EPS {
-        return None;
-    }
-    match substance_id {
-        "nacl" => {
-            let moles = mass_g / NACL_MOLAR_MASS_G_PER_MOL;
-            add_or_increase_mol_in(composition, "na+", "aqueous", moles);
-            add_or_increase_mol_in(composition, "cl-", "aqueous", moles);
-            Some((moles, NACL_DELTA_H_SOLUTION_J_PER_MOL))
-        }
-        "cacl2" => {
-            let moles = mass_g / CACL2_MOLAR_MASS_G_PER_MOL;
-            add_or_increase_mol_in(composition, "ca2+", "aqueous", moles);
-            add_or_increase_mol_in(composition, "cl-", "aqueous", 2.0 * moles);
-            Some((moles, CACL2_DELTA_H_SOLUTION_J_PER_MOL))
-        }
-        "naoh" => {
-            let moles = mass_g / NAOH_MOLAR_MASS_G_PER_MOL;
-            add_or_increase_mol_in(composition, "na+", "aqueous", moles);
-            add_or_increase_mol_in(composition, "oh-", "aqueous", moles);
-            Some((moles, NAOH_DELTA_H_SOLUTION_J_PER_MOL))
-        }
-        "na2so4" => {
-            let moles = mass_g / NA2SO4_MOLAR_MASS_G_PER_MOL;
-            add_or_increase_mol_in(composition, "na+", "aqueous", 2.0 * moles);
-            add_or_increase_mol_in(composition, "so4^2-", "aqueous", moles);
-            Some((moles, NA2SO4_DELTA_H_SOLUTION_J_PER_MOL))
-        }
-        "caso4" => {
-            let moles = mass_g / CASO4_MOLAR_MASS_G_PER_MOL;
-            add_or_increase_mol_in(composition, "ca2+", "aqueous", moles);
-            add_or_increase_mol_in(composition, "so4^2-", "aqueous", moles);
-            Some((moles, 0.0))
-        }
-        _ => None,
-    }
-}
-
-/// Ionize liquid H₂SO₄, kinetic-dissolve solids, speciate acid/base, SI(precip), reform.
-///
-/// `dissolve_tau_s` is pour-contact or clock `dt` for the kinetic step. Liquid H₂SO₄
-/// ionizes to `H⁺ + HSO₄⁻` when the water:acid ratio is above the ~98% w/w reform
-/// threshold; [`crate::acid_base::speciate_aqueous_acid_base`] then solves `K_w` +
-/// `K_a2`. SI is precipitate-only (under-saturated redissolve is kinetic-owned).
-/// Free sulfuric below the reform threshold becomes liquid `h2so4`.
-pub(crate) fn finalize_aqueous_vessel(item: &mut SceneItem, dissolve_tau_s: f64) {
-    crate::h2so4::ionize_liquid_h2so4_in_water(item);
-    crate::dissolve_kinetics::apply_kinetic_dissolve(item, dissolve_tau_s);
-    crate::acid_base::speciate_aqueous_acid_base(item, true);
-    crate::solubility::enforce_saturation(item);
-    // SI can consume SO₄²⁻ (and collapsed HSO₄⁻); re-equilibrate without re-heating.
-    crate::acid_base::speciate_aqueous_acid_base(item, false);
-    crate::h2so4::reform_aqueous_h2so4_to_liquid(item);
-    // Reform removes acid protons; restore K_w / K_a2 if solvent remains.
-    crate::acid_base::speciate_aqueous_acid_base(item, false);
-    crate::solubility::sync_fill_ml(item);
-}
-
-/// Apply dissolution heat to the solvent vessel: ΔT = −(n·ΔH_sol) / C_eff.
-///
-/// `C_eff` is [`effective_heat_capacity`] of the target (vessel + water + solids).
-/// Endothermic ΔH cools; exothermic heats.
-pub(crate) fn apply_dissolution_temperature_change(
-    target: &mut SceneItem,
-    moles: f64,
-    delta_h_j_per_mol: f64,
-    current_temperature_c: f64,
-) {
-    let water_ml = target
-        .properties
-        .composition
-        .iter()
-        .find(|c| c.substance_id == "water" && c.phase == "liquid")
-        .and_then(|c| c.amount_ml)
-        .unwrap_or(0.0);
-    if water_ml <= 0.0 || moles <= 0.0 {
-        return;
-    }
-    let c_eff = effective_heat_capacity(target);
-    if c_eff <= AMOUNT_EPS {
-        return;
-    }
-    let heat_j = moles * delta_h_j_per_mol;
-    let delta_t = -heat_j / c_eff;
-    target.properties.temperature_c = Some(current_temperature_c + delta_t);
-}
-
 fn add_or_increase_mol(target: &mut SceneItem, substance_id: &str, phase: &str, moles: f64) {
     add_or_increase_mol_in(
         &mut target.properties.composition,
@@ -1262,7 +1156,7 @@ fn add_or_increase_mol(target: &mut SceneItem, substance_id: &str, phase: &str, 
     );
 }
 
-fn add_or_increase_mol_in(
+pub(crate) fn add_or_increase_mol_in(
     composition: &mut Vec<CompositionEntry>,
     substance_id: &str,
     phase: &str,

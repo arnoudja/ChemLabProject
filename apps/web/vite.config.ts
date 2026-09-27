@@ -42,7 +42,14 @@ export default defineConfig(({ mode }) => {
         reporter: ['text', 'json-summary'],
         all: true,
         include: ['src/**/*.{ts,tsx}'],
-        exclude: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/generated/**', 'src/main.tsx'],
+        exclude: [
+          'src/**/*.test.ts',
+          'src/**/*.test.tsx',
+          'src/generated/**',
+          'src/main.tsx',
+          // Stub/fixture helpers for LabBench tests — not product code.
+          'src/components/labBenchTest*.ts',
+        ],
         thresholds: {
           lines: 94,
         },

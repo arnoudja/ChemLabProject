@@ -106,11 +106,7 @@ fn naoh_dissolves_to_na_and_oh_with_exothermic_delta_t() {
     assert!((aqueous_mol(water, "na+") - moles).abs() < 1e-9);
     assert!((aqueous_mol(water, "oh-") - moles).abs() < 1e-9);
     assert!(aqueous_mol(water, "cl-") < 1e-12);
-    assert!(!water
-        .properties
-        .composition
-        .iter()
-        .any(|c| c.substance_id == "naoh"));
+    assert!(solid_g(water, "naoh") < 1e-9);
     let t_after = water.properties.temperature_c.unwrap();
     assert!(
         t_after > t_before + 0.01,
@@ -217,7 +213,7 @@ fn tongs_dump_naoh_into_filled_beaker_dissolves() {
     let moles = naoh_g / 40.0;
     assert!((aqueous_mol(water, "na+") - moles).abs() < 1e-9);
     assert!((aqueous_mol(water, "oh-") - moles).abs() < 1e-9);
-    assert_eq!(solid_g(water, "naoh"), 0.0);
+    assert!(solid_g(water, "naoh") < 1e-9);
     assert_eq!(solid_g(item(&scene, "beaker-naoh"), "naoh"), 0.0);
     assert!(aqueous_mol(water, "cl-") < 1e-12);
     let t_after = water.properties.temperature_c.unwrap();
@@ -247,7 +243,7 @@ fn pouring_water_onto_solid_naoh_dissolves() {
     assert!(water_ml(water) > 1e-6);
     assert!((aqueous_mol(water, "oh-") - moles).abs() < 1e-9);
     assert!((aqueous_mol(water, "na+") - moles).abs() < 1e-9);
-    assert_eq!(solid_g(water, "naoh"), 0.0);
+    assert!(solid_g(water, "naoh") < 1e-9);
 }
 
 #[test]

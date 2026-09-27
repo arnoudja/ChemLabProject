@@ -40,11 +40,49 @@ async fn pour_nacl_action_persists_dissolve_scene_and_events() {
         "Sodium chloride (NaCl) dissolves in water at bench temperature."
     );
 
-    let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
-    assert_eq!(
-        without_item_temperatures(&without_clock(&persisted)),
-        without_item_temperatures(&without_clock(&action["scene"]))
+    let water_after_pour = action["scene"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == "beaker-water")
+        .unwrap();
+    let composition_pour = water_after_pour["properties"]["composition"]
+        .as_array()
+        .unwrap();
+    assert!(composition_pour
+        .iter()
+        .any(|entry| entry["substance_id"] == "na+" && entry["phase"] == "aqueous"));
+    assert!(composition_pour
+        .iter()
+        .any(|entry| entry["substance_id"] == "cl-" && entry["phase"] == "aqueous"));
+    // Pour contact is kinetic — leftover solid is expected before clock ticks finish it.
+    let solid_pour = composition_pour
+        .iter()
+        .find(|entry| entry["substance_id"] == "nacl" && entry["phase"] == "solid")
+        .and_then(|e| e["amount_g"].as_f64())
+        .unwrap_or(0.0);
+    assert!(
+        solid_pour > 0.05,
+        "pour contact must leave noticeable solid NaCl, got {solid_pour}"
     );
+    let moles_pour = composition_pour
+        .iter()
+        .find(|entry| entry["substance_id"] == "na+" && entry["phase"] == "aqueous")
+        .and_then(|e| e["amount_mol"].as_f64())
+        .unwrap();
+    let cooled = water_after_pour["properties"]["temperature_c"]
+        .as_f64()
+        .unwrap();
+    let c_eff = chemlab_core::C_BEAKER + 200.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K;
+    let expected = 20.0 - (moles_pour * chemlab_core::NACL_DELTA_H_SOLUTION_J_PER_MOL) / c_eff;
+    assert!(
+        (cooled - expected).abs() < 0.05,
+        "expected cooled temperature ~{expected}, got {cooled}"
+    );
+    assert!(cooled < 20.0);
+
+    finish_kinetic_dissolve_http(&state, &app, &cookies).await;
+    let persisted = body_json(get_scene(&app, Some(&cookies)).await).await;
     let water = persisted["items"]
         .as_array()
         .unwrap()
@@ -58,18 +96,18 @@ async fn pour_nacl_action_persists_dissolve_scene_and_events() {
     assert!(composition
         .iter()
         .any(|entry| entry["substance_id"] == "cl-" && entry["phase"] == "aqueous"));
-    assert!(!composition
+    assert!(!composition.iter().any(|entry| {
+        entry["substance_id"] == "nacl"
+            && entry["phase"] == "solid"
+            && entry["amount_g"].as_f64().unwrap_or(0.0) > 1e-9
+    }));
+    let expected_mol = 0.2 / 58.44;
+    let na = composition
         .iter()
-        .any(|entry| entry["substance_id"] == "nacl"));
-    let cooled = water["properties"]["temperature_c"].as_f64().unwrap();
-    let moles = 0.2 / 58.44;
-    let c_eff = chemlab_core::C_BEAKER + 200.0 * chemlab_core::WATER_SPECIFIC_HEAT_J_PER_G_K;
-    let expected = 20.0 - (moles * chemlab_core::NACL_DELTA_H_SOLUTION_J_PER_MOL) / c_eff;
-    assert!(
-        (cooled - expected).abs() < 1e-4,
-        "expected cooled temperature ~{expected}, got {cooled}"
-    );
-    assert!(cooled < 20.0);
+        .find(|entry| entry["substance_id"] == "na+" && entry["phase"] == "aqueous")
+        .and_then(|e| e["amount_mol"].as_f64())
+        .unwrap();
+    assert!((na - expected_mol).abs() < 1e-6);
 }
 
 #[tokio::test]
@@ -388,6 +426,21 @@ async fn pour_sand_after_cacl2_heating_succeeds() {
         after_heat.round() as i32 != 20,
         "CaCl2 heating must leave a non-bench lookup T, got {after_heat}"
     );
+
+    // Finish kinetic CaCl₂ so the sand pour is a pure sensible blend.
+    finish_kinetic_dissolve_http(&state, &app, &cookies).await;
+    // Pin the clock so ambient cool between GET and pour does not skew ΔT.
+    let mut scene = body_json(get_scene(&app, Some(&cookies)).await).await;
+    let after_heat = scene["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .find(|item| item["id"] == "beaker-water")
+        .expect("beaker-water")["properties"]["temperature_c"]
+        .as_f64()
+        .expect("temperature_c");
+    scene["last_applied_unix_ms"] = serde_json::json!(chrono::Utc::now().timestamp_millis());
+    save_scene_blob(&state, &scene).await;
 
     assert_eq!(
         post_action(

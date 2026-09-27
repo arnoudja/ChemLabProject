@@ -140,6 +140,7 @@ fn neutralize_h2so4_with_naoh_two_to_one() {
 
     // Dump all NaOH (2.00 g = 0.05 mol) — not enough for full neut of full stock.
     use_tongs_pour(&mut scene, "beaker-naoh", "beaker-water");
+    apply_elapsed(&mut scene, 1.0);
     let water = item(&scene, "beaker-water");
     let n_h = aqueous_mol(water, "h+");
     let n_oh = aqueous_mol(water, "oh-");

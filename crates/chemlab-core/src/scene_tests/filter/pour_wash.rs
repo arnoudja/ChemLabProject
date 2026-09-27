@@ -272,11 +272,48 @@ fn filter_pour_larger_volume_washes_more_nacl_than_smaller() {
     filter_pour_water_through_paper(&mut large);
     let washed_large = paper_nacl - solid_g(item(&large, "filter-paper-1"), "nacl");
 
-    assert!(washed_small > 1e-6, "small rinse should dissolve some salt");
+    // Absolute band: 10 ml NaCl rinse stays partial (~tens of %), not one-rinse complete.
+    let frac_small = washed_small / paper_nacl;
+    assert!(
+        (0.20..0.55).contains(&frac_small),
+        "10 ml NaCl wash must be tens of % dissolved, got {frac_small} (washed={washed_small})"
+    );
     assert!(
         washed_large > washed_small + 1e-4,
         "larger pour should wash more: small={washed_small} large={washed_large}"
     );
+    assert!(
+        washed_large / paper_nacl > 0.85,
+        "200 ml rinse should clear most unsaturated NaCl"
+    );
+}
+
+#[test]
+fn filter_pour_naoh_washes_much_faster_than_nacl_at_same_volume() {
+    let load = 0.5;
+    let rinse_ml = 10.0;
+
+    let mut nacl = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut nacl, vec![solid("nacl", load)]);
+    set_source_water(&mut nacl, rinse_ml, 20.0);
+    filter_pour_water_through_paper(&mut nacl);
+    let washed_nacl = load - solid_g(item(&nacl, "filter-paper-1"), "nacl");
+
+    let mut naoh = initial_bench_scene("lab-test");
+    put_solids_on_paper(&mut naoh, vec![solid("naoh", load)]);
+    set_source_water(&mut naoh, rinse_ml, 20.0);
+    filter_pour_water_through_paper(&mut naoh);
+    let washed_naoh = load - solid_g(item(&naoh, "filter-paper-1"), "naoh");
+
+    assert!(
+        washed_naoh > load * 0.99,
+        "NaOH 10 ml wash should be near-complete, washed={washed_naoh}"
+    );
+    assert!(
+        washed_nacl < load * 0.55,
+        "NaCl 10 ml wash stays partial, washed={washed_nacl}"
+    );
+    assert!(washed_naoh > washed_nacl + 0.2);
 }
 
 #[test]

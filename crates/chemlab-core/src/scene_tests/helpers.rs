@@ -34,6 +34,23 @@ pub(super) fn bench_with_water(lab_id: &str) -> Scene {
     scene
 }
 
+/// Advance ≤2 s ticks until wet vessels no longer need kinetic dissolve.
+///
+/// Matches the HTTP clock clamp (`MAX_ELAPSED_MS = 2000`); a single long
+/// `apply_elapsed` still only dissolves for 2 s per call.
+pub(super) fn finish_kinetic_dissolve(scene: &mut Scene) {
+    for _ in 0..16 {
+        let needs = scene.items.iter().any(|item| {
+            matches!(item.kind.as_str(), "beaker" | "evaporation_dish")
+                && crate::dissolve_kinetics::vessel_needs_kinetic_dissolve(item)
+        });
+        if !needs {
+            return;
+        }
+        apply_elapsed(scene, 2.0);
+    }
+}
+
 #[test]
 fn initial_bench_scene_has_sixteen_items_with_water_acids_salts_and_evaporation_bench() {
     let scene = initial_bench_scene("lab-test");
@@ -439,6 +456,8 @@ pub(super) fn set_slurry_in_water(scene: &mut Scene) {
         },
     )
     .unwrap();
+    // Finish kinetic dissolve so slurry tests see dissolved ions + sand only.
+    finish_kinetic_dissolve(scene);
     apply_action(
         scene,
         Action::UseTool {

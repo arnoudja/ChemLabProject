@@ -64,12 +64,22 @@ fn spoon_pour_dissolves_na2so4_to_aqueous_ions() {
     )
     .unwrap();
 
+    // Pour contact is partial — leftover solid before clock ticks (same as NaCl).
+    let water_after_pour = item(&scene, "beaker-water");
+    assert!(aqueous_mol(water_after_pour, "na+") > 1e-6);
+    assert!(
+        solid_g(water_after_pour, "na2so4") > 0.05,
+        "pour contact must leave noticeable solid Na₂SO₄"
+    );
+    assert!(scene.last_events.iter().any(|e| e.kind == "dissolved"));
+
+    finish_kinetic_dissolve(&mut scene);
+
     let water = item(&scene, "beaker-water");
     let moles = SPOON_SCOOP_MASS_G / NA2SO4_MOLAR_MASS_G_PER_MOL;
-    assert!((aqueous_mol(water, "na+") - 2.0 * moles).abs() < 1e-12);
+    assert!((aqueous_mol(water, "na+") - 2.0 * moles).abs() < 1e-9);
     // Speciation leaves a tiny HSO₄⁻ fraction via Kₐ₂; conserve total sulfur.
     let sulfur = aqueous_mol(water, "so4^2-") + aqueous_mol(water, "hso4-");
-    assert!((sulfur - moles).abs() < 1e-12);
+    assert!((sulfur - moles).abs() < 1e-9);
     assert_eq!(solid_g(water, "na2so4"), 0.0);
-    assert!(scene.last_events.iter().any(|e| e.kind == "dissolved"));
 }

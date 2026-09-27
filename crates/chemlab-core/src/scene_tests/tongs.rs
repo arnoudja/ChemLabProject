@@ -105,6 +105,7 @@ fn tongs_pour_water_into_dish_fills_to_capacity_and_scales_ions_and_solids() {
         },
     )
     .unwrap();
+    finish_kinetic_dissolve(&mut scene);
     apply_action(
         &mut scene,
         Action::UseTool {
@@ -376,12 +377,47 @@ fn tongs_dump_nacl_into_filled_beaker_enforces_saturation() {
     use_tongs(&mut scene, "beaker-nacl").unwrap();
     use_tongs(&mut scene, "beaker-water").unwrap();
 
+    // Pour contact is partial; unsaturated 200 ml clears the 2 g stock over a few seconds.
+    assert!(aqueous_mol(item(&scene, "beaker-water"), "na+") > 1e-6);
+    assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 0.0);
+    finish_kinetic_dissolve(&mut scene);
+
     let expected = nacl_g / NACL_MOLAR_MASS_G_PER_MOL;
     assert!((aqueous_mol(item(&scene, "beaker-water"), "na+") - expected).abs() < 1e-9);
     assert!((aqueous_mol(item(&scene, "beaker-water"), "cl-") - expected).abs() < 1e-9);
     assert_eq!(solid_g(item(&scene, "beaker-water"), "nacl"), 0.0);
-    assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 0.0);
     assert_eq!(item(&scene, "beaker-nacl").location, "held");
+}
+
+/// Regression: tongs dump leaves solid+water; clock alone must advance kinetic dissolve
+/// (no further pour). Mirrors the Free-mode "all H₂O + all NaCl" inspect stall.
+#[test]
+fn tongs_dump_nacl_into_wet_beaker_advances_on_elapsed_without_further_pours() {
+    let mut scene = bench_with_water("lab-test");
+    use_tongs(&mut scene, "beaker-nacl").unwrap();
+    use_tongs(&mut scene, "beaker-water").unwrap();
+
+    let solid_after_dump = solid_g(item(&scene, "beaker-water"), "nacl");
+    let na_after_dump = aqueous_mol(item(&scene, "beaker-water"), "na+");
+    assert!(
+        solid_after_dump > 0.1,
+        "pour-contact τ must leave undissolved NaCl for the clock path, got {solid_after_dump} g"
+    );
+    assert!(na_after_dump > 1e-6);
+
+    // No further actions — only apply_elapsed (same entry as HTTP GET clock).
+    apply_elapsed(&mut scene, 1.0);
+
+    let solid_after = solid_g(item(&scene, "beaker-water"), "nacl");
+    let na_after = aqueous_mol(item(&scene, "beaker-water"), "na+");
+    assert!(
+        solid_after < solid_after_dump - 1e-6,
+        "elapsed must dissolve solid: before {solid_after_dump} g, after {solid_after} g"
+    );
+    assert!(
+        na_after > na_after_dump + 1e-6,
+        "elapsed must raise Na⁺: before {na_after_dump}, after {na_after}"
+    );
 }
 
 #[test]

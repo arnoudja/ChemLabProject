@@ -1,5 +1,5 @@
 use super::super::*;
-use super::helpers::{aqueous_mol, fill_pipette_from, item, solid_g};
+use super::helpers::{aqueous_mol, fill_pipette_from, finish_kinetic_dissolve, item, solid_g};
 use crate::challenges::{
     is_completed, WinCompare, CHALLENGES, CREATE_TABLE_SALT, SEPARATE_NACL_SIO2,
 };
@@ -295,8 +295,11 @@ fn challenge_ignores_the_wrong_species_and_tolerates_float_dust() {
 fn solved_by_playing_the_challenge_through() {
     let mut scene = separate_scene();
 
-    // Wet the mixture with the distilled-water stock, then filter off the sand.
+    // Wet the mixture with the distilled-water stock, wait for kinetic dissolve, then filter.
     use_tongs_pour(&mut scene, "beaker-h2o", "beaker-water");
+    // 2 g NaCl in 10 ml: a few seconds of kinetic dissolve when unsaturated.
+    // HTTP clock clamps each tick to ≤2 s, so use several ticks.
+    finish_kinetic_dissolve(&mut scene);
     use_tongs_pour(&mut scene, "beaker-water", "filter-paper-1");
 
     // Boil the filtrate dry in the dish, one dish-full at a time.

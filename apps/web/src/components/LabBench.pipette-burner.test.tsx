@@ -210,6 +210,43 @@ describe('LabBench pipette / burner', () => {
     vi.useRealTimers()
   })
 
+  it('polls the lab scene while solid NaCl is dissolving in the wet beaker', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    // Ambient T — kinetic dissolve must poll even when ΔT ≪ thermal threshold.
+    const dissolving = filledScene()
+    dissolving.items.find((item) => item.id === 'burner-1')!.properties.on = false
+    dissolving.items.find((item) => item.id === 'beaker-water')!.properties.temperature_c = 20
+    dissolving.items.find((item) => item.id === 'beaker-water')!.properties.composition = [
+      {
+        substance_id: 'water',
+        phase: 'liquid',
+        amount_ml: 200,
+        amount_scoop: null,
+        amount_g: null,
+        amount_mol: null,
+      },
+      {
+        substance_id: 'nacl',
+        phase: 'solid',
+        amount_ml: null,
+        amount_scoop: 8,
+        amount_g: 1.6,
+        amount_mol: null,
+      },
+    ]
+    const fetchMock = stubLabFetch({ scene: dissolving })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Beaker' })
+    const getsBefore = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/scene').length
+
+    await vi.advanceTimersByTimeAsync(900)
+    const getsAfter = fetchMock.mock.calls.filter(([url]) => String(url) === '/api/lab/scene').length
+    expect(getsAfter).toBeGreaterThan(getsBefore)
+    vi.useRealTimers()
+  })
+
   it('returns a filled pipette to the last source on put-away', async () => {
     const fetchMock = stubLabFetch()
     vi.stubGlobal('fetch', fetchMock)

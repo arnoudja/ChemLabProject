@@ -131,6 +131,98 @@ async fn tongs_use_tool_and_put_away_with_csrf_and_session_pick_up_and_restore_w
     );
 }
 
+/// GET clock must kinetic-dissolve tongs-dumped NaCl in a wet main beaker without
+/// another pour (regression for inspect amounts stuck until the next tongs click).
+#[tokio::test]
+async fn get_scene_applies_elapsed_kinetic_dissolve_after_tongs_nacl_dump() {
+    let (app, state) = test_app_state().await;
+    let (csrf_token, csrf_cookie, session_cookie) =
+        register_user(&app, "tongs-kinetic-get@chemlab.local").await;
+    let cookies = format!("{session_cookie}; {csrf_cookie}");
+    persist_filled_main_beaker(&state, &app, &cookies).await;
+
+    assert_eq!(
+        post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            serde_json::json!({
+                "type": "use_tool",
+                "tool_item_id": "tongs-1",
+                "target_item_id": "beaker-nacl"
+            }),
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
+    let dump = post_action(
+        &app,
+        &cookies,
+        Some(&csrf_token),
+        serde_json::json!({
+            "type": "use_tool",
+            "tool_item_id": "tongs-1",
+            "target_item_id": "beaker-water"
+        }),
+    )
+    .await;
+    assert_eq!(dump.status(), StatusCode::OK);
+    let after_dump = body_json(dump).await["scene"].clone();
+
+    let solid_before = scene_item(&after_dump, "beaker-water")["properties"]["composition"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["substance_id"] == "nacl" && c["phase"] == "solid")
+        .and_then(|c| c["amount_g"].as_f64())
+        .unwrap_or(0.0);
+    let na_before = scene_item(&after_dump, "beaker-water")["properties"]["composition"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["substance_id"] == "na+" && c["phase"] == "aqueous")
+        .and_then(|c| c["amount_mol"].as_f64())
+        .unwrap_or(0.0);
+    assert!(
+        solid_before > 0.1,
+        "tongs dump must leave solid NaCl for the GET clock, got {solid_before} g"
+    );
+    assert!(na_before > 1e-6);
+
+    let mut seeded = after_dump;
+    let past_ms = chrono::Utc::now().timestamp_millis() - 2000;
+    seeded["last_applied_unix_ms"] = serde_json::json!(past_ms);
+    save_scene_blob(&state, &seeded).await;
+
+    let response = get_scene(&app, Some(&cookies)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let after = body_json(response).await;
+
+    let solid_after = scene_item(&after, "beaker-water")["properties"]["composition"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["substance_id"] == "nacl" && c["phase"] == "solid")
+        .and_then(|c| c["amount_g"].as_f64())
+        .unwrap_or(0.0);
+    let na_after = scene_item(&after, "beaker-water")["properties"]["composition"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["substance_id"] == "na+" && c["phase"] == "aqueous")
+        .and_then(|c| c["amount_mol"].as_f64())
+        .unwrap_or(0.0);
+    assert!(
+        solid_after < solid_before - 1e-6,
+        "GET elapsed must dissolve solid: before {solid_before} g, after {solid_after} g"
+    );
+    assert!(
+        na_after > na_before + 1e-6,
+        "GET elapsed must raise Na⁺: before {na_before}, after {na_after}"
+    );
+}
+
 #[tokio::test]
 async fn get_scene_backfills_tongs_on_persisted_lab_from_before_tongs() {
     let (app, state) = test_app_state().await;

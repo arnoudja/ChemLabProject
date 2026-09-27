@@ -5,6 +5,7 @@
 //! pipette transfers, burner heat, evaporation, and mixed-salt saturation.
 
 pub mod challenges;
+mod composition;
 mod dissolve;
 mod hcl;
 mod scene;

@@ -2,17 +2,15 @@ import type { CompositionEntry, Item, LabScene } from '../generated/contracts'
 import { optionalArray } from '../lib/scene'
 import type { StockSolid } from './LabBenchIcons'
 
-const AMOUNT_EPS = 1e-12
-
 /** Apparent molar volumes (ml/mol) — mirrors chemlab-core `hcl::PHI_V_*`. */
-const HCL_STOCK_CAPACITY_ML = 10.0
-const HCL_STOCK_WATER_MASS_G = 8.043
-const HCL_STOCK_HCL_MOLES = 3.447 / 36.46
-const PHI_V_HCL_ML_PER_MOL =
+export const HCL_STOCK_CAPACITY_ML = 10.0
+export const HCL_STOCK_WATER_MASS_G = 8.043
+export const HCL_STOCK_HCL_MOLES = 3.447 / 36.46
+export const PHI_V_HCL_ML_PER_MOL =
   (HCL_STOCK_CAPACITY_ML - HCL_STOCK_WATER_MASS_G) / HCL_STOCK_HCL_MOLES
-const PHI_V_NACL_ML_PER_MOL = 22.0
-const PHI_V_CACL2_ML_PER_MOL = 34.0
-const PHI_V_NAOH_ML_PER_MOL = 4.0
+export const PHI_V_NACL_ML_PER_MOL = 22.0
+export const PHI_V_CACL2_ML_PER_MOL = 34.0
+export const PHI_V_NAOH_ML_PER_MOL = 4.0
 
 export const SPOON_ID = 'spoon-1'
 export const PIPETTE_ID = 'pipette-1'
@@ -79,27 +77,6 @@ export function distilledWaterAmountMl(scene: LabScene): number | null {
     (c) => c.substance_id === 'water' && c.phase === 'liquid',
   )
   return entry?.amount_ml ?? null
-}
-
-/** Density of aqueous HCl (g/ml) from HCl mass fraction — piecewise linear through lab stock table.
- * Kept for docs / continuity checks; solution volume uses Φ_V (see `solutionVolumeMl`). */
-export function hclAqDensityGPerMl(wHcl: number): number {
-  const w = Math.min(0.4, Math.max(0, wHcl))
-  const table: [number, number][] = [
-    [0, 1.0],
-    [0.202, 1.098],
-    [0.3, 1.149],
-    [0.37, 1.184],
-  ]
-  for (let i = 0; i < table.length - 1; i += 1) {
-    const [w0, d0] = table[i]!
-    const [w1, d1] = table[i + 1]!
-    if (w <= w1) {
-      const frac = Math.abs(w1 - w0) <= AMOUNT_EPS ? 0 : (w - w0) / (w1 - w0)
-      return d0 + frac * (d1 - d0)
-    }
-  }
-  return table[table.length - 1]![1]
 }
 
 function aqueousMol(composition: CompositionEntry[], substanceId: string): number {

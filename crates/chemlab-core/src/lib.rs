@@ -4,6 +4,7 @@
 //! lookup (NaCl / CaCl₂ / NaOH / sand in water) plus the lab scene engine — scoop,
 //! pipette transfers, burner heat, evaporation, and mixed-salt saturation.
 
+mod acid_base;
 pub mod challenges;
 mod composition;
 mod dissolve;

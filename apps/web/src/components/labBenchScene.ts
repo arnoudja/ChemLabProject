@@ -116,12 +116,16 @@ export function solutionVolumeMl(composition: CompositionEntry[]): number {
   const nCa = aqueousMol(composition, 'ca2+')
   const nCl = aqueousMol(composition, 'cl-')
   const nSo4 = aqueousMol(composition, 'so4^2-')
-  const nHcl = Math.min(nH, nCl)
-  const nHAfterHcl = Math.max(0, nH - nHcl)
-  const nH2so4 = Math.min(nHAfterHcl * 0.5, nSo4)
-  const nSo4AfterAcid = Math.max(0, nSo4 - nH2so4)
-  const nNaoh = nOh
-  const nNaSalt = Math.max(0, nNa - nOh)
+  const nHso4 = aqueousMol(composition, 'hso4-')
+  const nHExcess = Math.max(0, nH - nOh)
+  const nHcl = Math.min(nHExcess, nCl)
+  const nHAfterHcl = Math.max(0, nHExcess - nHcl)
+  const nSo4Acid = Math.min(Math.max(0, nHAfterHcl - nHso4), nSo4)
+  const nH2so4 = nHso4 + nSo4Acid
+  const nSo4AfterAcid = Math.max(0, nSo4 - nSo4Acid)
+  // Excess OH above free H marks strong-base NaOH (Kw leaves both present).
+  const nNaoh = nOh > nH + 1e-9 ? Math.max(0, nOh - nH) : 0
+  const nNaSalt = Math.max(0, nNa - nNaoh)
   const nNa2so4 = Math.min(nNaSalt * 0.5, nSo4AfterAcid)
   const nNaAfterSulfate = Math.max(0, nNaSalt - 2 * nNa2so4)
   const nSo4AfterNa2so4 = Math.max(0, nSo4AfterAcid - nNa2so4)

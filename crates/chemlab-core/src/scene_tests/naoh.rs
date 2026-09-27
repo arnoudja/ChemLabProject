@@ -177,8 +177,8 @@ fn naoh_into_hcl_neutralizes_to_salt_and_heats() {
 
     let water = item(&scene, "beaker-water");
     let n_naoh = SPOON_SCOOP_MASS_G / 40.0;
-    assert!((aqueous_mol(water, "h+") - (0.01 - n_naoh)).abs() < 1e-9);
-    assert!(aqueous_mol(water, "oh-") < 1e-12);
+    assert!((aqueous_mol(water, "h+") - (0.01 - n_naoh)).abs() < 1e-6);
+    assert!(aqueous_mol(water, "oh-") < 1e-6);
     assert!((aqueous_mol(water, "na+") - n_naoh).abs() < 1e-9);
     assert!((aqueous_mol(water, "cl-") - 0.01).abs() < 1e-9);
     let t_after = water.properties.temperature_c.unwrap();
@@ -299,11 +299,13 @@ fn stoichiometric_naoh_into_hcl_consumes_both_ions() {
     .unwrap();
 
     let water = item(&scene, "beaker-water");
-    assert!(aqueous_mol(water, "h+") < 1e-12);
-    assert!(aqueous_mol(water, "oh-") < 1e-12);
+    // Kw residual ions remain near √Kw · V (~1e-8 mol in 100 ml).
+    assert!(aqueous_mol(water, "h+") < 1e-6);
+    assert!(aqueous_mol(water, "oh-") < 1e-6);
     assert!((aqueous_mol(water, "na+") - n_rxn).abs() < 1e-9);
     assert!((aqueous_mol(water, "cl-") - n_rxn).abs() < 1e-9);
-    assert!(crate::hcl::ph_of_item(water).is_none());
+    let ph = crate::hcl::ph_of_item(water).expect("neutral salt has pH ~7");
+    assert!((ph - 7.0).abs() < 0.15, "got pH {ph}");
 }
 
 #[test]

@@ -82,17 +82,22 @@ pub fn liquid_h2so4_mol_entries(entries: &[CompositionEntry]) -> f64 {
         .unwrap_or(0.0)
 }
 
-/// Aqueous H₂SO₄ formula units from free acid protons paired with sulfate.
+/// Aqueous H₂SO₄ formula units from free acid inventory (HSO₄⁻ + acid SO₄²⁻).
 ///
-/// Fully dissociated school approx: each H₂SO₄ → 2 H⁺ + SO₄²⁻. HCl inventory
-/// (`min(h+, cl-)`) is excluded first so mixed acids do not double-count.
+/// HCl inventory (`min(h+, cl-)`) is excluded first so mixed acids do not
+/// double-count. Each `hso4-` is one formula unit; remaining free `h+` pairs
+/// with `so4^2-` as additional H₂SO₄ (post-Kₐ₂ speciation).
 pub fn aqueous_h2so4_moles_entries(entries: &[CompositionEntry]) -> f64 {
     let n_h = aqueous_mol_entries(entries, "h+");
+    let n_oh = aqueous_mol_entries(entries, "oh-");
     let n_cl = aqueous_mol_entries(entries, "cl-");
     let n_so4 = aqueous_mol_entries(entries, "so4^2-");
-    let n_hcl = n_h.min(n_cl).max(0.0);
-    let n_h_acid = (n_h - n_hcl).max(0.0);
-    (n_h_acid * 0.5).min(n_so4).max(0.0)
+    let n_hso4 = aqueous_mol_entries(entries, "hso4-");
+    let n_h_excess = (n_h - n_oh).max(0.0);
+    let n_hcl = n_h_excess.min(n_cl).max(0.0);
+    let n_h_acid = (n_h_excess - n_hcl).max(0.0);
+    let n_so4_acid = (n_h_acid - n_hso4).max(0.0).min(n_so4);
+    (n_hso4 + n_so4_acid).max(0.0)
 }
 
 /// Inventory of water + sulfuric acid (liquid + aqueous) for dilution enthalpy.
@@ -246,12 +251,12 @@ fn author_liquid_h2so4_moles(item: &mut SceneItem, n: f64) {
     });
 }
 
-/// Convert all liquid `h2so4` to aqueous `2 H⁺ + SO₄²⁻` when the water:acid mole
+/// Convert all liquid `h2so4` to aqueous `H⁺ + HSO₄⁻` when the water:acid mole
 /// ratio is **above** [`H2SO4_REFORM_WATER_PER_ACID`] (~98% w/w stock).
 ///
-/// **Speciation note:** school sim uses full dissociation (both protons strong).
-/// Real H₂SO₄ has a weak second step (HSO₄⁻ ⇌ H⁺ + SO₄²⁻, Kₐ₂ ≈ 0.01); a full
-/// HSO₄⁻/Kₐ₂ solver is out of scope.
+/// The strong first proton is authored here; the weak second step
+/// (`HSO₄⁻ ⇌ H⁺ + SO₄²⁻`, school Kₐ₂) is solved by
+/// [`crate::acid_base::speciate_aqueous_acid_base`].
 ///
 /// Returns moles of H₂SO₄ ionized (for dilution-heat callers that already mixed).
 pub fn ionize_liquid_h2so4_in_water(item: &mut SceneItem) -> f64 {
@@ -269,18 +274,18 @@ pub fn ionize_liquid_h2so4_in_water(item: &mut SceneItem) -> f64 {
     crate::composition::set_aqueous_mol(
         item,
         "h+",
-        crate::composition::aqueous_mol(item, "h+") + 2.0 * n,
+        crate::composition::aqueous_mol(item, "h+") + n,
     );
     crate::composition::set_aqueous_mol(
         item,
-        "so4^2-",
-        crate::composition::aqueous_mol(item, "so4^2-") + n,
+        "hso4-",
+        crate::composition::aqueous_mol(item, "hso4-") + n,
     );
     n
 }
 
 /// Inverse of [`ionize_liquid_h2so4_in_water`]: reform free aqueous sulfuric
-/// (`min((h+ − HCl)/2, so4)`) to liquid `h2so4` when the water:acid mole ratio is
+/// (HSO₄⁻ + acid SO₄²⁻) to liquid `h2so4` when the water:acid mole ratio is
 /// at or below [`H2SO4_REFORM_WATER_PER_ACID`].
 ///
 /// HCl inventory (`min(h+, cl-)`) is left aqueous. Call **after** SI so salt
@@ -297,9 +302,16 @@ pub fn reform_aqueous_h2so4_to_liquid(item: &mut SceneItem) -> f64 {
         return 0.0;
     }
     let n_h = crate::composition::aqueous_mol(item, "h+");
+    let n_hso4 = crate::composition::aqueous_mol(item, "hso4-");
     let n_so4 = crate::composition::aqueous_mol(item, "so4^2-");
-    crate::composition::set_aqueous_mol(item, "h+", (n_h - 2.0 * n).max(0.0));
-    crate::composition::set_aqueous_mol(item, "so4^2-", (n_so4 - n).max(0.0));
+    let take_hso4 = n_hso4.min(n);
+    let take_so4 = (n - take_hso4).min(n_so4);
+    // Each formula unit removes two acidic hydrogens (bound HSO₄⁻ + free H⁺).
+    let h_from_bound = take_hso4;
+    let h_from_free = (2.0 * n - h_from_bound).max(0.0);
+    crate::composition::set_aqueous_mol(item, "h+", (n_h - h_from_free).max(0.0));
+    crate::composition::set_aqueous_mol(item, "hso4-", (n_hso4 - take_hso4).max(0.0));
+    crate::composition::set_aqueous_mol(item, "so4^2-", (n_so4 - take_so4).max(0.0));
     author_liquid_h2so4_moles(item, n);
     n
 }
@@ -487,7 +499,8 @@ mod tests {
         let ionized = ionize_liquid_h2so4_in_water(&mut item);
         assert!((ionized - n).abs() < 1e-12);
         assert!(liquid_h2so4_mol_entries(&item.properties.composition) < 1e-15);
-        assert!((crate::composition::aqueous_mol(&item, "so4^2-") - n).abs() < 1e-12);
-        assert!((crate::composition::aqueous_mol(&item, "h+") - 2.0 * n).abs() < 1e-12);
+        assert!((crate::composition::aqueous_mol(&item, "hso4-") - n).abs() < 1e-12);
+        assert!((crate::composition::aqueous_mol(&item, "h+") - n).abs() < 1e-12);
+        assert!(crate::composition::aqueous_mol(&item, "so4^2-") < 1e-15);
     }
 }

@@ -149,8 +149,12 @@ describe('phFromComposition', () => {
     expect(formatPh(ph!)).toBe('-0.98')
   })
 
-  it('returns null without aqueous H+', () => {
-    expect(phFromComposition([entry({ substance_id: 'water', phase: 'liquid', amount_ml: 100 })])).toBeNull()
+  it('returns pH 7 for pure water (school Kw)', () => {
+    expect(phFromComposition([entry({ substance_id: 'water', phase: 'liquid', amount_ml: 100 })])).toBe(7)
+  })
+
+  it('formats HSO4- formula', () => {
+    expect(formatFormulaPlain('hso4-')).toBe('HSO4-')
   })
 
   it('returns alkaline pH for aqueous OH-', () => {

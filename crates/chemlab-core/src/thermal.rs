@@ -138,17 +138,56 @@ fn remove_evaporated_mass(dish: &mut SceneItem, loss_mass_g: f64) {
     }
 }
 
-/// Dish boil temperature: tabulated `T_boil(w_HCl)` when aqueous HCl is present
-/// (peaks at azeotrope 108.6 °C); otherwise Raoult + Antoine from water mole fraction.
+/// Dish boil temperature.
+///
+/// With HCl inventory: tabulated `T_hcl(w)`. When non-HCl salt solutes are also
+/// present, take `max(T_hcl(w), T_raoult(x_w))` so salt elevation is not ignored
+/// (no more acid-wins). Concentrated HCl alone stays on the acid table — Raoult
+/// on the acid-depleted `x_w` would falsely soar. Without HCl inventory: Raoult +
+/// Antoine from water mole fraction (sulfuric-only / water path).
 fn dish_boil_temperature_c(item: &SceneItem) -> f64 {
     let inv = crate::hcl::HclInventory::from_item(item);
+    let t_water = boiling_temperature_c(water_mole_fraction(item));
     if inv.n_h > AMOUNT_EPS {
-        return crate::hcl::hcl_boil_temperature_c(inv.w_hcl());
+        let t_hcl = crate::hcl::hcl_boil_temperature_c(inv.w_hcl());
+        if dish_has_non_hcl_salt(item, inv.n_h) {
+            return t_hcl.max(t_water);
+        }
+        return t_hcl;
     }
-    boiling_temperature_c(water_mole_fraction(item))
+    t_water
 }
 
-fn apply_latent_cool(dish: &mut SceneItem, mass_g: f64, c_eff_before: f64) {
+/// True when aqueous Na⁺/Ca²⁺ or salt Cl⁻ (beyond acid H⁺) is present.
+fn dish_has_non_hcl_salt(item: &SceneItem, _n_hcl: f64) -> bool {
+    let n_na = crate::composition::aqueous_mol(item, "na+");
+    let n_ca = crate::composition::aqueous_mol(item, "ca2+");
+    let n_cl = crate::composition::aqueous_mol(item, "cl-");
+    let n_h = crate::composition::aqueous_mol(item, "h+");
+    let n_oh = crate::composition::aqueous_mol(item, "oh-");
+    let n_naoh = if n_oh > n_h + 1e-9 {
+        (n_oh - n_h).max(0.0)
+    } else {
+        0.0
+    };
+    let n_na_salt = (n_na - n_naoh).max(0.0);
+    // Cl⁻ not charge-balanced by free H⁺ is salt chloride (ignore Kw-scale noise).
+    let n_cl_salt = (n_cl - n_h).max(0.0);
+    const SALT_EPS: f64 = 1e-9;
+    n_na_salt > SALT_EPS || n_ca > SALT_EPS || n_cl_salt > SALT_EPS
+}
+
+/// Latent heat (J/g) for the vapor leaving `dish` this step.
+fn dish_vapor_latent_heat_j_per_g(dish: &SceneItem) -> f64 {
+    let inv = crate::hcl::HclInventory::from_item(dish);
+    if inv.n_h <= AMOUNT_EPS {
+        return WATER_LATENT_HEAT_J_PER_G;
+    }
+    let y = crate::hcl::azeotrope_vapor_w_hcl(inv.w_hcl());
+    crate::hcl::hcl_latent_heat_j_per_g(y)
+}
+
+fn apply_latent_cool_with_h_vap(dish: &mut SceneItem, mass_g: f64, c_eff_before: f64, h_vap: f64) {
     if mass_g <= AMOUNT_EPS || c_eff_before <= AMOUNT_EPS {
         return;
     }
@@ -156,7 +195,7 @@ fn apply_latent_cool(dish: &mut SceneItem, mass_g: f64, c_eff_before: f64) {
         .properties
         .temperature_c
         .unwrap_or(AMBIENT_TEMPERATURE_C);
-    dish.properties.temperature_c = Some(t - mass_g * WATER_LATENT_HEAT_J_PER_G / c_eff_before);
+    dish.properties.temperature_c = Some(t - mass_g * h_vap / c_eff_before);
 }
 
 /// Sub-boil mass transfer: `m_dot = k A max(0, p_w − p_air) / P_atm` (ml/s ≈ g/s), then latent cool.
@@ -180,8 +219,9 @@ fn apply_sub_boil_mass_transfer(dish: &mut SceneItem, dt: f64) {
         return;
     }
     let c_eff = effective_heat_capacity(dish).max(AMOUNT_EPS);
+    let h_vap = dish_vapor_latent_heat_j_per_g(dish);
     remove_evaporated_mass(dish, loss);
-    apply_latent_cool(dish, loss, c_eff);
+    apply_latent_cool_with_h_vap(dish, loss, c_eff, h_vap);
 }
 
 fn apply_heat_limited_boil(dish: &mut SceneItem, dt: f64) {
@@ -194,7 +234,8 @@ fn apply_heat_limited_boil(dish: &mut SceneItem, dt: f64) {
     // Subtracting UA here would double-count loss that is not applied while
     // heating (and historically with BURNER_POWER_W=80 / UA_DISH=4 would make
     // Q_net negative near 100 °C). Burner-off paths never call this (Q_net ≤ 0).
-    let m_dot = (BURNER_POWER_W / WATER_LATENT_HEAT_J_PER_G).max(0.0);
+    let h_vap = dish_vapor_latent_heat_j_per_g(dish).max(AMOUNT_EPS);
+    let m_dot = (BURNER_POWER_W / h_vap).max(0.0);
     remove_evaporated_mass(dish, m_dot * dt);
 }
 

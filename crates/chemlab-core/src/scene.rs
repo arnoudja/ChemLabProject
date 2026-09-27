@@ -1215,47 +1215,27 @@ fn author_dissolved_salt_ions(
     }
 }
 
-/// Consume equal moles of aqueous H⁺ and OH⁻ → H₂O, then apply neutralization heat.
-///
-/// Must run **before** [`crate::solubility::enforce_saturation`] so OH⁻-balanced Na⁺
-/// is not mis-classified as NaCl (which would invent Cl⁻).
-fn apply_neutralization(item: &mut SceneItem) {
-    let n_h = crate::composition::aqueous_mol(item, "h+");
-    let n_oh = crate::composition::aqueous_mol(item, "oh-");
-    let n_rxn = n_h.min(n_oh);
-    if n_rxn <= AMOUNT_EPS {
-        return;
-    }
-
-    crate::composition::set_aqueous_mol(item, "h+", n_h - n_rxn);
-    crate::composition::set_aqueous_mol(item, "oh-", n_oh - n_rxn);
-    add_or_increase_water(item, n_rxn * WATER_MOLAR_MASS_G_PER_MOL);
-
-    let c_eff = effective_heat_capacity(item);
-    if c_eff > AMOUNT_EPS {
-        let t = item
-            .properties
-            .temperature_c
-            .unwrap_or(AMBIENT_TEMPERATURE_C);
-        item.properties.temperature_c = Some(t - n_rxn * H_OH_NEUTRALIZATION_J_PER_MOL / c_eff);
-    }
-}
-
-/// Ionize liquid H₂SO₄, dissolve solid NaOH, neutralize acid/base, SI, then reform.
+/// Ionize liquid H₂SO₄, dissolve solid NaOH, speciate acid/base, SI, then reform.
 ///
 /// NaOH is highly soluble and is not chloride-SI capped, so tongs dumps /
 /// water-onto-solid paths must author ions here (spoon pour already dissolves via
 /// the qualitative table before this runs). Liquid H₂SO₄ ionizes to
-/// `2 H⁺ + SO₄²⁻` (full-dissociation school approx) when the water:acid ratio is
-/// above the ~98% w/w reform threshold; after SI, free sulfuric below that
-/// threshold reforms to liquid `h2so4`. SI syncs `fill_ml` before reform, so
-/// reform re-syncs so dish/beaker UI height matches post-reform Φ_V.
+/// `H⁺ + HSO₄⁻` when the water:acid ratio is above the ~98% w/w reform threshold;
+/// [`crate::acid_base::speciate_aqueous_acid_base`] then solves `K_w` + `K_a2`
+/// (subsuming instant neutralization + heat). SI may pull free SO₄; a second
+/// heat-free speciate restores bisulfate equilibrium before reform. Free sulfuric
+/// below the reform threshold becomes liquid `h2so4`. SI syncs `fill_ml` before
+/// reform, so reform re-syncs so dish/beaker UI height matches post-reform Φ_V.
 fn finalize_aqueous_vessel(item: &mut SceneItem) {
     crate::h2so4::ionize_liquid_h2so4_in_water(item);
     dissolve_solid_naoh_in_water(item);
-    apply_neutralization(item);
+    crate::acid_base::speciate_aqueous_acid_base(item, true);
     crate::solubility::enforce_saturation(item);
+    // SI can consume SO₄²⁻ (and collapsed HSO₄⁻); re-equilibrate without re-heating.
+    crate::acid_base::speciate_aqueous_acid_base(item, false);
     crate::h2so4::reform_aqueous_h2so4_to_liquid(item);
+    // Reform removes acid protons; restore K_w / K_a2 if solvent remains.
+    crate::acid_base::speciate_aqueous_acid_base(item, false);
     crate::solubility::sync_fill_ml(item);
 }
 
@@ -1876,11 +1856,18 @@ fn wash_paper_solids_into_fluid(
             continue;
         }
         let n_oh = crate::composition::aqueous_mol_entries(fluid, "oh-");
-        let n_na = (crate::composition::aqueous_mol_entries(fluid, "na+") - n_oh).max(0.0);
+        let n_h_free = crate::composition::aqueous_mol_entries(fluid, "h+");
+        let n_naoh = if n_oh > n_h_free + 1e-9 {
+            (n_oh - n_h_free).max(0.0)
+        } else {
+            0.0
+        };
+        let n_na = (crate::composition::aqueous_mol_entries(fluid, "na+") - n_naoh).max(0.0);
         let n_ca = crate::composition::aqueous_mol_entries(fluid, "ca2+");
-        let n_h = crate::composition::aqueous_mol_entries(fluid, "h+");
+        let n_hso4 = crate::composition::aqueous_mol_entries(fluid, "hso4-");
+        let n_h = n_h_free + n_hso4;
         let n_cl = crate::composition::aqueous_mol_entries(fluid, "cl-");
-        let n_so4 = crate::composition::aqueous_mol_entries(fluid, "so4^2-");
+        let n_so4 = crate::composition::aqueous_mol_entries(fluid, "so4^2-") + n_hso4;
         let cap = crate::solubility::unsaturated_capacity_g(
             salt, v_fluid, n_na, n_ca, n_h, n_cl, n_oh, n_so4, t_wash,
         );

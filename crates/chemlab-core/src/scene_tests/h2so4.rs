@@ -8,7 +8,7 @@ use crate::h2so4::{
 use crate::hcl::{self, hcl_inventory_moles_entries};
 
 #[test]
-fn pipette_into_water_ionizes_to_two_h_and_so4() {
+fn pipette_into_water_ionizes_with_ka2_speciation() {
     let mut scene = initial_bench_scene("lab-test");
     fill_main_beaker(&mut scene, 20.0);
     fill_pipette_from(&mut scene, "beaker-h2so4");
@@ -22,8 +22,18 @@ fn pipette_into_water_ionizes_to_two_h_and_so4() {
     )
     .unwrap();
     let water = item(&scene, "beaker-water");
-    assert!((aqueous_mol(water, "so4^2-") - n_added).abs() < 1e-9);
-    assert!((aqueous_mol(water, "h+") - 2.0 * n_added).abs() < 1e-9);
+    let n_s = aqueous_mol(water, "so4^2-") + aqueous_mol(water, "hso4-");
+    assert!(
+        (n_s - n_added).abs() < 1e-9,
+        "sulfur conserved: {n_s} vs {n_added}"
+    );
+    let n_h = aqueous_mol(water, "h+");
+    // Ka2 regime: [H+] between first-proton and fully dissociated (not 2×c).
+    assert!(
+        n_h > n_added && n_h < 1.5 * n_added,
+        "got n_h={n_h}, n_added={n_added}"
+    );
+    assert!(aqueous_mol(water, "hso4-") > aqueous_mol(water, "so4^2-"));
     assert!(aqueous_mol(water, "cl-") < 1e-15);
     assert!(hcl_inventory_moles_entries(&water.properties.composition) < 1e-15);
     assert!(crate::hcl::ph_of_item(water).expect("acid pH") < 1.0);
@@ -112,8 +122,9 @@ fn sulfuric_only_dish_evap_removes_water_keeps_acid() {
         "H₂SO₄ must be non-volatile: acid {n_acid0} → {n_acid1}"
     );
     assert!(water_ml(dish) < 15.0, "water should leave");
-    // Still dilute → stays aqueous ions.
-    assert!(aqueous_mol(dish, "so4^2-") > 1e-6);
+    // Still dilute → stays aqueous ions (SO₄²⁻ and/or HSO₄⁻).
+    let n_s = aqueous_mol(dish, "so4^2-") + aqueous_mol(dish, "hso4-");
+    assert!(n_s > 1e-6);
     assert!(h2so4::liquid_h2so4_mol_entries(&dish.properties.composition) < 1e-15);
 }
 
@@ -124,7 +135,7 @@ fn neutralize_h2so4_with_naoh_two_to_one() {
     // Add ~0.05 mol H₂SO₄ via tongs fraction of stock.
     use_tongs_pour(&mut scene, "beaker-h2so4", "beaker-water");
     let water = item(&scene, "beaker-water");
-    let n_h2so4 = aqueous_mol(water, "so4^2-");
+    let n_h2so4 = aqueous_mol(water, "so4^2-") + aqueous_mol(water, "hso4-");
     assert!(n_h2so4 > 0.1);
 
     // Dump all NaOH (2.00 g = 0.05 mol) — not enough for full neut of full stock.
@@ -133,15 +144,21 @@ fn neutralize_h2so4_with_naoh_two_to_one() {
     let n_h = aqueous_mol(water, "h+");
     let n_oh = aqueous_mol(water, "oh-");
     let n_na = aqueous_mol(water, "na+");
-    let n_so4 = aqueous_mol(water, "so4^2-");
-    assert!(n_oh < 1e-9, "OH should be consumed");
-    // 0.05 mol NaOH neutralizes 0.05 mol H⁺ → remaining H⁺ = 2*n_h2so4 - 0.05
-    let expected_h = (2.0 * n_so4 - n_na).max(0.0);
+    let n_s = aqueous_mol(water, "so4^2-") + aqueous_mol(water, "hso4-");
+    let n_hso4 = aqueous_mol(water, "hso4-");
     assert!(
-        (n_h - expected_h).abs() < 1e-6,
-        "stoich H left: got {n_h} expected ~{expected_h}"
+        n_oh < 1e-6,
+        "OH should be consumed (Kw residual OK), got {n_oh}"
+    );
+    // Charge/mass: acidic hydrogens left ≈ 2*n_S − n_Na (school stoich after Ka2).
+    let acid_h = n_h + n_hso4;
+    let expected_acid_h = (2.0 * n_s - n_na).max(0.0);
+    assert!(
+        (acid_h - expected_acid_h).abs() < 1e-5,
+        "stoich acid H left: got {acid_h} expected ~{expected_acid_h}"
     );
     assert!((n_na - 0.05).abs() < 1e-6);
+    assert!(crate::acid_base::aqueous_charge_mol(water).abs() < 1e-6);
 }
 
 #[test]
@@ -231,7 +248,8 @@ fn sand_inert_with_h2so4() {
         .and_then(|c| c.amount_g)
         .unwrap_or(0.0);
     assert!((sand_g - SPOON_SCOOP_MASS_G).abs() < 1e-9);
-    assert!((aqueous_mol(water, "so4^2-") - H2SO4_STOCK_H2SO4_MOLES * 0.1).abs() < 1e-9);
+    let n_s = aqueous_mol(water, "so4^2-") + aqueous_mol(water, "hso4-");
+    assert!((n_s - H2SO4_STOCK_H2SO4_MOLES * 0.1).abs() < 1e-9);
 }
 
 #[test]
@@ -248,7 +266,8 @@ fn so4_survives_si_without_inventing_cl() {
     )
     .unwrap();
     let water = item(&scene, "beaker-water");
-    assert!(aqueous_mol(water, "so4^2-") > 1e-6);
+    let n_s = aqueous_mol(water, "so4^2-") + aqueous_mol(water, "hso4-");
+    assert!(n_s > 1e-6);
     assert!(aqueous_mol(water, "cl-") < 1e-15);
     assert!((hcl::solution_volume_ml(water) - H2SO4_STOCK_CAPACITY_ML).abs() > 1.0);
 }
@@ -321,7 +340,11 @@ fn dish_concentrate_below_threshold_reforms_liquid_h2so4() {
         h2so4::liquid_h2so4_mol_entries(&dish.properties.composition)
     );
     assert!(aqueous_mol(dish, "so4^2-") < 1e-12);
-    assert!(aqueous_mol(dish, "h+") < 1e-12);
+    assert!(
+        aqueous_mol(dish, "h+") < 1e-9,
+        "free H⁺ after reform should be Kw-scale at most, got {}",
+        aqueous_mol(dish, "h+")
+    );
     // Reform changes Φ_V (aq ions → liquid h2so4); finalize must re-sync fill_ml.
     let fill = dish.properties.fill_ml.unwrap_or(0.0);
     let phi_v = crate::hcl::solution_volume_ml(dish);
@@ -498,8 +521,10 @@ fn reformed_liquid_redilutes_and_ionizes() {
     let dish = item(&scene, "dish-1");
     let n = H2SO4_STOCK_H2SO4_MOLES * 0.1;
     assert!(h2so4::liquid_h2so4_mol_entries(&dish.properties.composition) < 1e-15);
-    assert!((aqueous_mol(dish, "so4^2-") - n).abs() < 1e-9);
-    assert!((aqueous_mol(dish, "h+") - 2.0 * n).abs() < 1e-9);
+    let n_s = aqueous_mol(dish, "so4^2-") + aqueous_mol(dish, "hso4-");
+    assert!((n_s - n).abs() < 1e-9);
+    let n_h = aqueous_mol(dish, "h+");
+    assert!(n_h > n && n_h < 1.5 * n, "Ka2 regime n_h={n_h}");
     let t = dish.properties.temperature_c.unwrap_or(20.0);
     assert!(t > 20.5, "re-dilution should warm, got {t}");
 }

@@ -255,8 +255,12 @@ pub(crate) fn unsaturated_capacity_g(
 /// HCl common-ion for SI is `min(n(h+), total_cl)` — bare sulfuric `h+` never invents Cl⁻.
 /// Sulfate is conserved across aq SO₄²⁻ + solid Na₂SO₄/CaSO₄.
 ///
-/// **NaOH / OH⁻:** aqueous Na⁺ paired 1:1 with OH⁻ is **not** counted as NaCl/Na₂SO₄
-/// inventory. Callers must run H⁺+OH⁻ neutralization before this when both are present.
+/// **NaOH / OH⁻:** aqueous Na⁺ paired 1:1 with excess OH⁻ (above K_w residual) is
+/// **not** counted as NaCl/Na₂SO₄ inventory. Callers must run acid–base speciation
+/// before this when acid and base are present.
+///
+/// **HSO₄⁻:** collapsed into free `h+` + `so4^2-` for the SI mass balance so gypsum
+/// / Na₂SO₄ can pull total sulfur; a post-SI speciate restores Kₐ₂.
 pub fn enforce_saturation(item: &mut SceneItem) {
     let temperature_c = item.properties.temperature_c.unwrap_or(20.0);
     let water_ml = liquid_water_ml(item);
@@ -267,18 +271,29 @@ pub fn enforce_saturation(item: &mut SceneItem) {
     }
 
     let n_oh = aqueous_mol(item, "oh-");
-    let n_h = aqueous_mol(item, "h+");
+    let n_h_free = aqueous_mol(item, "h+");
+    let n_hso4 = aqueous_mol(item, "hso4-");
+    // Collapse bisulfate so SI can consume total sulfur; bound H becomes free H⁺.
+    let n_h = n_h_free + n_hso4;
     let s_nacl = solid_mol(item, "nacl", NACL_MOLAR_MASS_G_PER_MOL);
     let s_cacl2 = solid_mol(item, "cacl2", CACL2_MOLAR_MASS_G_PER_MOL);
     let s_na2so4 = solid_mol(item, "na2so4", NA2SO4_MOLAR_MASS_G_PER_MOL);
     let s_caso4 = solid_mol(item, "caso4", CASO4_MOLAR_MASS_G_PER_MOL);
 
     let total_cl = aqueous_mol(item, "cl-") + s_nacl + 2.0 * s_cacl2;
-    let total_so4 = aqueous_mol(item, "so4^2-") + s_na2so4 + s_caso4;
+    let total_so4 = aqueous_mol(item, "so4^2-") + n_hso4 + s_na2so4 + s_caso4;
     let total_ca = aqueous_mol(item, "ca2+") + s_cacl2 + s_caso4;
     let n_na_total = aqueous_mol(item, "na+");
-    let total_na_salt = (n_na_total - n_oh).max(0.0) + s_nacl + 2.0 * s_na2so4;
-    let n_hcl = n_h.min(total_cl).max(0.0);
+    // Excess OH above free H marks strong-base NaOH (post-K_w both are present).
+    let n_naoh = if n_oh > n_h_free + 1e-9 {
+        (n_oh - n_h_free).max(0.0)
+    } else {
+        0.0
+    };
+    let total_na_salt = (n_na_total - n_naoh).max(0.0) + s_nacl + 2.0 * s_na2so4;
+    // HCl common-ion uses excess acid protons (not Kw-paired H⁺↔OH⁻).
+    let n_h_excess = (n_h_free - n_oh).max(0.0) + n_hso4;
+    let n_hcl = n_h_excess.min(total_cl).max(0.0);
 
     let (aq_na_salt, aq_ca, aq_so4, solid_nacl, solid_cacl2, solid_na2so4, solid_caso4) =
         if litres <= AMOUNT_EPS {
@@ -299,9 +314,10 @@ pub fn enforce_saturation(item: &mut SceneItem) {
 
     let aq_cl = (total_cl - solid_nacl - 2.0 * solid_cacl2).max(0.0);
 
-    set_aqueous_mol(item, "na+", aq_na_salt + n_oh);
+    set_aqueous_mol(item, "na+", aq_na_salt + n_naoh);
     set_aqueous_mol(item, "ca2+", aq_ca);
     set_aqueous_mol(item, "so4^2-", aq_so4);
+    set_aqueous_mol(item, "hso4-", 0.0); // restored by post-SI speciate
     set_aqueous_mol(item, "cl-", aq_cl);
     set_aqueous_mol(item, "h+", n_h);
     set_aqueous_mol(item, "oh-", n_oh);

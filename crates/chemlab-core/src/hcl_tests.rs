@@ -102,13 +102,23 @@ fn dilution_of_stock_into_water_is_exothermic() {
 }
 
 #[test]
-fn vapor_bias_drives_liquid_toward_azeotrope() {
+fn vapor_y_w_table_drives_liquid_toward_azeotrope() {
     let lean = azeotrope_vapor_w_hcl(0.10);
     assert!(lean < 0.10);
     let rich = azeotrope_vapor_w_hcl(0.30);
     assert!(rich > 0.30);
     let at = azeotrope_vapor_w_hcl(HCL_AZEOTROPE_W_W);
     assert!((at - HCL_AZEOTROPE_W_W).abs() < 1e-6);
+}
+
+#[test]
+fn hcl_latent_heat_mixes_water_and_acid() {
+    use crate::scene::WATER_LATENT_HEAT_J_PER_G;
+    assert!((hcl_latent_heat_j_per_g(0.0) - WATER_LATENT_HEAT_J_PER_G).abs() < 1e-9);
+    assert!((hcl_latent_heat_j_per_g(1.0) - HCL_LATENT_HEAT_J_PER_G).abs() < 1e-9);
+    let mid = hcl_latent_heat_j_per_g(0.5);
+    let expected = 0.5 * (WATER_LATENT_HEAT_J_PER_G + HCL_LATENT_HEAT_J_PER_G);
+    assert!((mid - expected).abs() < 1e-9);
 }
 
 #[test]

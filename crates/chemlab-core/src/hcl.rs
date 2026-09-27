@@ -40,10 +40,8 @@ pub const HCL_AZEOTROPE_W_W: f64 = 0.202;
 /// [`hcl_boil_temperature_c`], not a universal dish plateau.
 pub const HCL_AZEOTROPE_BOIL_C: f64 = 108.6;
 
-/// Max relative pull of vapor vs liquid far from the azeotrope (0 = y = w_l).
-/// Strength is scaled by distance from [`HCL_AZEOTROPE_W_W`] so `|y − w_l|`
-/// shrinks continuously as the liquid approaches the azeotrope.
-const AZEOTROPE_VAPOR_BIAS: f64 = 0.55;
+/// School-grade HCl vaporization enthalpy (J/g): ≈ 16 kJ/mol / 36.46 g/mol.
+pub const HCL_LATENT_HEAT_J_PER_G: f64 = 440.0;
 
 /// School-grade HCl–water boiling curve (°C) vs HCl mass fraction.
 ///
@@ -100,14 +98,17 @@ pub fn hcl_aq_density_g_per_ml(w_hcl: f64) -> f64 {
     TABLE[TABLE.len() - 1].1
 }
 
-/// Aqueous HCl formula-unit moles: `min(n(h+), n(cl-))`.
+/// Aqueous HCl formula-unit moles: excess acid `h+` paired with `cl-`.
 ///
-/// Bare `h+` is **not** HCl — sulfuric and other acids may author free protons
-/// without chloride. VLE, dilution Φ_L, and Φ_V_HCl all key on this inventory.
+/// After K_w speciation both `h+` and `oh-` are always present. Inventory is
+/// `min(max(n_h − n_oh, 0), n_cl)` so near-neutral salt water does not invent
+/// HCl. Bare sulfuric protons (no Cl⁻) still yield zero inventory.
 pub fn hcl_inventory_moles_entries(entries: &[CompositionEntry]) -> f64 {
     let n_h = aqueous_mol_entries(entries, "h+");
+    let n_oh = aqueous_mol_entries(entries, "oh-");
     let n_cl = aqueous_mol_entries(entries, "cl-");
-    n_h.min(n_cl).max(0.0)
+    let n_h_excess = (n_h - n_oh).max(0.0);
+    n_h_excess.min(n_cl).max(0.0)
 }
 
 /// Inventory of water + aqueous HCl in a composition list.
@@ -223,10 +224,14 @@ pub const PHI_V_NAOH_ML_PER_MOL: f64 = 4.0;
 /// Pair aqueous ions into electrolyte formula units for additive Φ_V volume.
 ///
 /// Order: HCl → H₂SO₄ → NaOH → Na₂SO₄ → CaSO₄ → NaCl → CaCl₂.
-/// HCl is `min(h+, cl-)`; remaining free `h+` pairs with `so4^2-` as H₂SO₄
-/// (fully dissociated school approx: 2 H⁺ per SO₄²⁻). Leftover Ca²⁺ pairs with
-/// remaining SO₄ as CaSO₄(aq) before any CaCl₂ attribution — dissolved gypsum
-/// never borrows Φ_V_CaCl₂ without Cl⁻.
+/// HCl is `min(h+, cl-)`; free sulfuric is `hso4-` plus free `h+` paired with
+/// `so4^2-` (post-Kₐ₂). Leftover Ca²⁺ pairs with remaining SO₄ as CaSO₄(aq)
+/// before any CaCl₂ attribution — dissolved gypsum never borrows Φ_V_CaCl₂
+/// without Cl⁻.
+///
+/// After Kw speciation both `h+` and `oh-` are always tiny-present; NaOH Φ_V
+/// uses excess `oh-` above the water baseline so near-neutral salt does not
+/// look like NaOH(aq).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ElectrolyteMoles {
     pub n_hcl: f64,
@@ -246,12 +251,20 @@ impl ElectrolyteMoles {
         let n_ca = aqueous_mol_entries(entries, "ca2+");
         let n_cl = aqueous_mol_entries(entries, "cl-");
         let n_so4 = aqueous_mol_entries(entries, "so4^2-");
-        let n_hcl = n_h.min(n_cl).max(0.0);
-        let n_h_after_hcl = (n_h - n_hcl).max(0.0);
-        let n_h2so4 = (n_h_after_hcl * 0.5).min(n_so4).max(0.0);
-        let n_so4_after_acid = (n_so4 - n_h2so4).max(0.0);
-        let n_naoh = n_oh;
-        let n_na_salt = (n_na - n_oh).max(0.0);
+        let n_hso4 = aqueous_mol_entries(entries, "hso4-");
+        let n_h_excess = (n_h - n_oh).max(0.0);
+        let n_hcl = n_h_excess.min(n_cl).max(0.0);
+        let n_h_after_hcl = (n_h_excess - n_hcl).max(0.0);
+        let n_so4_acid = (n_h_after_hcl - n_hso4).max(0.0).min(n_so4);
+        let n_h2so4 = (n_hso4 + n_so4_acid).max(0.0);
+        let n_so4_after_acid = (n_so4 - n_so4_acid).max(0.0);
+        // Strong-base NaOH only when OH⁻ clearly exceeds Kw-scale residual.
+        let n_naoh = if n_oh > n_h + 1e-9 {
+            (n_oh - n_h).max(0.0)
+        } else {
+            0.0
+        };
+        let n_na_salt = (n_na - n_naoh).max(0.0);
         let n_na2so4 = (n_na_salt * 0.5).min(n_so4_after_acid).max(0.0);
         let n_na_after_sulfate = (n_na_salt - 2.0 * n_na2so4).max(0.0);
         let n_so4_after_na2so4 = (n_so4_after_acid - n_na2so4).max(0.0);
@@ -318,20 +331,17 @@ pub fn transfer_volume_ml_of_entries(entries: &[CompositionEntry]) -> f64 {
     solution_volume_ml_of_entries(entries)
 }
 
-/// Strong-acid / strong-base approximate pH from composition.
+/// pH from aqueous composition after acid–base speciation.
 ///
-/// - Acid (`h+` present, no `oh-`): pH = −log₁₀([H⁺]) with [H⁺] = n_h+ / V_solution_L.
-/// - Base (`oh-` present, no `h+`): pH ≈ 14 + log₁₀([OH⁻]).
-/// - Both present: returns `None` (callers should neutralize first).
-/// - Neither / empty volume: `None`.
+/// Prefers solved `[H⁺]` (`pH = −log₁₀(n_h+/V)`). When only `oh-` is authored
+/// (pre-speciation strong base), uses `pH ≈ 14 + log₁₀([OH⁻])`. Pure water /
+/// empty volume with no ions returns **7.0** (school K_w). After the aqueous
+/// solver both `h+` and `oh-` are present at K_w levels — always use `[H⁺]`.
 pub fn ph_of_entries(entries: &[CompositionEntry]) -> Option<f64> {
     let n_h = aqueous_mol_entries(entries, "h+");
     let n_oh = aqueous_mol_entries(entries, "oh-");
     let v_l = solution_volume_ml_of_entries(entries) / 1000.0;
     if v_l <= AMOUNT_EPS {
-        return None;
-    }
-    if n_h > AMOUNT_EPS && n_oh > AMOUNT_EPS {
         return None;
     }
     if n_h > AMOUNT_EPS {
@@ -347,6 +357,11 @@ pub fn ph_of_entries(entries: &[CompositionEntry]) -> Option<f64> {
             return None;
         }
         return Some(14.0 + conc.log10());
+    }
+    // Solvent present, no authored acid/base ions → school neutral water.
+    let water_ml = liquid_water_ml_entries(entries);
+    if water_ml > AMOUNT_EPS {
+        return Some(7.0);
     }
     None
 }
@@ -403,39 +418,57 @@ pub fn hcl_dilution_heat_j(dest: HclInventory, added: HclInventory, after: HclIn
 
 /// Mass fraction of HCl in vapor for azeotrope-style boil / MT.
 ///
-/// Maximum-boiling azeotrope qualitative split:
-/// - liquid leaner than az (`w_l < w_az`): vapor **leaner** in HCl than liquid
-///   (richer in water) so the liquid concentrates toward the azeotrope;
-/// - liquid richer than az: vapor **richer** in HCl than liquid so the liquid
+/// Piecewise-linear school `y(w)` table consistent with the maximum-boiling
+/// azeotrope and the [`hcl_boil_temperature_c`] knots:
+/// - liquid leaner than az (`w_l < w_az`): vapor **leaner** in HCl (`y < w`)
+///   so the liquid concentrates toward the azeotrope;
+/// - at the azeotrope: `y = w_az`;
+/// - liquid richer than az: vapor **richer** in HCl (`y > w`) so the liquid
 ///   leans toward the azeotrope.
 ///
-/// Pull strength is scaled by relative distance from the azeotrope so
-/// `|y − w_l|` shrinks continuously as `w_l → w_az`.
+/// `|y − w_l|` shrinks continuously as `w_l → w_az` by construction of the knots.
 pub fn azeotrope_vapor_w_hcl(w_liquid: f64) -> f64 {
-    let w_l = w_liquid.clamp(0.0, 1.0);
-    let w_az = HCL_AZEOTROPE_W_W;
-    if (w_l - w_az).abs() < 1e-4 {
-        return w_az;
+    let w = w_liquid.clamp(0.0, 0.40);
+    // Knots: (w_liquid, y_vapor). Dilute y≪w; azeotrope y=w; rich y>w.
+    const TABLE: [(f64, f64); 8] = [
+        (0.0, 0.0),
+        (0.05, 0.015),
+        (0.10, 0.045),
+        (0.15, 0.095),
+        (0.202, HCL_AZEOTROPE_W_W),
+        (0.25, 0.31),
+        (0.30, 0.40),
+        (0.37, 0.52),
+    ];
+    for pair in TABLE.windows(2) {
+        let (w0, y0) = pair[0];
+        let (w1, y1) = pair[1];
+        if w <= w1 {
+            let frac = if (w1 - w0).abs() <= AMOUNT_EPS {
+                0.0
+            } else {
+                (w - w0) / (w1 - w0)
+            };
+            return y0 + frac * (y1 - y0);
+        }
     }
-    if w_l < w_az {
-        // Bias vapor toward water; pull → 0 as w_l → w_az.
-        let rel = ((w_az - w_l) / w_az).clamp(0.0, 1.0);
-        let pull = AZEOTROPE_VAPOR_BIAS * rel;
-        let w_v = w_l * (1.0 - pull);
-        w_v.clamp(0.0, w_l)
-    } else {
-        // Bias vapor toward richer HCl; pull → 0 as w_l → w_az.
-        let rel = ((w_l - w_az) / (1.0 - w_az)).clamp(0.0, 1.0);
-        let pull = AZEOTROPE_VAPOR_BIAS * rel;
-        let w_v = w_l + pull * (1.0 - w_l);
-        w_v.clamp(w_l, 1.0)
-    }
+    TABLE[TABLE.len() - 1].1
+}
+
+/// Latent heat (J/g) of HCl–water vapor at vapor mass fraction `y_hcl`.
+///
+/// Linear mixing: `(1 − y)·ΔH_vap(water) + y·ΔH_vap(HCl)`. Water-only (`y = 0`)
+/// matches [`crate::scene::WATER_LATENT_HEAT_J_PER_G`].
+pub fn hcl_latent_heat_j_per_g(y_hcl: f64) -> f64 {
+    use crate::scene::WATER_LATENT_HEAT_J_PER_G;
+    let y = y_hcl.clamp(0.0, 1.0);
+    (1.0 - y) * WATER_LATENT_HEAT_J_PER_G + y * HCL_LATENT_HEAT_J_PER_G
 }
 
 /// Remove `loss_mass_g` of vapor from a dish with aqueous HCl, splitting water and
 /// HCl toward the azeotrope. Evaporated HCl removes `n_loss = m_hcl_loss / M_HCl`
 /// moles from **both** `h+` and `cl-` (clamp ≥ 0) so salt Cl⁻ is not scaled away.
-/// Latent heat is still charged as water ΔH_vap × mass (documented approximation).
+/// Callers charge latent heat via [`hcl_latent_heat_j_per_g`] on the vapor `y`.
 pub fn remove_hcl_water_evap_mass(dish: &mut SceneItem, loss_mass_g: f64) {
     if loss_mass_g <= AMOUNT_EPS {
         return;

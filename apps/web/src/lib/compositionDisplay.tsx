@@ -59,6 +59,11 @@ const FORMULA_PARTS_BY_SUBSTANCE_ID: Record<string, FormulaPart[]> = {
     { kind: 'sub', value: '4' },
     { kind: 'sup', value: '2−' },
   ],
+  'hso4-': [
+    { kind: 'text', value: 'HSO' },
+    { kind: 'sub', value: '4' },
+    { kind: 'sup', value: '−' },
+  ],
   naoh: [
     { kind: 'text', value: 'NaOH' },
   ],
@@ -132,7 +137,7 @@ export function phFromComposition(composition: CompositionEntry[]): number | nul
   const volumeMl = solutionVolumeMl(composition)
   if (volumeMl <= 0) return null
   const volumeL = volumeMl / 1000
-  if (nH > 0 && nOh > 0) return null
+  // Prefer solved [H+] (post-speciation both h+ and oh- are present at Kw levels).
   if (nH > 0) {
     const conc = nH / volumeL
     if (conc <= 0) return null
@@ -143,6 +148,8 @@ export function phFromComposition(composition: CompositionEntry[]): number | nul
     if (conc <= 0) return null
     return 14 + Math.log10(conc)
   }
+  const water = composition.find((c) => c.substance_id === 'water' && c.phase === 'liquid')
+  if ((water?.amount_ml ?? 0) > 0) return 7
   return null
 }
 

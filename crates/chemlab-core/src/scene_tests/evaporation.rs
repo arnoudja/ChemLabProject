@@ -333,6 +333,88 @@ fn heating_below_boil_redissolves_nacl_as_solubility_rises() {
 }
 
 #[test]
+fn heat_redissolve_approaches_new_capacity_over_multiple_ticks() {
+    // Jump T under solid leftover; one short tick must stay partial, further ticks climb.
+    // Drive kinetics directly so ambient cool does not shrink the opened capacity mid-test.
+    let mut scene = initial_bench_scene("lab-test");
+    let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+    dish.properties.temperature_c = Some(20.0);
+    dish.properties.composition = vec![
+        CompositionEntry {
+            substance_id: "water".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(1.0),
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: None,
+        },
+        CompositionEntry {
+            substance_id: "na+".into(),
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: Some(0.02),
+        },
+        CompositionEntry {
+            substance_id: "cl-".into(),
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: Some(0.02),
+        },
+    ];
+    crate::solubility::enforce_saturation(dish);
+    let na_cold = aqueous_mol(item(&scene, "dish-1"), "na+");
+    let solid_cold = item(&scene, "dish-1")
+        .properties
+        .composition
+        .iter()
+        .find(|c| c.substance_id == "nacl" && c.phase == "solid")
+        .and_then(|c| c.amount_mol)
+        .unwrap_or(0.0);
+    assert!(solid_cold > 1e-6, "need leftover solid at 20 °C");
+
+    {
+        let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+        dish.properties.temperature_c = Some(60.0);
+    }
+    let max_hot =
+        crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, 60.0) * 1.0 / 1000.0;
+    let opened = max_hot - na_cold;
+    assert!(opened > 1e-4);
+
+    {
+        let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+        crate::dissolve_kinetics::apply_kinetic_dissolve(dish, 0.3);
+    }
+    let na_one = aqueous_mol(item(&scene, "dish-1"), "na+");
+    let frac_one = (na_one - na_cold) / opened;
+    assert!(
+        frac_one > 0.05 && frac_one < 0.55,
+        "first 0.3 s tick must be partial toward new cap, got {frac_one}"
+    );
+
+    for _ in 0..8 {
+        let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
+        dish.properties.temperature_c = Some(60.0);
+        crate::dissolve_kinetics::apply_kinetic_dissolve(dish, 0.5);
+    }
+    let na_many = aqueous_mol(item(&scene, "dish-1"), "na+");
+    assert!(
+        na_many > na_one + 1e-5,
+        "further ticks must keep climbing: {na_many} vs {na_one}"
+    );
+    assert!(na_many <= max_hot + 1e-6, "must not exceed hot capacity");
+    let frac_many = (na_many - na_cold) / opened;
+    assert!(
+        frac_many > frac_one + 0.2,
+        "multi-tick approach must clearly advance past the first tick"
+    );
+}
+
+#[test]
 fn evaporating_mixed_dish_precipitates_nacl_before_independent_caps() {
     let mut scene = initial_bench_scene("lab-test");
     let s_nacl = crate::solubility::solubility_mol_per_l(crate::solubility::Salt::Nacl, 100.0);

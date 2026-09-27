@@ -30,10 +30,16 @@ fn pour_nacl_into_water_dissolves_without_leftover_grains() {
             && e.message == "Sodium chloride (NaCl) dissolves in water at bench temperature."
     }));
 
-    // Pour contact is partial; clock ticks finish the scoop when unsaturated.
-    let na_pour = aqueous_mol(item(&scene, "beaker-water"), "na+");
+    // Pour contact is partial — measurable leftover solid before clock ticks.
+    let water_after_pour = item(&scene, "beaker-water");
+    let na_pour = aqueous_mol(water_after_pour, "na+");
+    let solid_pour = solid_g(water_after_pour, "nacl");
     assert!(na_pour > 1e-6);
-    apply_elapsed(&mut scene, 2.0);
+    assert!(
+        solid_pour > 0.05,
+        "pour contact must leave noticeable solid NaCl, got {solid_pour} g"
+    );
+    finish_kinetic_dissolve(&mut scene);
 
     let water = item(&scene, "beaker-water");
     let expected_mol = SPOON_SCOOP_MASS_G / NACL_MOLAR_MASS_G_PER_MOL;
@@ -121,7 +127,7 @@ fn pour_cacl2_into_water_dissolves_with_ions_and_heats_exothermically() {
             && e.message == "Calcium chloride (CaCl2) dissolves in water at bench temperature."
     }));
 
-    apply_elapsed(&mut scene, 2.0);
+    finish_kinetic_dissolve(&mut scene);
     let water = item(&scene, "beaker-water");
     let moles = SPOON_SCOOP_MASS_G / CACL2_MOLAR_MASS_G_PER_MOL;
     assert!((aqueous_mol(water, "ca2+") - moles).abs() < 1e-9);
@@ -191,7 +197,7 @@ fn second_nacl_pour_updates_existing_ion_moles_without_duplicate_lines() {
         .count();
     assert_eq!(na_count, 1);
     assert_eq!(cl_count, 1);
-    apply_elapsed(&mut scene, 2.0);
+    finish_kinetic_dissolve(&mut scene);
     let water = item(&scene, "beaker-water");
     let expected_mol = 2.0 * SPOON_SCOOP_MASS_G / NACL_MOLAR_MASS_G_PER_MOL;
     assert!((aqueous_mol(water, "na+") - expected_mol).abs() < 1e-9);
@@ -433,7 +439,7 @@ fn pour_sand_succeeds_after_cacl2_exothermic_heating() {
             }
         }
         // Finish kinetic CaCl₂ so the sand pour is a pure sensible blend.
-        apply_elapsed(&mut scene, 2.0);
+        finish_kinetic_dissolve(&mut scene);
         let _ = t;
         item(&scene, "beaker-water")
             .properties
@@ -531,7 +537,7 @@ fn pour_second_cacl2_scoop_succeeds_after_exothermic_heating() {
     )
     .unwrap();
 
-    apply_elapsed(&mut scene, 2.0);
+    finish_kinetic_dissolve(&mut scene);
     let water = item(&scene, "beaker-water");
     let moles = 2.0 * (SPOON_SCOOP_MASS_G / CACL2_MOLAR_MASS_G_PER_MOL);
     assert!((aqueous_mol(water, "ca2+") - moles).abs() < 1e-9);

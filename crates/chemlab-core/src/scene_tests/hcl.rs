@@ -492,7 +492,7 @@ fn dish_boil_with_hcl_and_dissolved_nacl_preserves_salt_cl() {
         },
     )
     .unwrap();
-    apply_elapsed(&mut scene, 2.0);
+    finish_kinetic_dissolve(&mut scene);
     use_tongs_pour(&mut scene, "beaker-water", "dish-1");
 
     let dish = item(&scene, "dish-1");

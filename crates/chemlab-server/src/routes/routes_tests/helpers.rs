@@ -113,27 +113,6 @@ pub(crate) fn without_clock(scene: &serde_json::Value) -> serde_json::Value {
     scene
 }
 
-/// Strip item temperatures so ambient cool between POST and GET does not break equality.
-pub(crate) fn without_item_temperatures(scene: &serde_json::Value) -> serde_json::Value {
-    let mut scene = scene.clone();
-    if let Some(items) = scene
-        .as_object_mut()
-        .and_then(|obj| obj.get_mut("items"))
-        .and_then(|v| v.as_array_mut())
-    {
-        for item in items {
-            if let Some(props) = item
-                .as_object_mut()
-                .and_then(|obj| obj.get_mut("properties"))
-                .and_then(|v| v.as_object_mut())
-            {
-                props.remove("temperature_c");
-            }
-        }
-    }
-    scene
-}
-
 pub(crate) fn cookie_pair(set_cookie: &str) -> String {
     set_cookie.split(';').next().unwrap().to_string()
 }
@@ -384,6 +363,38 @@ pub(crate) async fn persist_filled_main_beaker(state: &AppState, app: &Router, c
     let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
     set_main_beaker_water(&mut scene, 200.0);
     save_scene_blob(state, &scene).await;
+}
+
+/// Backdate `last_applied_unix_ms` and GET so the server applies ≤2 s kinetic ticks.
+pub(crate) async fn finish_kinetic_dissolve_http(state: &AppState, app: &Router, cookies: &str) {
+    for _ in 0..6 {
+        let mut scene = body_json(get_scene(app, Some(cookies)).await).await;
+        let water = scene["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "beaker-water")
+            .expect("beaker-water");
+        let has_soluble_solid = water["properties"]["composition"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| {
+                c["phase"] == "solid"
+                    && matches!(
+                        c["substance_id"].as_str(),
+                        Some("nacl" | "cacl2" | "naoh" | "na2so4" | "caso4")
+                    )
+                    && c["amount_g"].as_f64().unwrap_or(0.0) > 1e-9
+            });
+        if !has_soluble_solid {
+            return;
+        }
+        let past_ms = chrono::Utc::now().timestamp_millis() - 2000;
+        scene["last_applied_unix_ms"] = serde_json::json!(past_ms);
+        save_scene_blob(state, &scene).await;
+        let _ = get_scene(app, Some(cookies)).await;
+    }
 }
 
 pub(crate) async fn pipette_one_ml_into_dish(app: &Router, cookies: &str, csrf_token: &str) {

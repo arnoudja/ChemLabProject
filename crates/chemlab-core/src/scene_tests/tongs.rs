@@ -105,7 +105,7 @@ fn tongs_pour_water_into_dish_fills_to_capacity_and_scales_ions_and_solids() {
         },
     )
     .unwrap();
-    apply_elapsed(&mut scene, 2.0);
+    finish_kinetic_dissolve(&mut scene);
     apply_action(
         &mut scene,
         Action::UseTool {
@@ -380,7 +380,7 @@ fn tongs_dump_nacl_into_filled_beaker_enforces_saturation() {
     // Pour contact is partial; unsaturated 200 ml clears the 2 g stock over a few seconds.
     assert!(aqueous_mol(item(&scene, "beaker-water"), "na+") > 1e-6);
     assert_eq!(solid_g(item(&scene, "beaker-nacl"), "nacl"), 0.0);
-    apply_elapsed(&mut scene, 2.0);
+    finish_kinetic_dissolve(&mut scene);
 
     let expected = nacl_g / NACL_MOLAR_MASS_G_PER_MOL;
     assert!((aqueous_mol(item(&scene, "beaker-water"), "na+") - expected).abs() < 1e-9);

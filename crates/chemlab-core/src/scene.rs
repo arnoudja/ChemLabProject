@@ -128,7 +128,9 @@ pub const CACL2_DELTA_H_SOLUTION_J_PER_MOL: f64 = -81300.0;
 /// Enthalpy of solution of solid NaOH (exothermic), J/mol.
 pub const NAOH_DELTA_H_SOLUTION_J_PER_MOL: f64 = -44500.0;
 
-/// Approximate enthalpy of solution for anhydrous Na₂SO₄ (J/mol), school table.
+/// Enthalpy of solution of solid Na₂SO₄ (mildly exothermic), J/mol.
+/// Shared with the Free-mode sulfate stock (#121) so kinetic redissolve and
+/// carousel pour use the same heat.
 pub const NA2SO4_DELTA_H_SOLUTION_J_PER_MOL: f64 = -2340.0;
 
 /// Enthalpy of neutralization H⁺ + OH⁻ → H₂O (exothermic), J/mol.

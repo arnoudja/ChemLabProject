@@ -1,5 +1,5 @@
 use super::super::*;
-use super::helpers::{aqueous_mol, fill_pipette_from, item, solid_g};
+use super::helpers::{aqueous_mol, fill_pipette_from, finish_kinetic_dissolve, item, solid_g};
 use crate::challenges::{
     is_completed, WinCompare, CHALLENGES, CREATE_TABLE_SALT, SEPARATE_NACL_SIO2,
 };
@@ -299,9 +299,7 @@ fn solved_by_playing_the_challenge_through() {
     use_tongs_pour(&mut scene, "beaker-h2o", "beaker-water");
     // 2 g NaCl in 10 ml: a few seconds of kinetic dissolve when unsaturated.
     // HTTP clock clamps each tick to ≤2 s, so use several ticks.
-    for _ in 0..3 {
-        apply_elapsed(&mut scene, 2.0);
-    }
+    finish_kinetic_dissolve(&mut scene);
     use_tongs_pour(&mut scene, "beaker-water", "filter-paper-1");
 
     // Boil the filtrate dry in the dish, one dish-full at a time.

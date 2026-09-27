@@ -60,7 +60,7 @@ fn pour_dumps_mixed_dish_scoop_into_water_and_clears_spoon() {
     assert!(spoon.properties.holding.is_empty());
     assert_eq!(spoon.properties.source_item_id, None);
     assert!(scene.last_events.iter().any(|e| e.kind == "dissolved"));
-    apply_elapsed(&mut scene, 2.0);
+    finish_kinetic_dissolve(&mut scene);
     let water = item(&scene, "beaker-water");
     let expected_na = 0.12 / NACL_MOLAR_MASS_G_PER_MOL;
     let expected_ca = 0.08 / CACL2_MOLAR_MASS_G_PER_MOL;
@@ -86,7 +86,7 @@ fn use_tool_dumps_dish_scoop_into_water() {
     let spoon = item(&scene, "spoon-1");
     assert!(spoon.properties.holding.is_empty());
     assert_eq!(spoon.properties.source_item_id, None);
-    apply_elapsed(&mut scene, 2.0);
+    finish_kinetic_dissolve(&mut scene);
     let expected_na = SPOON_SCOOP_MASS_G / NACL_MOLAR_MASS_G_PER_MOL;
     assert!((aqueous_mol(item(&scene, "beaker-water"), "na+") - expected_na).abs() < 1e-9);
     assert!((solid_g(item(&scene, "dish-1"), "nacl") - 0.3).abs() < 1e-12);

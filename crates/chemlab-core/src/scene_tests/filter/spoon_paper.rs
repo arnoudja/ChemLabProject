@@ -254,6 +254,6 @@ fn use_tool_spoon_dissolves_into_wet_filtrate() {
     .unwrap();
     assert!(item(&scene, "spoon-1").properties.holding.is_empty());
     assert!(aqueous_mol(item(&scene, "beaker-filtrate"), "na+") > 0.0);
-    apply_elapsed(&mut scene, 2.0);
+    finish_kinetic_dissolve(&mut scene);
     assert_eq!(solid_g(item(&scene, "beaker-filtrate"), "nacl"), 0.0);
 }

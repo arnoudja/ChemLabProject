@@ -1,44 +1,38 @@
 /** @vitest-environment jsdom */
-import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App from "./App";
-import { clearCsrfTokenCache } from "./lib/api";
-import {
-  STOCK_FULL_MASS_G,
-  STOCK_FULL_SCOOPS,
-  HCL_STOCK_CAPACITY_ML,
-  HCL_STOCK_WATER_ML,
-  HCL_STOCK_HCL_MOLES,
-} from "./lib/benchAmounts";
+import '@testing-library/jest-dom/vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import App from './App'
+import { clearCsrfTokenCache } from './lib/api'
+import { STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS, HCL_STOCK_CAPACITY_ML, HCL_STOCK_WATER_ML, HCL_STOCK_HCL_MOLES } from './lib/benchAmounts'
 
 const userPayload = {
-  id: "u1",
-  email: "ada@chemlab.local",
-  display_name: "Ada",
-  created_at: "2020-01-01T00:00:00Z",
-};
+  id: 'u1',
+  email: 'ada@chemlab.local',
+  display_name: 'Ada',
+  created_at: '2020-01-01T00:00:00Z',
+}
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
-  });
+    headers: { 'content-type': 'application/json' },
+  })
 }
 
 const EMPTY_LAB_SCENE = {
-  lab_id: "lab-1",
+  lab_id: 'lab-1',
   version: 0,
   temperature_c: 20,
-  mode: "free",
+  mode: 'free',
   challenge_completed: false,
   last_events: [] as { kind: string; message: string }[],
   items: [
     {
-      id: "spoon-1",
-      kind: "spoon",
-      label: "Spoon",
-      location: "bench",
+      id: 'spoon-1',
+      kind: 'spoon',
+      label: 'Spoon',
+      location: 'bench',
       properties: {
         volume_ml: null,
         fill_ml: null,
@@ -50,10 +44,10 @@ const EMPTY_LAB_SCENE = {
       },
     },
     {
-      id: "beaker-h2o",
-      kind: "beaker",
-      label: "Distilled water",
-      location: "bench",
+      id: 'beaker-h2o',
+      kind: 'beaker',
+      label: 'Distilled water',
+      location: 'bench',
       properties: {
         volume_ml: 100,
         fill_ml: 100,
@@ -61,23 +55,16 @@ const EMPTY_LAB_SCENE = {
         colourless: true,
         temperature_c: 20,
         composition: [
-          {
-            substance_id: "water",
-            phase: "liquid",
-            amount_ml: 100,
-            amount_scoop: null,
-            amount_g: null,
-            amount_mol: null,
-          },
+          { substance_id: 'water', phase: 'liquid', amount_ml: 100, amount_scoop: null, amount_g: null, amount_mol: null},
         ],
         holding: [],
       },
     },
     {
-      id: "beaker-hcl",
-      kind: "beaker",
-      label: "Hydrochloric acid (30%)",
-      location: "bench",
+      id: 'beaker-hcl',
+      kind: 'beaker',
+      label: 'Hydrochloric acid (30%)',
+      location: 'bench',
       properties: {
         volume_ml: HCL_STOCK_CAPACITY_ML,
         fill_ml: HCL_STOCK_CAPACITY_ML,
@@ -85,159 +72,93 @@ const EMPTY_LAB_SCENE = {
         colourless: true,
         temperature_c: 20,
         composition: [
-          {
-            substance_id: "water",
-            phase: "liquid",
-            amount_ml: HCL_STOCK_WATER_ML,
-            amount_scoop: null,
-            amount_g: null,
-            amount_mol: null,
-          },
-          {
-            substance_id: "h+",
-            phase: "aqueous",
-            amount_ml: null,
-            amount_scoop: null,
-            amount_g: null,
-            amount_mol: HCL_STOCK_HCL_MOLES,
-          },
-          {
-            substance_id: "cl-",
-            phase: "aqueous",
-            amount_ml: null,
-            amount_scoop: null,
-            amount_g: null,
-            amount_mol: HCL_STOCK_HCL_MOLES,
-          },
+          { substance_id: 'water', phase: 'liquid', amount_ml: HCL_STOCK_WATER_ML, amount_scoop: null, amount_g: null, amount_mol: null},
+          { substance_id: 'h+', phase: 'aqueous', amount_ml: null, amount_scoop: null, amount_g: null, amount_mol: HCL_STOCK_HCL_MOLES},
+          { substance_id: 'cl-', phase: 'aqueous', amount_ml: null, amount_scoop: null, amount_g: null, amount_mol: HCL_STOCK_HCL_MOLES},
         ],
         holding: [],
       },
     },
     {
-      id: "beaker-nacl",
-      kind: "beaker",
-      label: "Sodium chloride",
-      location: "bench",
+      id: 'beaker-nacl',
+      kind: 'beaker',
+      label: 'Sodium chloride',
+      location: 'bench',
       properties: {
         volume_ml: 250,
         fill_ml: 100,
         transparent: true,
         colourless: true,
         temperature_c: 20,
-        composition: [
-          {
-            substance_id: "nacl",
-            phase: "solid",
-            amount_ml: null,
-            amount_scoop: STOCK_FULL_SCOOPS,
-            amount_g: STOCK_FULL_MASS_G,
-            amount_mol: null,
-          },
-        ],
+        composition: [{ substance_id: 'nacl', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
         holding: [],
       },
     },
     {
-      id: "beaker-naoh",
-      kind: "beaker",
-      label: "Sodium hydroxide",
-      location: "bench",
+      id: 'beaker-naoh',
+      kind: 'beaker',
+      label: 'Sodium hydroxide',
+      location: 'bench',
       properties: {
         volume_ml: 250,
         fill_ml: 100,
         transparent: true,
         colourless: true,
         temperature_c: 20,
-        composition: [
-          {
-            substance_id: "naoh",
-            phase: "solid",
-            amount_ml: null,
-            amount_scoop: STOCK_FULL_SCOOPS,
-            amount_g: STOCK_FULL_MASS_G,
-            amount_mol: null,
-          },
-        ],
+        composition: [{ substance_id: 'naoh', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
         holding: [],
       },
     },
     {
-      id: "beaker-na2so4",
-      kind: "beaker",
-      label: "Sodium sulfate",
-      location: "bench",
+      id: 'beaker-na2so4',
+      kind: 'beaker',
+      label: 'Sodium sulfate',
+      location: 'bench',
       properties: {
         volume_ml: 250,
         fill_ml: 100,
         transparent: true,
         colourless: true,
         temperature_c: 20,
-        composition: [
-          {
-            substance_id: "na2so4",
-            phase: "solid",
-            amount_ml: null,
-            amount_scoop: STOCK_FULL_SCOOPS,
-            amount_g: STOCK_FULL_MASS_G,
-            amount_mol: null,
-          },
-        ],
+        composition: [{ substance_id: 'na2so4', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
         holding: [],
       },
     },
     {
-      id: "beaker-cacl2",
-      kind: "beaker",
-      label: "Calcium chloride",
-      location: "bench",
+      id: 'beaker-cacl2',
+      kind: 'beaker',
+      label: 'Calcium chloride',
+      location: 'bench',
       properties: {
         volume_ml: 250,
         fill_ml: 100,
         transparent: true,
         colourless: true,
         temperature_c: 20,
-        composition: [
-          {
-            substance_id: "cacl2",
-            phase: "solid",
-            amount_ml: null,
-            amount_scoop: STOCK_FULL_SCOOPS,
-            amount_g: STOCK_FULL_MASS_G,
-            amount_mol: null,
-          },
-        ],
+        composition: [{ substance_id: 'cacl2', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
         holding: [],
       },
     },
     {
-      id: "beaker-sand",
-      kind: "beaker",
-      label: "Sand",
-      location: "bench",
+      id: 'beaker-sand',
+      kind: 'beaker',
+      label: 'Sand',
+      location: 'bench',
       properties: {
         volume_ml: 250,
         fill_ml: 100,
         transparent: true,
         colourless: true,
         temperature_c: 20,
-        composition: [
-          {
-            substance_id: "sand",
-            phase: "solid",
-            amount_ml: null,
-            amount_scoop: STOCK_FULL_SCOOPS,
-            amount_g: STOCK_FULL_MASS_G,
-            amount_mol: null,
-          },
-        ],
+        composition: [{ substance_id: 'sand', phase: 'solid', amount_ml: null, amount_scoop: STOCK_FULL_SCOOPS, amount_g: STOCK_FULL_MASS_G, amount_mol: null}],
         holding: [],
       },
     },
     {
-      id: "beaker-water",
-      kind: "beaker",
-      label: "Beaker",
-      location: "bench",
+      id: 'beaker-water',
+      kind: 'beaker',
+      label: 'Beaker',
+      location: 'bench',
       properties: {
         volume_ml: 250,
         fill_ml: 0,
@@ -249,414 +170,356 @@ const EMPTY_LAB_SCENE = {
       },
     },
   ],
-};
+}
 
-const CHALLENGE_ID = "separate-nacl-sio2";
-const CREATE_TABLE_SALT_ID = "create-table-salt";
+const CHALLENGE_ID = 'separate-nacl-sio2'
+const CREATE_TABLE_SALT_ID = 'create-table-salt'
 
 /** Mirror of the server's mode-aware start scene, minus the items App does not read. */
 function sceneForMode(mode: string) {
   const omit =
     mode === CHALLENGE_ID
-      ? ["beaker-cacl2", "beaker-hcl", "beaker-naoh", "beaker-na2so4"]
+      ? ['beaker-cacl2', 'beaker-hcl', 'beaker-naoh', 'beaker-na2so4']
       : mode === CREATE_TABLE_SALT_ID
-        ? ["beaker-cacl2", "beaker-sand", "beaker-na2so4"]
-        : [];
+        ? ['beaker-cacl2', 'beaker-sand', 'beaker-na2so4']
+        : []
   return {
     ...EMPTY_LAB_SCENE,
     mode,
     items:
-      mode === "free"
+      mode === 'free'
         ? EMPTY_LAB_SCENE.items
         : EMPTY_LAB_SCENE.items.filter((item) => !omit.includes(item.id)),
-  };
+  }
 }
 
 function stubAppFetch(options?: {
-  authenticated?: boolean;
-  signupEnabled?: boolean;
-  healthNetworkError?: Error;
-  registerBody?: unknown;
-  registerStatus?: number;
-  loginBody?: unknown;
-  loginStatus?: number;
-  logoutStatus?: number;
-  selectModeFails?: boolean;
+  authenticated?: boolean
+  signupEnabled?: boolean
+  healthNetworkError?: Error
+  registerBody?: unknown
+  registerStatus?: number
+  loginBody?: unknown
+  loginStatus?: number
+  logoutStatus?: number
+  selectModeFails?: boolean
 }) {
-  const authenticated = options?.authenticated ?? false;
-  let scene = sceneForMode("free");
+  const authenticated = options?.authenticated ?? false
+  let scene = sceneForMode('free')
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url === "/api/health") {
+    const url = String(input)
+    if (url === '/api/health') {
       if (options?.healthNetworkError) {
-        throw options.healthNetworkError;
+        throw options.healthNetworkError
       }
       return jsonResponse({
-        status: "ok",
-        version: "0.1.0",
-        service: "chemlab-server",
+        status: 'ok',
+        version: '0.1.0',
+        service: 'chemlab-server',
         signup_enabled: options?.signupEnabled ?? true,
-      });
+      })
     }
-    if (url === "/api/auth/me") {
+    if (url === '/api/auth/me') {
       return jsonResponse({
         authenticated,
         user: authenticated ? userPayload : null,
-      });
+      })
     }
-    if (url === "/api/auth/csrf") {
-      return jsonResponse({ csrf_token: "tok-123" });
+    if (url === '/api/auth/csrf') {
+      return jsonResponse({ csrf_token: 'tok-123' })
     }
-    if (url === "/api/auth/register") {
+    if (url === '/api/auth/register') {
       return jsonResponse(
         options?.registerBody ?? userPayload,
         options?.registerStatus ?? 201,
-      );
+      )
     }
-    if (url === "/api/auth/login") {
+    if (url === '/api/auth/login') {
       return jsonResponse(
         options?.loginBody ?? userPayload,
         options?.loginStatus ?? 200,
-      );
+      )
     }
-    if (url === "/api/auth/logout") {
-      const status = options?.logoutStatus ?? 204;
+    if (url === '/api/auth/logout') {
+      const status = options?.logoutStatus ?? 204
       if (status === 204) {
-        return new Response(null, { status });
+        return new Response(null, { status })
       }
-      return jsonResponse(
-        { error: "Could not log out", code: "internal" },
-        status,
-      );
+      return jsonResponse({ error: 'Could not log out', code: 'internal' }, status)
     }
-    if (url === "/api/lab/scene") {
-      return jsonResponse(scene);
+    if (url === '/api/lab/scene') {
+      return jsonResponse(scene)
     }
-    if (url === "/api/lab/action") {
-      const action = init?.body ? JSON.parse(String(init.body)) : null;
-      if (action?.type === "select_mode") {
+    if (url === '/api/lab/action') {
+      const action = init?.body ? JSON.parse(String(init.body)) : null
+      if (action?.type === 'select_mode') {
         if (options?.selectModeFails) {
-          return jsonResponse(
-            { error: "unknown mode", code: "unknown_mode" },
-            400,
-          );
+          return jsonResponse({ error: 'unknown mode', code: 'unknown_mode' }, 400)
         }
-        scene = sceneForMode(action.mode);
+        scene = sceneForMode(action.mode)
       }
-      return jsonResponse({ scene });
+      return jsonResponse({ scene })
     }
-    return jsonResponse({ error: "not found", code: "not_found" }, 404);
-  });
+    return jsonResponse({ error: 'not found', code: 'not_found' }, 404)
+  })
 }
 
-describe("App", () => {
+describe('App', () => {
   beforeEach(() => {
-    clearCsrfTokenCache();
-  });
+    clearCsrfTokenCache()
+  })
 
   afterEach(() => {
-    cleanup();
-    vi.unstubAllGlobals();
-  });
+    cleanup()
+    vi.unstubAllGlobals()
+  })
 
-  it("shows the account form when there is no session", async () => {
-    vi.stubGlobal("fetch", stubAppFetch({ authenticated: false }));
+  it('shows the account form when there is no session', async () => {
+    vi.stubGlobal('fetch', stubAppFetch({ authenticated: false }))
 
-    render(<App />);
+    render(<App />)
 
-    expect(await screen.findByLabelText("Email")).toBeTruthy();
-    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
-    expect(
-      screen
-        .getByLabelText("Email")
-        .closest("form")
-        ?.querySelector('button[type="submit"]'),
-    ).toHaveTextContent("Sign in");
-    expect(screen.getByText(/API 0.1.0/)).toBeTruthy();
-    expect(screen.queryByLabelText("Lab bench")).not.toBeInTheDocument();
-  });
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Email').closest('form')?.querySelector('button[type="submit"]')).toHaveTextContent(
+      'Sign in',
+    )
+    expect(screen.getByText(/API 0.1.0/)).toBeTruthy()
+    expect(screen.queryByLabelText('Lab bench')).not.toBeInTheDocument()
+  })
 
-  it("welcomes a signed-in user and shows the lab bench", async () => {
-    vi.stubGlobal("fetch", stubAppFetch({ authenticated: true }));
+  it('welcomes a signed-in user and shows the lab bench', async () => {
+    vi.stubGlobal('fetch', stubAppFetch({ authenticated: true }))
 
-    render(<App />);
+    render(<App />)
 
-    expect(await screen.findByText("Welcome back, Ada")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
-    expect(await screen.findByLabelText("Lab bench")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Dissolve" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Solid")).not.toBeInTheDocument();
-  });
+    expect(await screen.findByText('Welcome back, Ada')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeTruthy()
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dissolve' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Solid')).not.toBeInTheDocument()
+  })
 
-  it("offers the challenge list with Free mode selected by default", async () => {
-    vi.stubGlobal("fetch", stubAppFetch({ authenticated: true }));
+  it('offers the challenge list with Free mode selected by default', async () => {
+    vi.stubGlobal('fetch', stubAppFetch({ authenticated: true }))
 
-    render(<App />);
+    render(<App />)
 
-    const free = await screen.findByRole("radio", { name: "Free mode" });
-    expect(free).toBeChecked();
-    expect(
-      screen.getByRole("radio", { name: "Separate salt from sand" }),
-    ).not.toBeChecked();
-    expect(
-      screen.getByRole("radio", { name: "Create table salt" }),
-    ).not.toBeChecked();
-    expect(screen.queryByText(/lab bench below/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/pick a solid/i)).not.toBeInTheDocument();
-  });
+    const free = await screen.findByRole('radio', { name: 'Free mode' })
+    expect(free).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Separate salt from sand' })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Create table salt' })).not.toBeChecked()
+    expect(screen.queryByText(/lab bench below/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/pick a solid/i)).not.toBeInTheDocument()
+  })
 
-  it("selecting create-table-salt posts select_mode and shows its prompt", async () => {
-    const fetchMock = stubAppFetch({ authenticated: true });
-    vi.stubGlobal("fetch", fetchMock);
+  it('selecting create-table-salt posts select_mode and shows its prompt', async () => {
+    const fetchMock = stubAppFetch({ authenticated: true })
+    vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />);
-    expect(await screen.findByLabelText("Lab bench")).toBeInTheDocument();
+    render(<App />)
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("radio", { name: "Create table salt" }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Create table salt' }))
 
-    expect(await screen.findByText(/out of NaCl again/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole("radio", { name: "Create table salt" }),
-    ).toBeChecked();
+    expect(await screen.findByText(/out of NaCl again/i)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Create table salt' })).toBeChecked()
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/lab/action",
+      '/api/lab/action',
       expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({
-          type: "select_mode",
-          mode: CREATE_TABLE_SALT_ID,
-        }),
+        method: 'POST',
+        body: JSON.stringify({ type: 'select_mode', mode: CREATE_TABLE_SALT_ID }),
       }),
-    );
-  });
+    )
+  })
 
-  it("selecting a challenge posts select_mode and reloads the bench into it", async () => {
-    const fetchMock = stubAppFetch({ authenticated: true });
-    vi.stubGlobal("fetch", fetchMock);
+  it('selecting a challenge posts select_mode and reloads the bench into it', async () => {
+    const fetchMock = stubAppFetch({ authenticated: true })
+    vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />);
-    expect(await screen.findByLabelText("Lab bench")).toBeInTheDocument();
+    render(<App />)
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
 
-    fireEvent.click(
-      screen.getByRole("radio", { name: "Separate salt from sand" }),
-    );
+    fireEvent.click(screen.getByRole('radio', { name: 'Separate salt from sand' }))
 
     expect(
       await screen.findByText(/put all the salt and sand in the main beaker/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("radio", { name: "Separate salt from sand" }),
-    ).toBeChecked();
-    expect(screen.getByRole("radio", { name: "Free mode" })).not.toBeChecked();
+    ).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Separate salt from sand' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Free mode' })).not.toBeChecked()
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/lab/action",
+      '/api/lab/action',
       expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ type: "select_mode", mode: CHALLENGE_ID }),
+        method: 'POST',
+        body: JSON.stringify({ type: 'select_mode', mode: CHALLENGE_ID }),
       }),
-    );
+    )
 
-    fireEvent.click(screen.getByRole("radio", { name: "Free mode" }));
-    expect(await screen.findByText(/Pick up the spoon/i)).toBeInTheDocument();
-  });
+    fireEvent.click(screen.getByRole('radio', { name: 'Free mode' }))
+    expect(await screen.findByText(/Pick up the spoon/i)).toBeInTheDocument()
+  })
 
-  it("surfaces a failed mode switch and keeps the current mode", async () => {
-    vi.stubGlobal(
-      "fetch",
-      stubAppFetch({ authenticated: true, selectModeFails: true }),
-    );
+  it('surfaces a failed mode switch and keeps the current mode', async () => {
+    vi.stubGlobal('fetch', stubAppFetch({ authenticated: true, selectModeFails: true }))
 
-    render(<App />);
-    expect(await screen.findByLabelText("Lab bench")).toBeInTheDocument();
+    render(<App />)
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
 
-    fireEvent.click(
-      screen.getByRole("radio", { name: "Separate salt from sand" }),
-    );
+    fireEvent.click(screen.getByRole('radio', { name: 'Separate salt from sand' }))
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("unknown mode");
-    expect(screen.getByRole("radio", { name: "Free mode" })).toBeChecked();
-  });
+    expect(await screen.findByRole('alert')).toHaveTextContent('unknown mode')
+    expect(screen.getByRole('radio', { name: 'Free mode' })).toBeChecked()
+  })
 
-  it("hides Create account when health says signup is disabled", async () => {
-    const fetchMock = stubAppFetch({
-      authenticated: false,
-      signupEnabled: false,
-    });
-    vi.stubGlobal("fetch", fetchMock);
+  it('hides Create account when health says signup is disabled', async () => {
+    const fetchMock = stubAppFetch({ authenticated: false, signupEnabled: false })
+    vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />);
+    render(<App />)
 
-    expect(await screen.findByLabelText("Email")).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Create account" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
-    expect(
-      screen
-        .getByLabelText("Email")
-        .closest("form")
-        ?.querySelector('button[type="submit"]'),
-    ).toHaveTextContent("Sign in");
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Create account' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Email').closest('form')?.querySelector('button[type="submit"]')).toHaveTextContent(
+      'Sign in',
+    )
 
-    fireEvent.change(screen.getByLabelText("Email"), {
-      target: { value: "ada@chemlab.local" },
-    });
-    fireEvent.change(screen.getByLabelText("Password"), {
-      target: { value: "secret123" },
-    });
-    fireEvent.submit(screen.getByLabelText("Email").closest("form")!);
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'ada@chemlab.local' },
+    })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } })
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!)
 
-    expect(await screen.findByText("Welcome back, Ada")).toBeTruthy();
+    expect(await screen.findByText('Welcome back, Ada')).toBeTruthy()
     expect(fetchMock).not.toHaveBeenCalledWith(
-      "/api/auth/register",
+      '/api/auth/register',
       expect.anything(),
-    );
+    )
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/auth/login",
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
+      '/api/auth/login',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
 
-  it("creates an account and then shows the lab bench", async () => {
-    const fetchMock = stubAppFetch({ authenticated: false });
-    vi.stubGlobal("fetch", fetchMock);
+  it('creates an account and then shows the lab bench', async () => {
+    const fetchMock = stubAppFetch({ authenticated: false })
+    vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />);
-    expect(await screen.findByLabelText("Email")).toBeTruthy();
-    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
+    render(<App />)
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
 
-    fireEvent.click(
-      screen.getAllByRole("button", { name: "Create account" })[0],
-    );
-    expect(screen.getByLabelText("Display name")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create account' })[0])
+    expect(screen.getByLabelText('Display name')).toBeTruthy()
 
-    fireEvent.change(screen.getByLabelText("Display name"), {
-      target: { value: "Ada" },
-    });
-    fireEvent.change(screen.getByLabelText("Email"), {
-      target: { value: "ada@chemlab.local" },
-    });
-    fireEvent.change(screen.getByLabelText("Password"), {
-      target: { value: "secret123" },
-    });
-    fireEvent.submit(screen.getByLabelText("Email").closest("form")!);
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Ada' } })
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'ada@chemlab.local' },
+    })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } })
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!)
 
-    expect(await screen.findByText("Welcome back, Ada")).toBeTruthy();
-    expect(await screen.findByLabelText("Lab bench")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Dissolve" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByText('Welcome back, Ada')).toBeTruthy()
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dissolve' })).not.toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/auth/register",
+      '/api/auth/register',
       expect.objectContaining({
-        method: "POST",
-        credentials: "include",
-        headers: expect.objectContaining({ "X-CSRF-Token": "tok-123" }),
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'tok-123' }),
         body: JSON.stringify({
-          email: "ada@chemlab.local",
-          password: "secret123",
-          display_name: "Ada",
+          email: 'ada@chemlab.local',
+          password: 'secret123',
+          display_name: 'Ada',
         }),
       }),
-    );
-  });
+    )
+  })
 
-  it("signs in from the default Sign in form", async () => {
-    const fetchMock = stubAppFetch({ authenticated: false });
-    vi.stubGlobal("fetch", fetchMock);
+  it('signs in from the default Sign in form', async () => {
+    const fetchMock = stubAppFetch({ authenticated: false })
+    vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />);
-    expect(await screen.findByLabelText("Email")).toBeTruthy();
-    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
+    render(<App />)
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText("Email"), {
-      target: { value: "ada@chemlab.local" },
-    });
-    fireEvent.change(screen.getByLabelText("Password"), {
-      target: { value: "secret123" },
-    });
-    fireEvent.submit(screen.getByLabelText("Email").closest("form")!);
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'ada@chemlab.local' },
+    })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } })
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!)
 
-    expect(await screen.findByText("Welcome back, Ada")).toBeTruthy();
-    expect(await screen.findByLabelText("Lab bench")).toBeInTheDocument();
+    expect(await screen.findByText('Welcome back, Ada')).toBeTruthy()
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/auth/login",
+      '/api/auth/login',
       expect.objectContaining({
-        method: "POST",
-        credentials: "include",
-        headers: expect.objectContaining({ "X-CSRF-Token": "tok-123" }),
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'tok-123' }),
         body: JSON.stringify({
-          email: "ada@chemlab.local",
-          password: "secret123",
+          email: 'ada@chemlab.local',
+          password: 'secret123',
         }),
       }),
-    );
-  });
+    )
+  })
 
-  it("surfaces auth errors from the default Sign in form", async () => {
+  it('surfaces auth errors from the default Sign in form', async () => {
     const fetchMock = stubAppFetch({
       authenticated: false,
-      loginBody: {
-        error: "Invalid email or password",
-        code: "invalid_credentials",
-      },
+      loginBody: { error: 'Invalid email or password', code: 'invalid_credentials' },
       loginStatus: 401,
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />);
-    expect(await screen.findByLabelText("Email")).toBeTruthy();
-    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
+    render(<App />)
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText("Email"), {
-      target: { value: "ada@chemlab.local" },
-    });
-    fireEvent.change(screen.getByLabelText("Password"), {
-      target: { value: "secret123" },
-    });
-    fireEvent.submit(screen.getByLabelText("Email").closest("form")!);
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'ada@chemlab.local' },
+    })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } })
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!)
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Invalid email or password",
-    );
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password')
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/auth/login",
+      '/api/auth/login',
       expect.objectContaining({
-        method: "POST",
-        credentials: "include",
-        headers: expect.objectContaining({ "X-CSRF-Token": "tok-123" }),
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'tok-123' }),
       }),
-    );
-  });
+    )
+  })
 
-  it("sign-out hides the lab bench and returns the account form", async () => {
-    vi.stubGlobal("fetch", stubAppFetch({ authenticated: true }));
+  it('sign-out hides the lab bench and returns the account form', async () => {
+    vi.stubGlobal('fetch', stubAppFetch({ authenticated: true }))
 
-    render(<App />);
-    expect(await screen.findByLabelText("Lab bench")).toBeInTheDocument();
+    render(<App />)
+    expect(await screen.findByLabelText('Lab bench')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
 
-    expect(await screen.findByLabelText("Email")).toBeTruthy();
-    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Lab bench")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Dissolve" }),
-    ).not.toBeInTheDocument();
-  });
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Lab bench')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dissolve' })).not.toBeInTheDocument()
+  })
 
-  it("marks the API offline when session bootstrap fails", async () => {
+  it('marks the API offline when session bootstrap fails', async () => {
     vi.stubGlobal(
-      "fetch",
-      stubAppFetch({ healthNetworkError: new Error("Failed to fetch") }),
-    );
+      'fetch',
+      stubAppFetch({ healthNetworkError: new Error('Failed to fetch') }),
+    )
 
-    render(<App />);
+    render(<App />)
 
-    expect(await screen.findByText("API offline")).toBeTruthy();
-    expect(await screen.findByLabelText("Email")).toBeTruthy();
-    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
-  });
-});
+    expect(await screen.findByText('API offline')).toBeTruthy()
+    expect(await screen.findByLabelText('Email')).toBeTruthy()
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument()
+  })
+})

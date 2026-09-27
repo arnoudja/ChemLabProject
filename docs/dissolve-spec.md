@@ -1,4 +1,4 @@
-# First dissolve: NaCl / CaCl₂ / NaOH / sand in water
+# First dissolve: NaCl / CaCl₂ / NaOH / Na₂SO₄ / sand in water
 
 Short chemistry spec for [issue #6](https://github.com/arnoudja/ChemLabProject/issues/6). This slice is a **small lookup table**, not a general chemistry engine.
 
@@ -11,6 +11,7 @@ At the bench, water is the solvent and the temperature is ordinary room/lab cond
 - **Sodium chloride** mixes into the water and is gone as a solid (endothermic cooling on the water beaker).
 - **Calcium chloride** mixes into the water and is gone as a solid (exothermic heating on the water beaker).
 - **Sodium hydroxide** mixes into the water and is gone as a solid (strongly exothermic heating).
+- **Sodium sulfate** mixes into the water and is gone as a solid (mildly exothermic).
 - **Sand** stays as solid grains.
 
 A short sentence from the **server** explains which of those happened. The browser only shows that sentence; it does not decide.
@@ -25,13 +26,13 @@ Exact string ids, lowercase ASCII, matched as-is. Do not trim or case-fold (`NaC
 
 | Input | Allowed values | Meaning |
 | --- | --- | --- |
-| `substance_id` | `nacl`, `cacl2`, `naoh`, `sand` | Table salt, calcium chloride, sodium hydroxide, silica sand (SiO₂) |
+| `substance_id` | `nacl`, `cacl2`, `naoh`, `na2so4`, `sand` | Table salt, calcium chloride, sodium hydroxide, sodium sulfate, silica sand (SiO₂) |
 | `solvent_id` | `water` | Liquid water; no other solvents |
 | `temperature_c` | any integer °C | Beaker / solvent temperature passed into the lookup |
 
 Amounts, stirring, time, and saturation are not modeled for the qualitative dissolve flag. Scoop mass (0.2 g) drives ion moles and ΔT when a salt dissolves in the scene engine. Scene SI / unsaturated capacity stay on **litres of liquid water**; display, pipette, and vessel `fill_ml` use additive Φ_V **solution volume** (`docs/lab-scene-spec.md`).
 
-**Temperature / solubility simplification:** Known solids (`nacl`, `cacl2`, `naoh`, `sand`) succeed in aqueous water at the beaker’s **current** temperature (exothermic CaCl₂ / NaOH heating or endothermic NaCl cooling must not block further scoops, and pouring sand into warm water must not fail). The dissolve flag still uses the qualitative bench solubility table — there is no T-dependent solubility curve yet. Sand stays undissolved (`dissolved: false`); do not invent sand solubility.
+**Temperature / solubility simplification:** Known solids (`nacl`, `cacl2`, `naoh`, `na2so4`, `sand`) succeed in aqueous water at the beaker’s **current** temperature (exothermic CaCl₂ / NaOH heating or endothermic NaCl cooling must not block further scoops, and pouring sand into warm water must not fail). The dissolve flag still uses the qualitative bench solubility table — there is no T-dependent solubility curve yet. Sand stays undissolved (`dissolved: false`); do not invent sand solubility.
 
 ## Outcomes
 
@@ -52,6 +53,11 @@ A successful call returns `dissolved` (boolean) plus a stable English `explanati
 - **dissolved:** `true`
 - **explanation:** `Sodium hydroxide (NaOH) dissolves in water at bench temperature.`
 
+### `na2so4` + `water` (any `temperature_c`)
+
+- **dissolved:** `true`
+- **explanation:** `Sodium sulfate (Na2SO4) dissolves in water at bench temperature.`
+
 ### `sand` + `water` (any `temperature_c`)
 
 - **dissolved:** `false`
@@ -68,8 +74,9 @@ When the scene pours a dissolving salt into water, `chemlab-core` authors aqueou
 | `nacl` | `na+`, `cl-` | 1:1 | `+3880` (endothermic) |
 | `cacl2` | `ca2+`, `cl-` | 1:2 | `−81300` (exothermic) |
 | `naoh` | `na+`, `oh-` | 1:1 | `−44500` (exothermic) |
+| `na2so4` | `na+`, `so4^2-` | 2:1 | `−2340` (mildly exothermic) |
 
-Molar masses: NaCl `58.44` g/mol, CaCl₂ `110.98` g/mol, NaOH `40.00` g/mol. Water mass ≈ liquid `amount_ml` (1 g/ml); c_p = `4.184` J/(g·K). Solid NaOH c_p ≈ `1.49` J/(g·K).
+Molar masses: NaCl `58.44` g/mol, CaCl₂ `110.98` g/mol, NaOH `40.00` g/mol, Na₂SO₄ `142.04` g/mol. Water mass ≈ liquid `amount_ml` (1 g/ml); c_p = `4.184` J/(g·K). Solid NaOH c_p ≈ `1.49` J/(g·K).
 
 **Neutralization:** after mix/dissolve, aqueous speciation (`K_w` + sulfuric `K_a2`) equilibrates `h+` / `oh-` / `hso4-` / `so4^2-` and applies neutralization heat from `0.5 · Δ(n_h + n_oh + n_hso4)` (ΔH_neut = `−55800` J/mol) **before** `enforce_saturation`. Spectators `na+`/`cl-` remain; excess acid or base stays as the solved inventory. Inspect pH is from solved `[H⁺]` (~7 for pure water / exact neutral salt). Na⁺ paired with OH⁻ is **not** counted as NaCl inventory (so SI does not invent Cl⁻). Solid NaOH also ionizes whenever it meets liquid water outside the spoon qualitative table (tongs dump into a wet vessel, water onto dry solid) via the scene finalize path; filter wash uses contact-time kinetics with no SI cap.
 

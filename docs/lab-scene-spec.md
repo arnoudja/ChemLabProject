@@ -150,7 +150,7 @@ Free mode includes `beaker-naoh` (**Sodium hydroxide**): **2.00 g** solid (`10 �
 
 ### Free-mode sodium sulfate stock
 
-Free mode includes `beaker-na2so4` (**Sodium sulfate**): **2.00 g** solid (`10 × 0.2 g` scoops), same solid-stock pattern as NaCl / NaOH / CaCl₂ / sand. Substance id `na2so4` matches the existing aqueous / SI / Φ_V paths from H₂SO₄ neutralization. Tongs + spoon scoop/put-away parity with other solids. Challenge layouts omit `beaker-na2so4` unless listed. Kinetic dissolve-rate tuning for this salt is out of scope for the stock addition.
+Free mode includes `beaker-na2so4` (**Sodium sulfate**): **2.00 g** solid (`10 × 0.2 g` scoops), same solid-stock pattern as NaCl / NaOH / CaCl₂ / sand. Substance id `na2so4` matches the existing aqueous / SI / Φ_V paths from H₂SO₄ neutralization. Tongs + spoon scoop/put-away parity with other solids. Spoon pour into water dissolves via the qualitative table to aqueous `na+` + `so4^2-` (2:1, M = 142.04 g/mol) with ΔH_sol ≈ **−2340 J/mol**; SI may re-precipitate when saturated. Challenge layouts omit `beaker-na2so4` unless listed. Kinetic dissolve-rate / filter-wash sulfate tuning is out of scope for the stock addition.
 
 ### Burner heat, ambient cooling, clock
 

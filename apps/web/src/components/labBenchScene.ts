@@ -170,7 +170,7 @@ export function spitCueFromEvents(events: { kind: string; message: string }[]): 
   return events.some((event) => event.kind === 'spit')
 }
 
-/** Banner events — suppress silent spit (empty teaching copy by design). */
+/** Banner events — suppress silent spit (visual-only; no teaching row). */
 export function bannerEventsFromLastEvents(
   events: { kind: string; message: string }[],
 ): { kind: string; message: string }[] {

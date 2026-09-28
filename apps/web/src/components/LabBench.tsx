@@ -560,11 +560,15 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
               aria-label="Filtrate beaker"
               disabled={busy}
               onClick={onFiltrate}
+              data-spit-cue={spitTargetId === FILTRATE_ID ? 'burst' : 'none'}
             >
               {filtrateHeld ? (
                 <svg viewBox="0 0 120 168" className="h-32 w-20" aria-hidden />
               ) : (
-                <FiltrateBeakerSvg amountMl={scene ? filtrateAmountMl(scene) : null} />
+                <FiltrateBeakerSvg
+                  amountMl={scene ? filtrateAmountMl(scene) : null}
+                  spitCue={spitTargetId === FILTRATE_ID}
+                />
               )}
               <span className="lab-item-label">{filtrate?.label ?? 'Filtrate'}</span>
             </button>
@@ -579,11 +583,15 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
                   aria-label="Evaporation dish"
                   disabled={busy}
                   onClick={onDish}
+                  data-spit-cue={spitTargetId === DISH_ID ? 'burst' : 'none'}
                 >
                   {dishHeld ? (
                     <svg viewBox="0 0 120 56" className="h-14 w-28" aria-hidden />
                   ) : (
-                    <EvaporationDishSvg amountMl={dishAmountMl(scene)} />
+                    <EvaporationDishSvg
+                      amountMl={dishAmountMl(scene)}
+                      spitCue={spitTargetId === DISH_ID}
+                    />
                   )}
                   <span className="lab-item-label">{dish.label}</span>
                 </button>
@@ -606,7 +614,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
 
           <button
             type="button"
-            className={`lab-item${spitTargetId === WATER_ID ? ' lab-item--spit-cue' : ''}`}
+            className="lab-item"
             aria-label={water?.label ?? 'Beaker'}
             disabled={busy}
             onClick={onWater}
@@ -796,6 +804,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
                 amountMl={waterAmountMl(scene)}
                 hasAqueous={hasAqueous}
                 dissolveCue={dissolveCue}
+                spitCue={spitTargetId === WATER_ID}
                 floating
               />
             ) : heldVesselId === H2O_ID && scene ? (
@@ -811,9 +820,17 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
                 floating
               />
             ) : heldVesselId === DISH_ID && scene ? (
-              <EvaporationDishSvg amountMl={dishAmountMl(scene)} floating />
+              <EvaporationDishSvg
+                amountMl={dishAmountMl(scene)}
+                spitCue={spitTargetId === DISH_ID}
+                floating
+              />
             ) : heldVesselId === FILTRATE_ID && scene ? (
-              <FiltrateBeakerSvg amountMl={filtrateAmountMl(scene)} floating />
+              <FiltrateBeakerSvg
+                amountMl={filtrateAmountMl(scene)}
+                spitCue={spitTargetId === FILTRATE_ID}
+                floating
+              />
             ) : heldVesselId === PAPER_ID && scene ? (
               <FunnelPaperSvg residue={paperHasResidue(scene)} floating />
             ) : (

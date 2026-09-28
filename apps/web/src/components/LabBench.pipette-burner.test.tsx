@@ -12,6 +12,8 @@ import {
   stubLabFetch,
   lastActionInit,
   expectCsrfLabAction,
+  applyPipetteUse,
+  cloneScene,
 } from './labBenchTestHelpers'
 
 describe('LabBench pipette / burner', () => {
@@ -368,6 +370,46 @@ describe('LabBench pipette / burner', () => {
         target_item_id: 'beaker-h2o',
       })
     })
+  })
+
+  it('shows spit cue on dish last-action target, not water, and hides spit from banner', async () => {
+    const fetchMock = stubLabFetch({
+      actionHandler: (action, scene) => {
+        if (action.type === 'use_tool' && action.tool_item_id === 'pipette-1') {
+          const result = applyPipetteUse(scene, action.target_item_id)
+          if ('error' in result) return result
+          if (
+            action.target_item_id === 'dish-1' &&
+            result.last_events?.some((event) => event.kind === 'poured')
+          ) {
+            const next = cloneScene(result)
+            next.last_events = [
+              { kind: 'spit', message: '' },
+              ...(next.last_events ?? []),
+            ]
+            return next
+          }
+          return result
+        }
+        return scene
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<LabBench />)
+    await screen.findByRole('button', { name: 'Pipette' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pipette' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beaker' }))
+    await waitFor(() => {
+      expect(document.querySelector('[data-pipette-filled="true"]')).not.toBeNull()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Evaporation dish' }))
+    await waitFor(() => {
+      expect(document.querySelector('[data-dish-fill]')).toHaveAttribute('data-spit-cue', 'burst')
+    })
+    expect(document.querySelector('[data-water-fill]')).toHaveAttribute('data-spit-cue', 'none')
+    expect(document.querySelector('[data-event-kind="spit"]')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent('Emptied the pipette into the vessel.')
   })
 
 })

@@ -387,7 +387,7 @@ fn heat_redissolve_approaches_new_capacity_over_multiple_ticks() {
 
     {
         let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
-        crate::dissolve_kinetics::apply_kinetic_dissolve(dish, 0.3);
+        crate::dissolve_kinetics::apply_kinetic_dissolve(dish, 0.3, true);
     }
     let na_one = aqueous_mol(item(&scene, "dish-1"), "na+");
     let frac_one = (na_one - na_cold) / opened;
@@ -399,7 +399,7 @@ fn heat_redissolve_approaches_new_capacity_over_multiple_ticks() {
     for _ in 0..8 {
         let dish = scene.items.iter_mut().find(|i| i.id == "dish-1").unwrap();
         dish.properties.temperature_c = Some(60.0);
-        crate::dissolve_kinetics::apply_kinetic_dissolve(dish, 0.5);
+        crate::dissolve_kinetics::apply_kinetic_dissolve(dish, 0.5, true);
     }
     let na_many = aqueous_mol(item(&scene, "dish-1"), "na+");
     assert!(

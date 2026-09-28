@@ -648,3 +648,41 @@ fn stacked_chemical_heats_emit_at_most_one_spit() {
     let t_boil = boiling_temperature_c(water_mole_fraction(water));
     assert!((t - t_boil).abs() < 0.05, "T={t} T_boil={t_boil}");
 }
+
+#[test]
+fn chemical_heat_clock_mode_clamps_without_spit_mass() {
+    // allow_spit_mass=false (clock): clamp at boil, no spray discard, no spit flag.
+    let mut item = item(&initial_bench_scene("lab-test"), "beaker-water").clone();
+    item.properties.temperature_c = Some(95.0);
+    item.properties.fill_ml = Some(10.0);
+    item.properties.composition = vec![CompositionEntry {
+        substance_id: "water".into(),
+        phase: "liquid".into(),
+        amount_ml: Some(10.0),
+        amount_scoop: None,
+        amount_g: None,
+        amount_mol: None,
+    }];
+    crate::solubility::sync_fill_ml(&mut item);
+    let v0 = crate::hcl::solution_volume_ml(&item);
+    let c = effective_heat_capacity(&item);
+    let q = -c * 20.0; // proposed T = 115 °C → overshoot
+    let spit = apply_chemical_heat(&mut item, q, false);
+    assert!(!spit);
+    let t_boil = vessel_boil_temperature_c(&item);
+    assert!(
+        (item.properties.temperature_c.unwrap() - t_boil).abs() < 0.05,
+        "expected clamp at boil"
+    );
+    assert!(
+        (crate::hcl::solution_volume_ml(&item) - v0).abs() < 1e-9,
+        "clock mode must not discard spit fraction"
+    );
+
+    let mut item2 = item.clone();
+    item2.properties.temperature_c = Some(95.0);
+    crate::solubility::sync_fill_ml(&mut item2);
+    let spit_action = apply_chemical_heat(&mut item2, q, true);
+    assert!(spit_action);
+    assert!(crate::hcl::solution_volume_ml(&item2) < v0 * (1.0 - CHEMICAL_SPIT_FRAC * 0.5));
+}

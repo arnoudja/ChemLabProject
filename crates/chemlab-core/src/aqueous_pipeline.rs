@@ -50,24 +50,26 @@ impl FinalizeStage {
         FinalizeStage::SyncFillMl,
     ];
 
-    fn apply(self, item: &mut SceneItem, dissolve_tau_s: f64) -> bool {
+    fn apply(self, item: &mut SceneItem, dissolve_tau_s: f64, allow_spit_mass: bool) -> bool {
         match self {
             FinalizeStage::IonizeH2so4 => {
                 crate::h2so4::ionize_liquid_h2so4_in_water(item);
                 false
             }
-            FinalizeStage::KineticDissolve => {
-                crate::dissolve_kinetics::apply_kinetic_dissolve(item, dissolve_tau_s)
-            }
+            FinalizeStage::KineticDissolve => crate::dissolve_kinetics::apply_kinetic_dissolve(
+                item,
+                dissolve_tau_s,
+                allow_spit_mass,
+            ),
             FinalizeStage::SpeciateWithHeat => {
-                crate::acid_base::speciate_aqueous_acid_base(item, true)
+                crate::acid_base::speciate_aqueous_acid_base(item, true, allow_spit_mass)
             }
             FinalizeStage::EnforceSaturation => {
                 crate::solubility::enforce_saturation(item);
                 false
             }
             FinalizeStage::SpeciateNoHeatAfterSi | FinalizeStage::SpeciateNoHeatAfterReform => {
-                crate::acid_base::speciate_aqueous_acid_base(item, false);
+                let _ = crate::acid_base::speciate_aqueous_acid_base(item, false, false);
                 false
             }
             FinalizeStage::ReformH2so4 => {
@@ -137,10 +139,17 @@ pub(crate) fn author_dissolved_salt_ions(
 ///
 /// Returns `true` when any chemical-heat step discarded spit mass (caller emits
 /// at most one `spit` event per action).
-pub(crate) fn finalize_aqueous_vessel(item: &mut SceneItem, dissolve_tau_s: f64) -> bool {
+///
+/// `allow_spit_mass`: action paths pass `true` (clamp + spray discard); clock
+/// `apply_elapsed` passes `false` (clamp only — spit is action-scoped).
+pub(crate) fn finalize_aqueous_vessel(
+    item: &mut SceneItem,
+    dissolve_tau_s: f64,
+    allow_spit_mass: bool,
+) -> bool {
     let mut spit = false;
     for stage in FinalizeStage::ALL {
-        spit |= stage.apply(item, dissolve_tau_s);
+        spit |= stage.apply(item, dissolve_tau_s, allow_spit_mass);
     }
     spit
 }
@@ -155,6 +164,7 @@ pub(crate) fn apply_dissolution_temperature_change(
     moles: f64,
     delta_h_j_per_mol: f64,
     _current_temperature_c: f64,
+    allow_spit_mass: bool,
 ) -> bool {
     let water_ml = target
         .properties
@@ -167,7 +177,7 @@ pub(crate) fn apply_dissolution_temperature_change(
         return false;
     }
     let heat_j = moles * delta_h_j_per_mol;
-    crate::scene::apply_chemical_heat(target, heat_j)
+    crate::scene::apply_chemical_heat(target, heat_j, allow_spit_mass)
 }
 
 #[cfg(test)]

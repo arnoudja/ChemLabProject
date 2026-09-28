@@ -43,7 +43,7 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
             && crate::solubility::dish_has_liquid(&scene.items[dish_idx])
         {
             apply_dish_evaporation(&mut scene.items[dish_idx], dt, heating_dish);
-            finalize_aqueous_vessel(&mut scene.items[dish_idx], dt);
+            finalize_aqueous_vessel(&mut scene.items[dish_idx], dt, false);
             finalized_dish = true;
             if let Some(burner_idx) = burner_idx {
                 if scene.items[burner_idx].properties.on == Some(true)
@@ -75,7 +75,7 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
             continue;
         }
         if crate::dissolve_kinetics::vessel_needs_kinetic_dissolve(&scene.items[idx]) {
-            finalize_aqueous_vessel(&mut scene.items[idx], dt);
+            finalize_aqueous_vessel(&mut scene.items[idx], dt, false);
         }
     }
 }

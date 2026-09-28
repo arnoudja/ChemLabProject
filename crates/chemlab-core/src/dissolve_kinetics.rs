@@ -102,7 +102,11 @@ fn dissolve_mass_for_contact(avail: f64, cap: f64, k: f64, tau_s: f64, is_naoh: 
 /// Authors ions + ΔH only for the mass that dissolves this call; remainder stays
 /// solid. No-op without liquid water or when `τ ≤ 0`.
 /// Returns `true` when any dissolve heat step discarded spit mass.
-pub(crate) fn apply_kinetic_dissolve(item: &mut SceneItem, tau_s: f64) -> bool {
+pub(crate) fn apply_kinetic_dissolve(
+    item: &mut SceneItem,
+    tau_s: f64,
+    allow_spit_mass: bool,
+) -> bool {
     let mut remaining = if tau_s.is_finite() {
         tau_s.clamp(0.0, MAX_TAU_S)
     } else {
@@ -111,13 +115,13 @@ pub(crate) fn apply_kinetic_dissolve(item: &mut SceneItem, tau_s: f64) -> bool {
     let mut spit = false;
     while remaining > AMOUNT_EPS {
         let step = remaining.min(SUBSTEP_TAU_S);
-        spit |= apply_kinetic_dissolve_step(item, step);
+        spit |= apply_kinetic_dissolve_step(item, step, allow_spit_mass);
         remaining -= step;
     }
     spit
 }
 
-fn apply_kinetic_dissolve_step(item: &mut SceneItem, tau_s: f64) -> bool {
+fn apply_kinetic_dissolve_step(item: &mut SceneItem, tau_s: f64, allow_spit_mass: bool) -> bool {
     let water_ml = solvent_water_ml_for_si(item);
     if water_ml <= AMOUNT_EPS || tau_s <= AMOUNT_EPS {
         return false;
@@ -147,7 +151,7 @@ fn apply_kinetic_dissolve_step(item: &mut SceneItem, tau_s: f64) -> bool {
         if let Some((moles, delta_h)) =
             author_dissolved_salt_ions(&mut item.properties.composition, salt_id, m_diss)
         {
-            spit |= apply_dissolution_temperature_change(item, moles, delta_h, t);
+            spit |= apply_dissolution_temperature_change(item, moles, delta_h, t, allow_spit_mass);
         }
     }
     spit
@@ -326,7 +330,7 @@ mod tests {
                 ..ItemProperties::default()
             },
         };
-        apply_kinetic_dissolve(&mut beaker, 2.0);
+        apply_kinetic_dissolve(&mut beaker, 2.0, true);
         assert!(
             (solid_amount_g(
                 beaker
@@ -371,7 +375,7 @@ mod tests {
         };
         // Long contact approaches the SI capacity; further time adds negligibly.
         for _ in 0..6 {
-            apply_kinetic_dissolve(&mut dish, 2.0);
+            apply_kinetic_dissolve(&mut dish, 2.0, true);
         }
         let na = aqueous_mol(&dish, "na+");
         let cap_mol =
@@ -434,7 +438,7 @@ mod tests {
                 ..ItemProperties::default()
             },
         };
-        apply_kinetic_dissolve_step(&mut beaker, POUR_CONTACT_TAU_S);
+        apply_kinetic_dissolve_step(&mut beaker, POUR_CONTACT_TAU_S, true);
         let t = beaker.properties.temperature_c.unwrap();
         let ca = aqueous_mol(&beaker, "ca2+");
         let na = aqueous_mol(&beaker, "na+");

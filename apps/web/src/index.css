@@ -282,13 +282,9 @@ body::before {
   filter: saturate(1.15);
 }
 
-.lab-item--spit-cue {
-  position: relative;
-}
-
 .lab-spit-drop {
   opacity: 0;
-  animation: spit-burst 0.85s ease-out 1;
+  animation: spit-burst 0.85s ease-out 1 forwards;
 }
 
 .lab-spit-drop--1 {
@@ -364,7 +360,7 @@ body::before {
 
   .lab-spit-drop {
     animation: none;
-    opacity: 0.55;
+    opacity: 0;
   }
 }
 

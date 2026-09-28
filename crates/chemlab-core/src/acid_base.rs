@@ -13,8 +13,7 @@
 
 use crate::composition::{aqueous_mol, liquid_water_ml, set_aqueous_mol};
 use crate::scene::{
-    effective_heat_capacity, CompositionEntry, SceneItem, AMBIENT_TEMPERATURE_C,
-    H_OH_NEUTRALIZATION_J_PER_MOL, WATER_MOLAR_MASS_G_PER_MOL,
+    CompositionEntry, SceneItem, H_OH_NEUTRALIZATION_J_PER_MOL, WATER_MOLAR_MASS_G_PER_MOL,
 };
 
 const AMOUNT_EPS: f64 = 1e-12;
@@ -123,7 +122,16 @@ fn add_water_ml(item: &mut SceneItem, ml: f64) {
 ///
 /// Concentrations use **liquid water** ml as the solvent basis (not Φ_V solution
 /// volume, which can include non-aqueous liquid H₂SO₄). No-ops when dry.
-pub fn speciate_aqueous_acid_base(item: &mut SceneItem, apply_heat: bool) {
+///
+/// Returns `true` when neutralization heat discarded spit mass.
+///
+/// `allow_spit_mass` is ignored when `apply_heat` is false; on heat, it gates
+/// spray discard (false on clock ticks).
+pub fn speciate_aqueous_acid_base(
+    item: &mut SceneItem,
+    apply_heat: bool,
+    allow_spit_mass: bool,
+) -> bool {
     let water_ml = liquid_water_ml(item);
     // Dry or empty: leave ion piles for reform / SI; strip solvent-only Kw ions.
     if water_ml <= AMOUNT_EPS {
@@ -133,7 +141,7 @@ pub fn speciate_aqueous_acid_base(item: &mut SceneItem, apply_heat: bool) {
         if n_cl <= AMOUNT_EPS && n_s <= AMOUNT_EPS {
             set_aqueous_mol(item, "h+", 0.0);
         }
-        return;
+        return false;
     }
     let v_l = water_ml / 1000.0;
 
@@ -163,17 +171,11 @@ pub fn speciate_aqueous_acid_base(item: &mut SceneItem, apply_heat: bool) {
         let n_rxn = 0.5 * (acid_base_before - acid_base_after).max(0.0);
         if n_rxn > AMOUNT_EPS {
             add_water_ml(item, n_rxn * WATER_MOLAR_MASS_G_PER_MOL);
-            let c_eff = effective_heat_capacity(item);
-            if c_eff > AMOUNT_EPS {
-                let t = item
-                    .properties
-                    .temperature_c
-                    .unwrap_or(AMBIENT_TEMPERATURE_C);
-                item.properties.temperature_c =
-                    Some(t - n_rxn * H_OH_NEUTRALIZATION_J_PER_MOL / c_eff);
-            }
+            let q = n_rxn * H_OH_NEUTRALIZATION_J_PER_MOL;
+            return crate::scene::apply_chemical_heat(item, q, allow_spit_mass);
         }
     }
+    false
 }
 
 /// Net charge (mol e⁻) of aqueous ions — should be ~0 after speciation.
@@ -190,7 +192,7 @@ pub fn aqueous_charge_mol(item: &SceneItem) -> f64 {
 mod tests {
     use super::*;
     use crate::hcl::{ph_of_entries, solution_volume_ml};
-    use crate::scene::{CompositionEntry, ItemProperties};
+    use crate::scene::{effective_heat_capacity, CompositionEntry, ItemProperties};
 
     fn aq(substance_id: &str, amount_mol: f64) -> CompositionEntry {
         CompositionEntry {
@@ -235,7 +237,7 @@ mod tests {
     #[test]
     fn pure_water_speciates_near_ph_7() {
         let mut item = vessel(vec![water(100.0)]);
-        speciate_aqueous_acid_base(&mut item, false);
+        speciate_aqueous_acid_base(&mut item, false, false);
         let ph = ph_of_entries(&item.properties.composition).expect("pH");
         assert!((ph - 7.0).abs() < 0.05, "got pH {ph}");
         assert!(aqueous_charge_mol(&item).abs() < 1e-12);
@@ -246,7 +248,7 @@ mod tests {
         // 0.1 M H₂SO₄ in 1 L → c = 0.1; school [H+] ≈ 0.11 not 0.2.
         let c = 0.1;
         let mut item = vessel(vec![water(1000.0), aq("h+", c), aq("hso4-", c)]);
-        speciate_aqueous_acid_base(&mut item, false);
+        speciate_aqueous_acid_base(&mut item, false, false);
         let v_l = solution_volume_ml(&item) / 1000.0;
         let c_h = aqueous_mol(&item, "h+") / v_l;
         assert!(
@@ -262,12 +264,12 @@ mod tests {
     #[test]
     fn strong_hcl_and_naoh_extremes() {
         let mut acid = vessel(vec![water(100.0), aq("h+", 0.01), aq("cl-", 0.01)]);
-        speciate_aqueous_acid_base(&mut acid, false);
+        speciate_aqueous_acid_base(&mut acid, false, false);
         let ph_a = ph_of_entries(&acid.properties.composition).unwrap();
         assert!((ph_a - 1.0).abs() < 0.05, "0.1 M HCl → pH~1, got {ph_a}");
 
         let mut base = vessel(vec![water(100.0), aq("na+", 0.01), aq("oh-", 0.01)]);
-        speciate_aqueous_acid_base(&mut base, false);
+        speciate_aqueous_acid_base(&mut base, false, false);
         let ph_b = ph_of_entries(&base.properties.composition).unwrap();
         assert!(ph_b > 11.0 && ph_b < 13.0, "got {ph_b}");
     }
@@ -283,7 +285,7 @@ mod tests {
             aq("oh-", n),
         ]);
         let t0 = item.properties.temperature_c.unwrap();
-        speciate_aqueous_acid_base(&mut item, true);
+        speciate_aqueous_acid_base(&mut item, true, true);
         let t1 = item.properties.temperature_c.unwrap();
         assert!(t1 > t0 + 0.5, "expected neutralization heat {t0} → {t1}");
         let ph = ph_of_entries(&item.properties.composition).unwrap();
@@ -304,7 +306,7 @@ mod tests {
         ]);
         let t0 = item.properties.temperature_c.unwrap();
         let c0 = effective_heat_capacity(&item);
-        speciate_aqueous_acid_base(&mut item, true);
+        speciate_aqueous_acid_base(&mut item, true, true);
         let t1 = item.properties.temperature_c.unwrap();
         let dt = t1 - t0;
         let dt_expected = -n * H_OH_NEUTRALIZATION_J_PER_MOL / c0;
@@ -329,7 +331,7 @@ mod tests {
         ]);
         let t0 = item.properties.temperature_c.unwrap();
         let c0 = effective_heat_capacity(&item);
-        speciate_aqueous_acid_base(&mut item, true);
+        speciate_aqueous_acid_base(&mut item, true, true);
         let t1 = item.properties.temperature_c.unwrap();
         let dt = t1 - t0;
         let dt_expected = -2.0 * n * H_OH_NEUTRALIZATION_J_PER_MOL / c0;

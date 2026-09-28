@@ -22,6 +22,8 @@ import {
   sceneNeedsDissolvePoll,
   sceneNeedsThermalPoll,
   solutionVolumeMl,
+  spitCueFromEvents,
+  bannerEventsFromLastEvents,
   tongsHeldVesselId,
   waterAmountMl,
 } from './labBenchScene'
@@ -323,5 +325,19 @@ describe('clock poll gates', () => {
     ])
     expect(sceneNeedsDissolvePoll(sandOnly)).toBe(false)
     expect(sceneNeedsClockPoll(sandOnly)).toBe(false)
+  })
+})
+
+describe('chemical spit cues', () => {
+  it('detects spit and suppresses it from the banner list', () => {
+    const events = [
+      { kind: 'poured', message: 'Emptied the pipette into the vessel.' },
+      { kind: 'spit', message: '' },
+    ]
+    expect(spitCueFromEvents(events)).toBe(true)
+    expect(bannerEventsFromLastEvents(events)).toEqual([
+      { kind: 'poured', message: 'Emptied the pipette into the vessel.' },
+    ])
+    expect(spitCueFromEvents([{ kind: 'poured', message: 'ok' }])).toBe(false)
   })
 })

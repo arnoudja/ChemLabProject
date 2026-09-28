@@ -43,7 +43,7 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
             && crate::solubility::dish_has_liquid(&scene.items[dish_idx])
         {
             apply_dish_evaporation(&mut scene.items[dish_idx], dt, heating_dish);
-            finalize_aqueous_vessel(&mut scene.items[dish_idx], dt);
+            finalize_aqueous_vessel(&mut scene.items[dish_idx], dt, false);
             finalized_dish = true;
             if let Some(burner_idx) = burner_idx {
                 if scene.items[burner_idx].properties.on == Some(true)
@@ -75,7 +75,7 @@ pub fn apply_elapsed(scene: &mut Scene, dt_s: f64) {
             continue;
         }
         if crate::dissolve_kinetics::vessel_needs_kinetic_dissolve(&scene.items[idx]) {
-            finalize_aqueous_vessel(&mut scene.items[idx], dt);
+            finalize_aqueous_vessel(&mut scene.items[idx], dt, false);
         }
     }
 }
@@ -156,15 +156,16 @@ fn remove_evaporated_mass(dish: &mut SceneItem, loss_mass_g: f64) {
     }
 }
 
-/// Dish boil temperature.
+/// Vessel boil temperature (beaker or dish).
 ///
 /// With HCl inventory: tabulated `T_hcl(w)`. When non-HCl solutes are also
 /// present (salt metals / salt Cl⁻ / sulfate concentrates), take
 /// `max(T_hcl(w), T_raoult(x_w))` so elevation is not ignored (no more acid-wins).
 /// Concentrated HCl alone stays on the acid table — Raoult on the acid-depleted
 /// `x_w` would falsely soar. Without HCl inventory: Raoult + Antoine from water
-/// mole fraction (sulfuric-only / water path).
-fn dish_boil_temperature_c(item: &SceneItem) -> f64 {
+/// mole fraction (sulfuric-only / water path). Shared by burner dish boil and
+/// instant chemical-heat spit gating.
+pub fn vessel_boil_temperature_c(item: &SceneItem) -> f64 {
     let inv = crate::hcl::HclInventory::from_item(item);
     let t_water = boiling_temperature_c(water_mole_fraction(item));
     if inv.n_h > AMOUNT_EPS {
@@ -175,6 +176,10 @@ fn dish_boil_temperature_c(item: &SceneItem) -> f64 {
         return t_hcl;
     }
     t_water
+}
+
+fn dish_boil_temperature_c(item: &SceneItem) -> f64 {
+    vessel_boil_temperature_c(item)
 }
 
 /// True when aqueous non-HCl solutes depress `x_w` beyond gated HCl alone:

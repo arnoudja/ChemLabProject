@@ -10,6 +10,55 @@ import {
 
 export type StockSolid = 'nacl' | 'cacl2' | 'sand' | 'naoh' | 'na2so4'
 
+/** Shared spray burst for chemical spit (water / dish / filtrate). */
+function SpitSprayOverlay({
+  originY,
+}: {
+  /** Vertical origin of the droplet cluster in the SVG viewBox. */
+  originY: number
+}) {
+  return (
+    <g className="lab-spit-spray" pointerEvents="none">
+      <circle className="lab-spit-drop lab-spit-drop--1" cx="48" cy={originY} r="2.2" fill="#A4FFEC" />
+      <circle
+        className="lab-spit-drop lab-spit-drop--2"
+        cx="62"
+        cy={originY - 12}
+        r="1.8"
+        fill="#7CF8F7"
+      />
+      <circle
+        className="lab-spit-drop lab-spit-drop--3"
+        cx="76"
+        cy={originY - 4}
+        r="2.4"
+        fill="#DDF7FF"
+      />
+      <circle
+        className="lab-spit-drop lab-spit-drop--4"
+        cx="40"
+        cy={originY - 18}
+        r="1.5"
+        fill="#85E1FB"
+      />
+      <circle
+        className="lab-spit-drop lab-spit-drop--5"
+        cx="88"
+        cy={originY - 22}
+        r="1.9"
+        fill="#A4FFEC"
+      />
+      <circle
+        className="lab-spit-drop lab-spit-drop--6"
+        cx="55"
+        cy={originY - 28}
+        r="1.4"
+        fill="#7CF8F7"
+      />
+    </g>
+  )
+}
+
 /** Fill fraction 0..1 from server amount_ml relative to initial water volume. */
 export function waterFillRatio(amountMl: number | null | undefined): number {
   if (amountMl == null || amountMl <= 0) return 0
@@ -22,6 +71,7 @@ export function WaterBeakerSvg({
   amountMl,
   hasAqueous,
   dissolveCue,
+  spitCue,
   floating,
 }: {
   leftoverSolid: StockSolid | null
@@ -31,6 +81,8 @@ export function WaterBeakerSvg({
   hasAqueous?: boolean
   /** Latest dissolve-related kind from scene `last_events`. */
   dissolveCue?: 'dissolved' | 'did_not_dissolve' | null
+  /** Silent chemical spit burst from server `last_events`. */
+  spitCue?: boolean
   floating?: boolean
 }) {
   const fill = waterFillRatio(amountMl)
@@ -55,6 +107,7 @@ export function WaterBeakerSvg({
       data-water-fill={fill.toFixed(2)}
       data-water-aqueous={hasAqueous ? 'true' : 'false'}
       data-dissolve-cue={dissolveCue ?? 'none'}
+      data-spit-cue={spitCue ? 'burst' : 'none'}
     >
       <defs>
         <linearGradient id="bench-glass" x1="20" y1="8" x2="100" y2="160" gradientUnits="userSpaceOnUse">
@@ -105,6 +158,7 @@ export function WaterBeakerSvg({
           <circle cx="56" cy="136" r="2.2" />
         </g>
       ) : null}
+      {spitCue ? <SpitSprayOverlay originY={70} /> : null}
       <path d="M86 48c14-4 22 10 16 22" stroke="#DDF7FF" strokeWidth="1.6" strokeLinecap="round" opacity="0.45" />
     </svg>
   )
@@ -403,7 +457,16 @@ export function TongsSvg({ floating }: { floating?: boolean }) {
   )
 }
 
-export function EvaporationDishSvg({ amountMl, floating }: { amountMl?: number | null; floating?: boolean }) {
+export function EvaporationDishSvg({
+  amountMl,
+  floating,
+  spitCue,
+}: {
+  amountMl?: number | null
+  floating?: boolean
+  /** Silent chemical spit burst from server `last_events`. */
+  spitCue?: boolean
+}) {
   const fill = dishFillRatio(amountMl)
   const floorY = 42
   const height = 16 * fill
@@ -414,6 +477,7 @@ export function EvaporationDishSvg({ amountMl, floating }: { amountMl?: number |
       className={floating ? 'h-10 w-20' : 'h-14 w-28'}
       aria-hidden
       data-dish-fill={fill.toFixed(2)}
+      data-spit-cue={spitCue ? 'burst' : 'none'}
     >
       <path
         d="M18 16h84l8 28c1 6-4 10-10 10H20c-6 0-11-4-10-10l8-28z"
@@ -429,6 +493,7 @@ export function EvaporationDishSvg({ amountMl, floating }: { amountMl?: number |
           fillOpacity="0.55"
         />
       ) : null}
+      {spitCue ? <SpitSprayOverlay originY={22} /> : null}
     </svg>
   )
 }
@@ -456,7 +521,16 @@ export function filtrateFillRatio(amountMl: number | null | undefined): number {
   return Math.min(1, amountMl / FILTRATE_CAPACITY_ML)
 }
 
-export function FiltrateBeakerSvg({ amountMl, floating }: { amountMl?: number | null; floating?: boolean }) {
+export function FiltrateBeakerSvg({
+  amountMl,
+  floating,
+  spitCue,
+}: {
+  amountMl?: number | null
+  floating?: boolean
+  /** Silent chemical spit burst from server `last_events`. */
+  spitCue?: boolean
+}) {
   const fill = filtrateFillRatio(amountMl)
   const floorY = 148
   const fullHeight = 62
@@ -469,6 +543,7 @@ export function FiltrateBeakerSvg({ amountMl, floating }: { amountMl?: number | 
       className={floating ? 'h-24 w-16' : 'h-32 w-20'}
       aria-hidden
       data-filtrate-fill={fill.toFixed(2)}
+      data-spit-cue={spitCue ? 'burst' : 'none'}
     >
       <path d="M28 18h64v10H28z" fill="#86A7DF" opacity="0.85" />
       <path
@@ -485,6 +560,7 @@ export function FiltrateBeakerSvg({ amountMl, floating }: { amountMl?: number | 
           fillOpacity="0.55"
         />
       ) : null}
+      {spitCue ? <SpitSprayOverlay originY={70} /> : null}
     </svg>
   )
 }

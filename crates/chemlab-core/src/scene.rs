@@ -124,6 +124,11 @@ pub(crate) use crate::aqueous_pipeline::finalize_aqueous_vessel;
 /// Enthalpy of neutralization H⁺ + OH⁻ → H₂O (exothermic), J/mol.
 pub const H_OH_NEUTRALIZATION_J_PER_MOL: f64 = -55800.0;
 
+/// School fraction of vessel composition discarded when chemical heat would boil.
+///
+/// Lost as spray (not continuous evaporation). Mid-range of the 2–5% school band.
+pub const CHEMICAL_SPIT_FRAC: f64 = 0.03;
+
 /// Specific heat capacity of liquid water, J/(g·K). Mass of water ≈ volume in ml.
 pub const WATER_SPECIFIC_HEAT_J_PER_G_K: f64 = 4.184;
 
@@ -1093,10 +1098,12 @@ fn apply_pour(
                 mass_g,
             );
         }
-        finalize_aqueous_vessel(
+        let spit = finalize_aqueous_vessel(
             &mut scene.items[target_idx],
             crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+            true,
         );
+        note_chemical_spit(scene, spit);
         return Ok(());
     }
 
@@ -1127,10 +1134,12 @@ fn apply_pour(
         });
     }
 
-    finalize_aqueous_vessel(
+    let spit = finalize_aqueous_vessel(
         &mut scene.items[target_idx],
         crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+        true,
     );
+    note_chemical_spit(scene, spit);
     Ok(())
 }
 
@@ -1293,8 +1302,8 @@ fn apply_toggle_burner(scene: &mut Scene, burner_item_id: &str) -> Result<(), Sc
 mod thermal;
 
 pub use thermal::{
-    apply_elapsed, boiling_temperature_c, effective_heat_capacity, water_mole_fraction,
-    water_vapor_pressure_bar,
+    apply_elapsed, boiling_temperature_c, effective_heat_capacity, vessel_boil_temperature_c,
+    water_mole_fraction, water_vapor_pressure_bar,
 };
 
 use thermal::blend_temperature_capacity;
@@ -1336,7 +1345,8 @@ fn apply_pipette_fill(
         .unwrap_or(scene.temperature_c);
     let aliquot = take_liquid_aliquot(&mut scene.items[target_idx], PIPETTE_VOLUME_ML)?;
     // Concentration may precipitate; no dissolve contact on the source draw.
-    finalize_aqueous_vessel(&mut scene.items[target_idx], 0.0);
+    let spit = finalize_aqueous_vessel(&mut scene.items[target_idx], 0.0, true);
+    note_chemical_spit(scene, spit);
 
     let pipette = &mut scene.items[tool_idx];
     pipette.location = "hand".into();
@@ -1423,11 +1433,13 @@ fn apply_pipette_empty(
         .properties
         .temperature_c
         .unwrap_or(scene.temperature_c);
-    mix_aliquot_into(&mut scene.items[target_idx], &aliquot, aliquot_t);
-    finalize_aqueous_vessel(
+    let spit_mix = mix_aliquot_into(&mut scene.items[target_idx], &aliquot, aliquot_t);
+    let spit_fin = finalize_aqueous_vessel(
         &mut scene.items[target_idx],
         crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+        true,
     );
+    note_chemical_spit(scene, spit_mix || spit_fin);
 
     let pipette = &mut scene.items[tool_idx];
     pipette.properties.holding.clear();
@@ -1642,17 +1654,19 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
     }
     // Deposit source solids onto paper first so this pour's soluble fraction is
     // eligible for wash with the fluid still about to enter the filtrate.
-    mix_transfer_into(&mut scene.items[paper_idx], &solids, None);
+    let _ = mix_transfer_into(&mut scene.items[paper_idx], &solids, None);
     let mut fluid_t = source_t;
-    crate::dissolve_kinetics::wash_paper_solids_into_fluid(
+    let wash_q = crate::dissolve_kinetics::wash_paper_solids_into_fluid(
         &mut scene.items[paper_idx],
         &mut fluid,
         &mut fluid_t,
     );
-    mix_transfer_into(&mut scene.items[dest_idx], &fluid, Some(fluid_t));
+    let spit_mix = mix_transfer_into(&mut scene.items[dest_idx], &fluid, Some(fluid_t));
+    let spit_wash = apply_chemical_heat(&mut scene.items[dest_idx], wash_q, true);
     // Wash already applied contact-time kinetics; finalize is SI/speciate only.
-    finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0);
-    finalize_aqueous_vessel(&mut scene.items[dest_idx], 0.0);
+    let spit_src = finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0, true);
+    let spit_dest = finalize_aqueous_vessel(&mut scene.items[dest_idx], 0.0, true);
+    note_chemical_spit(scene, spit_mix || spit_wash || spit_src || spit_dest);
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Filtered into the filtrate beaker.".into(),
@@ -1791,12 +1805,14 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
     }
 
     let (taken, source_t) = transfer_liquid_fraction(scene, source_idx, dest_idx, dest_cap)?;
-    mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
-    finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0);
-    finalize_aqueous_vessel(
+    let spit_mix = mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
+    let spit_src = finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0, true);
+    let spit_dest = finalize_aqueous_vessel(
         &mut scene.items[dest_idx],
         crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+        true,
     );
+    note_chemical_spit(scene, spit_mix || spit_src || spit_dest);
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Poured from the held vessel.".into(),
@@ -1814,12 +1830,14 @@ fn dump_all_solids(
         .temperature_c
         .unwrap_or(scene.temperature_c);
     let taken = take_all_solids(&mut scene.items[source_idx]);
-    mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
-    finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0);
-    finalize_aqueous_vessel(
+    let spit_mix = mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
+    let spit_src = finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0, true);
+    let spit_dest = finalize_aqueous_vessel(
         &mut scene.items[dest_idx],
         crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+        true,
     );
+    note_chemical_spit(scene, spit_mix || spit_src || spit_dest);
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Poured solids into the vessel.".into(),
@@ -1979,7 +1997,7 @@ fn mix_transfer_into(
     target: &mut SceneItem,
     transferred: &[CompositionEntry],
     source_t: Option<f64>,
-) {
+) -> bool {
     let dest_hcl_before = crate::hcl::HclInventory::from_item(target);
     let added_hcl = crate::hcl::HclInventory::from_entries(transferred);
     let dest_h2so4_before = crate::h2so4::H2so4Inventory::from_item(target);
@@ -1993,11 +2011,12 @@ fn mix_transfer_into(
     merge_composition_into(target, transferred, true);
     crate::h2so4::ionize_liquid_h2so4_in_water(target);
     crate::solubility::sync_fill_ml(target);
-    apply_hcl_dilution_temperature(target, dest_hcl_before, added_hcl);
-    apply_h2so4_dilution_temperature(target, dest_h2so4_before, added_h2so4);
+    let spit_hcl = apply_hcl_dilution_temperature(target, dest_hcl_before, added_hcl);
+    let spit_h2so4 = apply_h2so4_dilution_temperature(target, dest_h2so4_before, added_h2so4);
+    spit_hcl || spit_h2so4
 }
 
-fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquot_t: f64) {
+fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquot_t: f64) -> bool {
     let dest_hcl_before = crate::hcl::HclInventory::from_item(target);
     let added_hcl = crate::hcl::HclInventory::from_entries(aliquot);
     let dest_h2so4_before = crate::h2so4::H2so4Inventory::from_item(target);
@@ -2012,50 +2031,90 @@ fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquo
     merge_composition_into(target, aliquot, false);
     crate::h2so4::ionize_liquid_h2so4_in_water(target);
     crate::solubility::sync_fill_ml(target);
-    apply_hcl_dilution_temperature(target, dest_hcl_before, added_hcl);
-    apply_h2so4_dilution_temperature(target, dest_h2so4_before, added_h2so4);
+    let spit_hcl = apply_hcl_dilution_temperature(target, dest_hcl_before, added_hcl);
+    let spit_h2so4 = apply_h2so4_dilution_temperature(target, dest_h2so4_before, added_h2so4);
+    spit_hcl || spit_h2so4
 }
 
 fn apply_hcl_dilution_temperature(
     target: &mut SceneItem,
     dest_before: crate::hcl::HclInventory,
     added: crate::hcl::HclInventory,
-) {
+) -> bool {
     // Gated on HCl inventory (`min(max(n_h − n_oh, 0), n_cl)`), not bare protons.
     if dest_before.n_h <= AMOUNT_EPS && added.n_h <= AMOUNT_EPS {
-        return;
+        return false;
     }
     let after = crate::hcl::HclInventory::from_item(target);
     let q = crate::hcl::hcl_dilution_heat_j(dest_before, added, after);
-    apply_chemical_heat(target, q);
+    apply_chemical_heat(target, q, true)
 }
 
 fn apply_h2so4_dilution_temperature(
     target: &mut SceneItem,
     dest_before: crate::h2so4::H2so4Inventory,
     added: crate::h2so4::H2so4Inventory,
-) {
+) -> bool {
     if dest_before.n_h2so4 <= AMOUNT_EPS && added.n_h2so4 <= AMOUNT_EPS {
-        return;
+        return false;
     }
     let after = crate::h2so4::H2so4Inventory::from_item(target);
     let q = crate::h2so4::h2so4_dilution_heat_j(dest_before, added, after);
-    apply_chemical_heat(target, q);
+    apply_chemical_heat(target, q, true)
 }
 
-fn apply_chemical_heat(target: &mut SceneItem, q_j: f64) {
+/// Apply instant chemical heat `q_j` (negative ⇒ exothermic): `ΔT = −Q / C_eff`.
+///
+/// When the proposed temperature would reach or exceed [`vessel_boil_temperature_c`],
+/// clamp at boil. When `allow_spit_mass` is true (action paths), also discard
+/// [`CHEMICAL_SPIT_FRAC`] of composition and return `true` so the caller can emit
+/// at most one silent `spit` event per action. Clock ticks pass `false` — clamp
+/// only, no spray mass / event (spit is action-scoped). Burner continuous boil
+/// stays on the thermal path.
+pub(crate) fn apply_chemical_heat(target: &mut SceneItem, q_j: f64, allow_spit_mass: bool) -> bool {
     if q_j.abs() <= AMOUNT_EPS {
-        return;
+        return false;
     }
     let c_eff = effective_heat_capacity(target);
     if c_eff <= AMOUNT_EPS {
-        return;
+        return false;
     }
     let t = target
         .properties
         .temperature_c
         .unwrap_or(AMBIENT_TEMPERATURE_C);
-    target.properties.temperature_c = Some(t - q_j / c_eff);
+    let t_proposed = t - q_j / c_eff;
+    let t_boil = vessel_boil_temperature_c(target);
+    // Already plateaued at boil from a prior chemical-heat step this action:
+    // clamp only — do not spit mass again.
+    if t + 1e-3 >= t_boil {
+        target.properties.temperature_c = Some(t_boil);
+        return false;
+    }
+    if t_proposed + 1e-6 < t_boil {
+        target.properties.temperature_c = Some(t_proposed);
+        return false;
+    }
+    target.properties.temperature_c = Some(t_boil);
+    if !allow_spit_mass {
+        return false;
+    }
+    let _discarded = take_composition_fraction(target, CHEMICAL_SPIT_FRAC);
+    true
+}
+
+/// Push a silent spit event at most once per action (empty message; FE is visual-only).
+fn note_chemical_spit(scene: &mut Scene, spit: bool) {
+    if !spit {
+        return;
+    }
+    if scene.last_events.iter().any(|e| e.kind == "spit") {
+        return;
+    }
+    scene.last_events.push(SceneEvent {
+        kind: "spit".into(),
+        message: String::new(),
+    });
 }
 
 fn add_or_increase_water(item: &mut SceneItem, ml: f64) {

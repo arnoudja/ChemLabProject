@@ -1892,7 +1892,10 @@ fn scale_entry(entry: &CompositionEntry, frac: f64) -> Option<CompositionEntry> 
     has_amount.then_some(scaled)
 }
 
-pub(crate) fn take_composition_fraction(source: &mut SceneItem, frac: f64) -> Vec<CompositionEntry> {
+pub(crate) fn take_composition_fraction(
+    source: &mut SceneItem,
+    frac: f64,
+) -> Vec<CompositionEntry> {
     let frac = frac.clamp(0.0, 1.0);
     if frac <= AMOUNT_EPS {
         return Vec::new();

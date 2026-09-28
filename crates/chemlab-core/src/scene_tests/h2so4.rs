@@ -531,7 +531,11 @@ fn reformed_liquid_redilutes_and_ionizes() {
 }
 
 fn spit_count(scene: &Scene) -> usize {
-    scene.last_events.iter().filter(|e| e.kind == "spit").count()
+    scene
+        .last_events
+        .iter()
+        .filter(|e| e.kind == "spit")
+        .count()
 }
 
 fn solution_ml(id: &str, scene: &Scene) -> f64 {

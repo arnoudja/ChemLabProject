@@ -34,11 +34,12 @@ pub use hcl::{
 };
 pub use scene::{
     apply_action, apply_elapsed, boiling_temperature_c, effective_heat_capacity,
-    ensure_default_bench_items, initial_bench_scene, initial_scene_for_mode, vessel_boil_temperature_c,
-    water_mole_fraction, water_vapor_pressure_bar, Action, CompositionEntry, ItemProperties, Scene,
-    SceneError, SceneEvent, SceneItem, AMBIENT_TEMPERATURE_C, ATM_PRESSURE_BAR, BOILING_TEMPERATURE_C,
-    BURNER_POWER_W, CHEMICAL_SPIT_FRAC, CP_CACL2, CP_H2SO4_LIQUID, CP_NACL, CP_NAOH, CP_SAND, C_BEAKER,
-    C_DISH, DISH_CAPACITY_ML, DISH_EVAP_AREA_M2, DISH_MASS_TRANSFER_COEFF_ML_PER_S_M2,
+    ensure_default_bench_items, initial_bench_scene, initial_scene_for_mode,
+    vessel_boil_temperature_c, water_mole_fraction, water_vapor_pressure_bar, Action,
+    CompositionEntry, ItemProperties, Scene, SceneError, SceneEvent, SceneItem,
+    AMBIENT_TEMPERATURE_C, ATM_PRESSURE_BAR, BOILING_TEMPERATURE_C, BURNER_POWER_W,
+    CHEMICAL_SPIT_FRAC, CP_CACL2, CP_H2SO4_LIQUID, CP_NACL, CP_NAOH, CP_SAND, C_BEAKER, C_DISH,
+    DISH_CAPACITY_ML, DISH_EVAP_AREA_M2, DISH_MASS_TRANSFER_COEFF_ML_PER_S_M2,
     DISTILLED_WATER_CAPACITY_ML, DISTILLED_WATER_ID, FILTRATE_CAPACITY_ML,
     H_OH_NEUTRALIZATION_J_PER_MOL, MAIN_BEAKER_ID, PIPETTE_MIN_SOURCE_ML, PIPETTE_VOLUME_ML,
     RELATIVE_HUMIDITY, SPOON_SCOOP_MASS_G, UA_BEAKER, UA_DISH, WATER_ANTOINE_A, WATER_ANTOINE_B,

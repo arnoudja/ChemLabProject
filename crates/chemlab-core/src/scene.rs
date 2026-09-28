@@ -124,11 +124,6 @@ pub(crate) use crate::aqueous_pipeline::finalize_aqueous_vessel;
 /// Enthalpy of neutralization H⁺ + OH⁻ → H₂O (exothermic), J/mol.
 pub const H_OH_NEUTRALIZATION_J_PER_MOL: f64 = -55800.0;
 
-/// School fraction of vessel composition discarded when chemical heat would boil.
-///
-/// Lost as spray (not continuous evaporation). Mid-range of the 2–5% school band.
-pub const CHEMICAL_SPIT_FRAC: f64 = 0.03;
-
 /// Specific heat capacity of liquid water, J/(g·K). Mass of water ≈ volume in ml.
 pub const WATER_SPECIFIC_HEAT_J_PER_G_K: f64 = 4.184;
 
@@ -1655,14 +1650,15 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
     // Deposit source solids onto paper first so this pour's soluble fraction is
     // eligible for wash with the fluid still about to enter the filtrate.
     let _ = mix_transfer_into(&mut scene.items[paper_idx], &solids, None);
-    let mut fluid_t = source_t;
+    let fluid_t = source_t;
     let wash_q = crate::dissolve_kinetics::wash_paper_solids_into_fluid(
         &mut scene.items[paper_idx],
         &mut fluid,
-        &mut fluid_t,
+        fluid_t,
     );
     let spit_mix = mix_transfer_into(&mut scene.items[dest_idx], &fluid, Some(fluid_t));
-    let spit_wash = apply_chemical_heat(&mut scene.items[dest_idx], wash_q, true);
+    let spit_wash =
+        crate::aqueous_pipeline::apply_chemical_heat(&mut scene.items[dest_idx], wash_q, true);
     // Wash already applied contact-time kinetics; finalize is SI/speciate only.
     let spit_src = finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0, true);
     let spit_dest = finalize_aqueous_vessel(&mut scene.items[dest_idx], 0.0, true);
@@ -1896,7 +1892,10 @@ fn scale_entry(entry: &CompositionEntry, frac: f64) -> Option<CompositionEntry> 
     has_amount.then_some(scaled)
 }
 
-fn take_composition_fraction(source: &mut SceneItem, frac: f64) -> Vec<CompositionEntry> {
+pub(crate) fn take_composition_fraction(
+    source: &mut SceneItem,
+    frac: f64,
+) -> Vec<CompositionEntry> {
     let frac = frac.clamp(0.0, 1.0);
     if frac <= AMOUNT_EPS {
         return Vec::new();
@@ -2047,7 +2046,7 @@ fn apply_hcl_dilution_temperature(
     }
     let after = crate::hcl::HclInventory::from_item(target);
     let q = crate::hcl::hcl_dilution_heat_j(dest_before, added, after);
-    apply_chemical_heat(target, q, true)
+    crate::aqueous_pipeline::apply_chemical_heat(target, q, true)
 }
 
 fn apply_h2so4_dilution_temperature(
@@ -2060,47 +2059,7 @@ fn apply_h2so4_dilution_temperature(
     }
     let after = crate::h2so4::H2so4Inventory::from_item(target);
     let q = crate::h2so4::h2so4_dilution_heat_j(dest_before, added, after);
-    apply_chemical_heat(target, q, true)
-}
-
-/// Apply instant chemical heat `q_j` (negative ⇒ exothermic): `ΔT = −Q / C_eff`.
-///
-/// When the proposed temperature would reach or exceed [`vessel_boil_temperature_c`],
-/// clamp at boil. When `allow_spit_mass` is true (action paths), also discard
-/// [`CHEMICAL_SPIT_FRAC`] of composition and return `true` so the caller can emit
-/// at most one silent `spit` event per action. Clock ticks pass `false` — clamp
-/// only, no spray mass / event (spit is action-scoped). Burner continuous boil
-/// stays on the thermal path.
-pub(crate) fn apply_chemical_heat(target: &mut SceneItem, q_j: f64, allow_spit_mass: bool) -> bool {
-    if q_j.abs() <= AMOUNT_EPS {
-        return false;
-    }
-    let c_eff = effective_heat_capacity(target);
-    if c_eff <= AMOUNT_EPS {
-        return false;
-    }
-    let t = target
-        .properties
-        .temperature_c
-        .unwrap_or(AMBIENT_TEMPERATURE_C);
-    let t_proposed = t - q_j / c_eff;
-    let t_boil = vessel_boil_temperature_c(target);
-    // Already plateaued at boil from a prior chemical-heat step this action:
-    // clamp only — do not spit mass again.
-    if t + 1e-3 >= t_boil {
-        target.properties.temperature_c = Some(t_boil);
-        return false;
-    }
-    if t_proposed + 1e-6 < t_boil {
-        target.properties.temperature_c = Some(t_proposed);
-        return false;
-    }
-    target.properties.temperature_c = Some(t_boil);
-    if !allow_spit_mass {
-        return false;
-    }
-    let _discarded = take_composition_fraction(target, CHEMICAL_SPIT_FRAC);
-    true
+    crate::aqueous_pipeline::apply_chemical_heat(target, q, true)
 }
 
 /// Push a silent spit event at most once per action (empty message; FE is visual-only).

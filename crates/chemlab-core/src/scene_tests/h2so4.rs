@@ -667,7 +667,7 @@ fn chemical_heat_clock_mode_clamps_without_spit_mass() {
     let v0 = crate::hcl::solution_volume_ml(&item);
     let c = effective_heat_capacity(&item);
     let q = -c * 20.0; // proposed T = 115 °C → overshoot
-    let spit = apply_chemical_heat(&mut item, q, false);
+    let spit = crate::aqueous_pipeline::apply_chemical_heat(&mut item, q, false);
     assert!(!spit);
     let t_boil = vessel_boil_temperature_c(&item);
     assert!(
@@ -682,7 +682,7 @@ fn chemical_heat_clock_mode_clamps_without_spit_mass() {
     let mut item2 = item.clone();
     item2.properties.temperature_c = Some(95.0);
     crate::solubility::sync_fill_ml(&mut item2);
-    let spit_action = apply_chemical_heat(&mut item2, q, true);
+    let spit_action = crate::aqueous_pipeline::apply_chemical_heat(&mut item2, q, true);
     assert!(spit_action);
-    assert!(crate::hcl::solution_volume_ml(&item2) < v0 * (1.0 - CHEMICAL_SPIT_FRAC * 0.5));
+    assert!(crate::hcl::solution_volume_ml(&item2) < v0 * (1.0 - crate::CHEMICAL_SPIT_FRAC * 0.5));
 }

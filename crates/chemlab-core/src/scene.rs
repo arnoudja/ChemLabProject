@@ -1093,12 +1093,11 @@ fn apply_pour(
                 mass_g,
             );
         }
-        let spit = finalize_aqueous_vessel(
-            &mut scene.items[target_idx],
+        finalize_and_note(
+            scene,
+            target_idx,
             crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
-            true,
         );
-        note_chemical_spit(scene, spit);
         return Ok(());
     }
 
@@ -1129,12 +1128,11 @@ fn apply_pour(
         });
     }
 
-    let spit = finalize_aqueous_vessel(
-        &mut scene.items[target_idx],
+    finalize_and_note(
+        scene,
+        target_idx,
         crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
-        true,
     );
-    note_chemical_spit(scene, spit);
     Ok(())
 }
 
@@ -1340,8 +1338,7 @@ fn apply_pipette_fill(
         .unwrap_or(scene.temperature_c);
     let aliquot = take_liquid_aliquot(&mut scene.items[target_idx], PIPETTE_VOLUME_ML)?;
     // Concentration may precipitate; no dissolve contact on the source draw.
-    let spit = finalize_aqueous_vessel(&mut scene.items[target_idx], 0.0, true);
-    note_chemical_spit(scene, spit);
+    finalize_and_note(scene, target_idx, 0.0);
 
     let pipette = &mut scene.items[tool_idx];
     pipette.location = "hand".into();
@@ -1434,7 +1431,7 @@ fn apply_pipette_empty(
         crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
         true,
     );
-    note_chemical_spit(scene, spit_mix || spit_fin);
+    note_spit_flags(scene, &[spit_mix, spit_fin]);
 
     let pipette = &mut scene.items[tool_idx];
     pipette.properties.holding.clear();
@@ -1662,7 +1659,7 @@ fn apply_filter_pour(scene: &mut Scene, tool_idx: usize) -> Result<(), SceneErro
     // Wash already applied contact-time kinetics; finalize is SI/speciate only.
     let spit_src = finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0, true);
     let spit_dest = finalize_aqueous_vessel(&mut scene.items[dest_idx], 0.0, true);
-    note_chemical_spit(scene, spit_mix || spit_wash || spit_src || spit_dest);
+    note_spit_flags(scene, &[spit_mix, spit_wash, spit_src, spit_dest]);
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Filtered into the filtrate beaker.".into(),
@@ -1802,13 +1799,7 @@ fn apply_tongs_pour(scene: &mut Scene, tool_idx: usize, dest_idx: usize) -> Resu
 
     let (taken, source_t) = transfer_liquid_fraction(scene, source_idx, dest_idx, dest_cap)?;
     let spit_mix = mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
-    let spit_src = finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0, true);
-    let spit_dest = finalize_aqueous_vessel(
-        &mut scene.items[dest_idx],
-        crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
-        true,
-    );
-    note_chemical_spit(scene, spit_mix || spit_src || spit_dest);
+    finalize_transfer_pair_and_note(scene, source_idx, dest_idx, spit_mix);
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Poured from the held vessel.".into(),
@@ -1827,13 +1818,7 @@ fn dump_all_solids(
         .unwrap_or(scene.temperature_c);
     let taken = take_all_solids(&mut scene.items[source_idx]);
     let spit_mix = mix_transfer_into(&mut scene.items[dest_idx], &taken, Some(source_t));
-    let spit_src = finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0, true);
-    let spit_dest = finalize_aqueous_vessel(
-        &mut scene.items[dest_idx],
-        crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
-        true,
-    );
-    note_chemical_spit(scene, spit_mix || spit_src || spit_dest);
+    finalize_transfer_pair_and_note(scene, source_idx, dest_idx, spit_mix);
     scene.last_events.push(SceneEvent {
         kind: "poured".into(),
         message: "Poured solids into the vessel.".into(),
@@ -2060,6 +2045,33 @@ fn apply_h2so4_dilution_temperature(
     let after = crate::h2so4::H2so4Inventory::from_item(target);
     let q = crate::h2so4::h2so4_dilution_heat_j(dest_before, added, after);
     crate::aqueous_pipeline::apply_chemical_heat(target, q, true)
+}
+
+/// Finalize one vessel (`allow_spit_mass=true`) and note spit if the gate spat.
+fn finalize_and_note(scene: &mut Scene, idx: usize, tau_s: f64) {
+    let spit = finalize_aqueous_vessel(&mut scene.items[idx], tau_s, true);
+    note_chemical_spit(scene, spit);
+}
+
+/// Note spit if any flag is true (still ≤1 spit via [`note_chemical_spit`] de-dupe).
+fn note_spit_flags(scene: &mut Scene, flags: &[bool]) {
+    note_chemical_spit(scene, flags.iter().any(|&f| f));
+}
+
+/// Shared tongs-pour / dump-solids finalize: src τ=0, dest [`POUR_CONTACT_TAU_S`], OR mix.
+fn finalize_transfer_pair_and_note(
+    scene: &mut Scene,
+    source_idx: usize,
+    dest_idx: usize,
+    spit_mix: bool,
+) {
+    let spit_src = finalize_aqueous_vessel(&mut scene.items[source_idx], 0.0, true);
+    let spit_dest = finalize_aqueous_vessel(
+        &mut scene.items[dest_idx],
+        crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
+        true,
+    );
+    note_spit_flags(scene, &[spit_mix, spit_src, spit_dest]);
 }
 
 /// Push a silent spit event at most once per action (empty message; FE is visual-only).

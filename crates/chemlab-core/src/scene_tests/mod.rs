@@ -10,6 +10,7 @@ mod kinetics;
 mod na2so4;
 mod naoh;
 mod pipette;
+mod spit;
 mod spoon;
 mod temperature;
 mod tongs;

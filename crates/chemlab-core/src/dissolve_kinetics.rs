@@ -101,25 +101,29 @@ fn dissolve_mass_for_contact(avail: f64, cap: f64, k: f64, tau_s: f64, is_naoh: 
 ///
 /// Authors ions + ΔH only for the mass that dissolves this call; remainder stays
 /// solid. No-op without liquid water or when `τ ≤ 0`.
-pub(crate) fn apply_kinetic_dissolve(item: &mut SceneItem, tau_s: f64) {
+/// Returns `true` when any dissolve heat step discarded spit mass.
+pub(crate) fn apply_kinetic_dissolve(item: &mut SceneItem, tau_s: f64) -> bool {
     let mut remaining = if tau_s.is_finite() {
         tau_s.clamp(0.0, MAX_TAU_S)
     } else {
         0.0
     };
+    let mut spit = false;
     while remaining > AMOUNT_EPS {
         let step = remaining.min(SUBSTEP_TAU_S);
-        apply_kinetic_dissolve_step(item, step);
+        spit |= apply_kinetic_dissolve_step(item, step);
         remaining -= step;
     }
+    spit
 }
 
-fn apply_kinetic_dissolve_step(item: &mut SceneItem, tau_s: f64) {
+fn apply_kinetic_dissolve_step(item: &mut SceneItem, tau_s: f64) -> bool {
     let water_ml = solvent_water_ml_for_si(item);
     if water_ml <= AMOUNT_EPS || tau_s <= AMOUNT_EPS {
-        return;
+        return false;
     }
 
+    let mut spit = false;
     for salt_id in KINETIC_SALTS {
         // Refresh T each salt so earlier dissolve ΔH is not wiped by a frozen snapshot.
         let t = item
@@ -143,22 +147,25 @@ fn apply_kinetic_dissolve_step(item: &mut SceneItem, tau_s: f64) {
         if let Some((moles, delta_h)) =
             author_dissolved_salt_ions(&mut item.properties.composition, salt_id, m_diss)
         {
-            apply_dissolution_temperature_change(item, moles, delta_h, t);
+            spit |= apply_dissolution_temperature_change(item, moles, delta_h, t);
         }
     }
+    spit
 }
 
 /// Wash soluble solids from filter paper into a fluid parcel (same rate law).
 ///
-/// Updates `fluid` ions and `fluid_t` with dissolve ΔH. Sand is never touched.
+/// Updates `fluid` ions. Dissolve ΔH is returned as heat (J) for the caller to
+/// apply via [`crate::scene::apply_chemical_heat`] on the destination vessel after
+/// mix (shared boil/spit gate). Sand is never touched.
 pub(crate) fn wash_paper_solids_into_fluid(
     paper: &mut SceneItem,
     fluid: &mut Vec<CompositionEntry>,
     fluid_t: &mut f64,
-) {
+) -> f64 {
     let v_fluid = crate::composition::solvent_water_ml_for_si_entries(fluid);
     if v_fluid <= AMOUNT_EPS {
-        return;
+        return 0.0;
     }
 
     let c_fluid = heat_capacity_of_entries(fluid);
@@ -174,6 +181,7 @@ pub(crate) fn wash_paper_solids_into_fluid(
     };
 
     let tau = FILTER_WASH_TAU_S_PER_ML * v_fluid;
+    let mut heat_j = 0.0;
 
     for salt_id in KINETIC_SALTS {
         let avail = paper
@@ -191,12 +199,10 @@ pub(crate) fn wash_paper_solids_into_fluid(
         }
         remove_solid_mass(paper, salt_id, m_diss);
         if let Some((moles, delta_h)) = author_dissolved_salt_ions(fluid, salt_id, m_diss) {
-            let c_eff = heat_capacity_of_entries(fluid);
-            if c_eff > AMOUNT_EPS {
-                *fluid_t -= moles * delta_h / c_eff;
-            }
+            heat_j += moles * delta_h;
         }
     }
+    heat_j
 }
 
 fn vessel_unsaturated_cap_g(item: &SceneItem, salt_id: &str, water_ml: f64, t: f64) -> f64 {

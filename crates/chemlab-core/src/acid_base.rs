@@ -13,8 +13,7 @@
 
 use crate::composition::{aqueous_mol, liquid_water_ml, set_aqueous_mol};
 use crate::scene::{
-    effective_heat_capacity, CompositionEntry, SceneItem, AMBIENT_TEMPERATURE_C,
-    H_OH_NEUTRALIZATION_J_PER_MOL, WATER_MOLAR_MASS_G_PER_MOL,
+    CompositionEntry, SceneItem, H_OH_NEUTRALIZATION_J_PER_MOL, WATER_MOLAR_MASS_G_PER_MOL,
 };
 
 const AMOUNT_EPS: f64 = 1e-12;
@@ -123,7 +122,9 @@ fn add_water_ml(item: &mut SceneItem, ml: f64) {
 ///
 /// Concentrations use **liquid water** ml as the solvent basis (not Φ_V solution
 /// volume, which can include non-aqueous liquid H₂SO₄). No-ops when dry.
-pub fn speciate_aqueous_acid_base(item: &mut SceneItem, apply_heat: bool) {
+///
+/// Returns `true` when neutralization heat discarded spit mass.
+pub fn speciate_aqueous_acid_base(item: &mut SceneItem, apply_heat: bool) -> bool {
     let water_ml = liquid_water_ml(item);
     // Dry or empty: leave ion piles for reform / SI; strip solvent-only Kw ions.
     if water_ml <= AMOUNT_EPS {
@@ -133,7 +134,7 @@ pub fn speciate_aqueous_acid_base(item: &mut SceneItem, apply_heat: bool) {
         if n_cl <= AMOUNT_EPS && n_s <= AMOUNT_EPS {
             set_aqueous_mol(item, "h+", 0.0);
         }
-        return;
+        return false;
     }
     let v_l = water_ml / 1000.0;
 
@@ -163,17 +164,11 @@ pub fn speciate_aqueous_acid_base(item: &mut SceneItem, apply_heat: bool) {
         let n_rxn = 0.5 * (acid_base_before - acid_base_after).max(0.0);
         if n_rxn > AMOUNT_EPS {
             add_water_ml(item, n_rxn * WATER_MOLAR_MASS_G_PER_MOL);
-            let c_eff = effective_heat_capacity(item);
-            if c_eff > AMOUNT_EPS {
-                let t = item
-                    .properties
-                    .temperature_c
-                    .unwrap_or(AMBIENT_TEMPERATURE_C);
-                item.properties.temperature_c =
-                    Some(t - n_rxn * H_OH_NEUTRALIZATION_J_PER_MOL / c_eff);
-            }
+            let q = n_rxn * H_OH_NEUTRALIZATION_J_PER_MOL;
+            return crate::scene::apply_chemical_heat(item, q);
         }
     }
+    false
 }
 
 /// Net charge (mol e⁻) of aqueous ions — should be ~0 after speciation.
@@ -190,7 +185,7 @@ pub fn aqueous_charge_mol(item: &SceneItem) -> f64 {
 mod tests {
     use super::*;
     use crate::hcl::{ph_of_entries, solution_volume_ml};
-    use crate::scene::{CompositionEntry, ItemProperties};
+    use crate::scene::{effective_heat_capacity, CompositionEntry, ItemProperties};
 
     fn aq(substance_id: &str, amount_mol: f64) -> CompositionEntry {
         CompositionEntry {

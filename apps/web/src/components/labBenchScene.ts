@@ -165,6 +165,18 @@ export function dissolveCueFromEvents(
   return null
 }
 
+/** True when the last action emitted a silent chemical spit (visual-only). */
+export function spitCueFromEvents(events: { kind: string; message: string }[]): boolean {
+  return events.some((event) => event.kind === 'spit')
+}
+
+/** Banner events — suppress silent spit (empty teaching copy by design). */
+export function bannerEventsFromLastEvents(
+  events: { kind: string; message: string }[],
+): { kind: string; message: string }[] {
+  return events.filter((event) => event.kind !== 'spit')
+}
+
 /** Dish liquid height — Φ_V solution volume (matches server `fill_ml`), not water-only ml. */
 export function dishAmountMl(scene: LabScene): number | null {
   const item = findItem(scene, DISH_ID)

@@ -64,6 +64,8 @@ import {
   burnerIsOn,
   dishAmountMl,
   dissolveCueFromEvents,
+  spitCueFromEvents,
+  bannerEventsFromLastEvents,
   distilledWaterAmountMl,
   hclStockAmountMl,
   h2so4StockAmountMl,
@@ -140,6 +142,8 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
   const [stockCarouselIndex, setStockCarouselIndex] = useState(0)
   const [toolCarouselIndex, setToolCarouselIndex] = useState(0)
+  /** Last action vessel id — spit CSS burst target (dissolve-cue pattern). */
+  const [lastActionTargetId, setLastActionTargetId] = useState<string | null>(null)
 
   const burnerOn = scene ? burnerIsOn(scene) : false
   const needsClockPoll = scene ? sceneNeedsClockPoll(scene) : false
@@ -275,6 +279,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
         tool_item_id: toolItemId,
         target_item_id: targetItemId,
       })
+      setLastActionTargetId(targetItemId)
       setScene(response.scene)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed')
@@ -293,6 +298,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
         source_item_id: sourceItemId,
         target_item_id: targetItemId,
       })
+      setLastActionTargetId(targetItemId)
       setScene(response.scene)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed')
@@ -467,6 +473,9 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
   const paperHeld = paper?.location === 'held'
   const lastEvents = scene ? optionalArray(scene.last_events) : []
   const dissolveCue = dissolveCueFromEvents(lastEvents)
+  const hasSpitCue = spitCueFromEvents(lastEvents)
+  const spitTargetId = hasSpitCue ? lastActionTargetId : null
+  const bannerEvents = bannerEventsFromLastEvents(lastEvents)
   const hasAqueous = scene ? waterHasAqueous(scene) : false
   const inspectItem = scene && inspectItemId ? findItem(scene, inspectItemId) : undefined
   const pipetteFilled = scene ? pipetteIsFilled(scene) : false
@@ -597,10 +606,11 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
 
           <button
             type="button"
-            className="lab-item"
+            className={`lab-item${spitTargetId === WATER_ID ? ' lab-item--spit-cue' : ''}`}
             aria-label={water?.label ?? 'Beaker'}
             disabled={busy}
             onClick={onWater}
+            data-spit-cue={spitTargetId === WATER_ID ? 'burst' : 'none'}
           >
             {waterHeld ? (
               <svg viewBox="0 0 120 168" className="h-40 w-28" aria-hidden />
@@ -611,6 +621,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
                 amountMl={waterAmountMl(scene)}
                 hasAqueous={hasAqueous}
                 dissolveCue={dissolveCue}
+                spitCue={spitTargetId === WATER_ID}
               />
             )}
             <span className="lab-item-label">{water?.label ?? 'Beaker'}</span>
@@ -828,7 +839,7 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
         </p>
       ) : null}
 
-      {lastEvents.length > 0 ? (
+      {bannerEvents.length > 0 ? (
         <div className="lab-bench-events mt-3 space-y-2 text-sm" role="status" aria-live="polite">
           {dissolveCue ? (
             <p
@@ -841,19 +852,21 @@ export function LabBench({ onModeChange }: { onModeChange?: (mode: string) => vo
               {': '}
               <span className="text-[var(--ink-soft)]">
                 {dissolveCue === 'dissolved'
-                  ? lastEvents.find((event) => event.kind === 'dissolved')?.message
-                  : lastEvents.find((event) => event.kind === 'did_not_dissolve')?.message}
+                  ? bannerEvents.find((event) => event.kind === 'dissolved')?.message
+                  : bannerEvents.find((event) => event.kind === 'did_not_dissolve')?.message}
               </span>
             </p>
           ) : (
-            lastEvents.map((event, index) => {
+            bannerEvents.map((event, index) => {
               const outcome = outcomeLabel(event.kind)
               return (
                 <div key={`${event.kind}-${index}`} className="space-y-1" data-event-kind={event.kind}>
                   {outcome ? (
                     <p className="font-medium text-[var(--ink)]">{outcome}</p>
                   ) : null}
-                  <p className="text-[var(--ink-soft)]">{event.message}</p>
+                  {event.message ? (
+                    <p className="text-[var(--ink-soft)]">{event.message}</p>
+                  ) : null}
                 </div>
               )
             })

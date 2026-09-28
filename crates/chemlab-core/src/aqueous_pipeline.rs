@@ -4,9 +4,9 @@
 //! depend on mutator-heavy `scene` helpers for ion writing.
 
 use crate::scene::{
-    add_or_increase_mol_in, effective_heat_capacity, CompositionEntry, SceneItem, AMOUNT_EPS,
-    CACL2_MOLAR_MASS_G_PER_MOL, CASO4_MOLAR_MASS_G_PER_MOL, NA2SO4_MOLAR_MASS_G_PER_MOL,
-    NACL_MOLAR_MASS_G_PER_MOL, NAOH_MOLAR_MASS_G_PER_MOL,
+    add_or_increase_mol_in, CompositionEntry, SceneItem, AMOUNT_EPS, CACL2_MOLAR_MASS_G_PER_MOL,
+    CASO4_MOLAR_MASS_G_PER_MOL, NA2SO4_MOLAR_MASS_G_PER_MOL, NACL_MOLAR_MASS_G_PER_MOL,
+    NAOH_MOLAR_MASS_G_PER_MOL,
 };
 
 /// Enthalpy of solution of NaCl at bench conditions (endothermic), J/mol.
@@ -50,28 +50,33 @@ impl FinalizeStage {
         FinalizeStage::SyncFillMl,
     ];
 
-    fn apply(self, item: &mut SceneItem, dissolve_tau_s: f64) {
+    fn apply(self, item: &mut SceneItem, dissolve_tau_s: f64) -> bool {
         match self {
             FinalizeStage::IonizeH2so4 => {
                 crate::h2so4::ionize_liquid_h2so4_in_water(item);
+                false
             }
             FinalizeStage::KineticDissolve => {
-                crate::dissolve_kinetics::apply_kinetic_dissolve(item, dissolve_tau_s);
+                crate::dissolve_kinetics::apply_kinetic_dissolve(item, dissolve_tau_s)
             }
             FinalizeStage::SpeciateWithHeat => {
-                crate::acid_base::speciate_aqueous_acid_base(item, true);
+                crate::acid_base::speciate_aqueous_acid_base(item, true)
             }
             FinalizeStage::EnforceSaturation => {
                 crate::solubility::enforce_saturation(item);
+                false
             }
             FinalizeStage::SpeciateNoHeatAfterSi | FinalizeStage::SpeciateNoHeatAfterReform => {
                 crate::acid_base::speciate_aqueous_acid_base(item, false);
+                false
             }
             FinalizeStage::ReformH2so4 => {
                 crate::h2so4::reform_aqueous_h2so4_to_liquid(item);
+                false
             }
             FinalizeStage::SyncFillMl => {
                 crate::solubility::sync_fill_ml(item);
+                false
             }
         }
     }
@@ -129,22 +134,28 @@ pub(crate) fn author_dissolved_salt_ions(
 /// threshold; [`crate::acid_base::speciate_aqueous_acid_base`] then solves `K_w` +
 /// `K_a2`. SI is precipitate-only (under-saturated redissolve is kinetic-owned).
 /// Free sulfuric below the reform threshold becomes liquid `h2so4`.
-pub(crate) fn finalize_aqueous_vessel(item: &mut SceneItem, dissolve_tau_s: f64) {
+///
+/// Returns `true` when any chemical-heat step discarded spit mass (caller emits
+/// at most one `spit` event per action).
+pub(crate) fn finalize_aqueous_vessel(item: &mut SceneItem, dissolve_tau_s: f64) -> bool {
+    let mut spit = false;
     for stage in FinalizeStage::ALL {
-        stage.apply(item, dissolve_tau_s);
+        spit |= stage.apply(item, dissolve_tau_s);
     }
+    spit
 }
 
 /// Apply dissolution heat to the solvent vessel: ΔT = −(n·ΔH_sol) / C_eff.
 ///
-/// `C_eff` is [`effective_heat_capacity`] of the target (vessel + water + solids).
-/// Endothermic ΔH cools; exothermic heats.
+/// Routes through [`crate::scene::apply_chemical_heat`] so boil/spit gating is
+/// shared with dilution and neutralization. Returns `true` when spit mass was
+/// discarded on this heat step.
 pub(crate) fn apply_dissolution_temperature_change(
     target: &mut SceneItem,
     moles: f64,
     delta_h_j_per_mol: f64,
-    current_temperature_c: f64,
-) {
+    _current_temperature_c: f64,
+) -> bool {
     let water_ml = target
         .properties
         .composition
@@ -153,15 +164,10 @@ pub(crate) fn apply_dissolution_temperature_change(
         .and_then(|c| c.amount_ml)
         .unwrap_or(0.0);
     if water_ml <= 0.0 || moles <= 0.0 {
-        return;
-    }
-    let c_eff = effective_heat_capacity(target);
-    if c_eff <= AMOUNT_EPS {
-        return;
+        return false;
     }
     let heat_j = moles * delta_h_j_per_mol;
-    let delta_t = -heat_j / c_eff;
-    target.properties.temperature_c = Some(current_temperature_c + delta_t);
+    crate::scene::apply_chemical_heat(target, heat_j)
 }
 
 #[cfg(test)]

@@ -172,7 +172,7 @@ pub fn speciate_aqueous_acid_base(
         if n_rxn > AMOUNT_EPS {
             add_water_ml(item, n_rxn * WATER_MOLAR_MASS_G_PER_MOL);
             let q = n_rxn * H_OH_NEUTRALIZATION_J_PER_MOL;
-            return crate::scene::apply_chemical_heat(item, q, allow_spit_mass);
+            return crate::aqueous_pipeline::apply_chemical_heat(item, q, allow_spit_mass);
         }
     }
     false

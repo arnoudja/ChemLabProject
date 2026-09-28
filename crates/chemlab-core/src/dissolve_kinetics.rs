@@ -151,7 +151,7 @@ fn apply_kinetic_dissolve_step(item: &mut SceneItem, tau_s: f64, allow_spit_mass
         if let Some((moles, delta_h)) =
             author_dissolved_salt_ions(&mut item.properties.composition, salt_id, m_diss)
         {
-            spit |= apply_dissolution_temperature_change(item, moles, delta_h, t, allow_spit_mass);
+            spit |= apply_dissolution_temperature_change(item, moles, delta_h, allow_spit_mass);
         }
     }
     spit
@@ -160,12 +160,12 @@ fn apply_kinetic_dissolve_step(item: &mut SceneItem, tau_s: f64, allow_spit_mass
 /// Wash soluble solids from filter paper into a fluid parcel (same rate law).
 ///
 /// Updates `fluid` ions. Dissolve ΔH is returned as heat (J) for the caller to
-/// apply via [`crate::scene::apply_chemical_heat`] on the destination vessel after
-/// mix (shared boil/spit gate). Sand is never touched.
+/// apply via [`crate::aqueous_pipeline::apply_chemical_heat`] on the destination
+/// vessel after mix (shared boil/spit gate). Sand is never touched.
 pub(crate) fn wash_paper_solids_into_fluid(
     paper: &mut SceneItem,
     fluid: &mut Vec<CompositionEntry>,
-    fluid_t: &mut f64,
+    fluid_t: f64,
 ) -> f64 {
     let v_fluid = crate::composition::solvent_water_ml_for_si_entries(fluid);
     if v_fluid <= AMOUNT_EPS {
@@ -179,9 +179,9 @@ pub(crate) fn wash_paper_solids_into_fluid(
         .temperature_c
         .unwrap_or(AMBIENT_TEMPERATURE_C);
     let t_wash = if c_fluid + c_paper > AMOUNT_EPS {
-        (c_fluid * *fluid_t + c_paper * paper_t) / (c_fluid + c_paper)
+        (c_fluid * fluid_t + c_paper * paper_t) / (c_fluid + c_paper)
     } else {
-        *fluid_t
+        fluid_t
     };
 
     let tau = FILTER_WASH_TAU_S_PER_ML * v_fluid;

@@ -4,10 +4,16 @@
 //! depend on mutator-heavy `scene` helpers for ion writing.
 
 use crate::scene::{
-    add_or_increase_mol_in, CompositionEntry, SceneItem, AMOUNT_EPS, CACL2_MOLAR_MASS_G_PER_MOL,
-    CASO4_MOLAR_MASS_G_PER_MOL, NA2SO4_MOLAR_MASS_G_PER_MOL, NACL_MOLAR_MASS_G_PER_MOL,
-    NAOH_MOLAR_MASS_G_PER_MOL,
+    add_or_increase_mol_in, effective_heat_capacity, take_composition_fraction,
+    vessel_boil_temperature_c, CompositionEntry, SceneItem, AMBIENT_TEMPERATURE_C, AMOUNT_EPS,
+    CACL2_MOLAR_MASS_G_PER_MOL, CASO4_MOLAR_MASS_G_PER_MOL, NA2SO4_MOLAR_MASS_G_PER_MOL,
+    NACL_MOLAR_MASS_G_PER_MOL, NAOH_MOLAR_MASS_G_PER_MOL,
 };
+
+/// School fraction of vessel composition discarded when chemical heat would boil.
+///
+/// Lost as spray (not continuous evaporation). Mid-range of the 2–5% school band.
+pub const CHEMICAL_SPIT_FRAC: f64 = 0.03;
 
 /// Enthalpy of solution of NaCl at bench conditions (endothermic), J/mol.
 pub const NACL_DELTA_H_SOLUTION_J_PER_MOL: f64 = 3880.0;
@@ -156,14 +162,13 @@ pub(crate) fn finalize_aqueous_vessel(
 
 /// Apply dissolution heat to the solvent vessel: ΔT = −(n·ΔH_sol) / C_eff.
 ///
-/// Routes through [`crate::scene::apply_chemical_heat`] so boil/spit gating is
-/// shared with dilution and neutralization. Returns `true` when spit mass was
-/// discarded on this heat step.
+/// Routes through [`apply_chemical_heat`] so boil/spit gating is shared with
+/// dilution and neutralization. Returns `true` when spit mass was discarded on
+/// this heat step.
 pub(crate) fn apply_dissolution_temperature_change(
     target: &mut SceneItem,
     moles: f64,
     delta_h_j_per_mol: f64,
-    _current_temperature_c: f64,
     allow_spit_mass: bool,
 ) -> bool {
     let water_ml = target
@@ -177,7 +182,47 @@ pub(crate) fn apply_dissolution_temperature_change(
         return false;
     }
     let heat_j = moles * delta_h_j_per_mol;
-    crate::scene::apply_chemical_heat(target, heat_j, allow_spit_mass)
+    apply_chemical_heat(target, heat_j, allow_spit_mass)
+}
+
+/// Apply instant chemical heat `q_j` (negative ⇒ exothermic): `ΔT = −Q / C_eff`.
+///
+/// When the proposed temperature would reach or exceed [`vessel_boil_temperature_c`],
+/// clamp at boil. When `allow_spit_mass` is true (action paths), also discard
+/// [`CHEMICAL_SPIT_FRAC`] of composition and return `true` so the caller can emit
+/// at most one silent `spit` event per action. Clock ticks pass `false` — clamp
+/// only, no spray mass / event (spit is action-scoped). Burner continuous boil
+/// stays on the thermal path.
+pub(crate) fn apply_chemical_heat(target: &mut SceneItem, q_j: f64, allow_spit_mass: bool) -> bool {
+    if q_j.abs() <= AMOUNT_EPS {
+        return false;
+    }
+    let c_eff = effective_heat_capacity(target);
+    if c_eff <= AMOUNT_EPS {
+        return false;
+    }
+    let t = target
+        .properties
+        .temperature_c
+        .unwrap_or(AMBIENT_TEMPERATURE_C);
+    let t_proposed = t - q_j / c_eff;
+    let t_boil = vessel_boil_temperature_c(target);
+    // Already plateaued at boil from a prior chemical-heat step this action:
+    // clamp only — do not spit mass again.
+    if t + 1e-3 >= t_boil {
+        target.properties.temperature_c = Some(t_boil);
+        return false;
+    }
+    if t_proposed + 1e-6 < t_boil {
+        target.properties.temperature_c = Some(t_proposed);
+        return false;
+    }
+    target.properties.temperature_c = Some(t_boil);
+    if !allow_spit_mass {
+        return false;
+    }
+    let _discarded = take_composition_fraction(target, CHEMICAL_SPIT_FRAC);
+    true
 }
 
 #[cfg(test)]

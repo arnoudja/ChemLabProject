@@ -62,7 +62,8 @@ export const CHALLENGES: Challenge[] = [
   {
     id: 'neutralize-to-ph7',
     title: 'Neutralise to pH 7',
-    prompt: 'Neutralise sodium hydroxide with hydrochloric acid until the inspect pH is about 7.',
+    prompt:
+      'Neutralise sodium hydroxide with hydrochloric acid and check the inspect pH — a 1 ml pipette cannot land on 7.',
     done: 'Thank you.',
   },
   {
@@ -76,7 +77,7 @@ export const CHALLENGES: Challenge[] = [
     id: 'concentrate-hcl-azeotrope',
     title: 'Concentrate hydrochloric acid',
     prompt:
-      'Heat hydrochloric acid in the dish and stop near the azeotrope — you cannot boil it to pure HCl.',
+      'Dilute the hydrochloric acid, heat it in the dish, and stop near the azeotrope — you cannot boil it to pure HCl.',
     done: 'Thank you.',
   },
 ]

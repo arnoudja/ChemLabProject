@@ -85,6 +85,15 @@ pub enum WinCheck {
         min: f64,
         max: f64,
     },
+    /// Same vessel is acidic HCl: pH ≤ `max_ph` and aqueous `h+` and `cl-`.
+    AcidicHcl {
+        item_ids: &'static [&'static str],
+        max_ph: f64,
+    },
+    /// Vessel was observed below 18% w/w HCl (VLE-rise latch).
+    HclSeenLean {
+        item_id: &'static str,
+    },
     /// Vessel received liquid H₂SO₄ into water, and never water-onto-acid.
     AcidAddedIntoWater {
         item_id: &'static str,
@@ -220,23 +229,10 @@ pub const MAKE_HCL_FROM_GYPSUM: Challenge = Challenge {
         amount_g: 0.15,
         compare: WinCompare::AtLeast,
     }],
-    checks: &[
-        WinCheck::Ph {
-            item_ids: &["beaker-filtrate", "dish-1"],
-            min: f64::NEG_INFINITY,
-            max: 3.0,
-        },
-        WinCheck::AqueousAtLeast {
-            item_ids: &["beaker-filtrate", "dish-1"],
-            substance_id: "h+",
-            amount_mol: AQ_PRESENT_MOL,
-        },
-        WinCheck::AqueousAtLeast {
-            item_ids: &["beaker-filtrate", "dish-1"],
-            substance_id: "cl-",
-            amount_mol: AQ_PRESENT_MOL,
-        },
-    ],
+    checks: &[WinCheck::AcidicHcl {
+        item_ids: &["beaker-filtrate", "dish-1"],
+        max_ph: 3.0,
+    }],
 };
 
 /// Dissolve CaCl₂ and inspect the exothermic temperature rise.
@@ -285,7 +281,7 @@ pub const COMMON_ION_NACL: Challenge = Challenge {
     allowed_stock_item_ids: &["beaker-h2o", "beaker-hcl", "beaker-nacl"],
     empty_stock_item_ids: &[],
     main_beaker_solids: &[],
-    distilled_water_ml: Some(5.0),
+    distilled_water_ml: Some(10.0),
     win: &[StockTarget {
         item_id: "beaker-water",
         substance_id: "nacl",
@@ -306,11 +302,11 @@ pub const COMMON_ION_NACL: Challenge = Challenge {
     ],
 };
 
-/// NaOH + HCl to inspect pH near 7, without evaporating.
+/// NaOH + HCl; inspect pH is playable with 1 ml / 0.2 g steps (not a titre to 7).
 pub const NEUTRALIZE_TO_PH7: Challenge = Challenge {
     id: "neutralize-to-ph7",
     title: "Neutralise to pH 7",
-    prompt: "Neutralise sodium hydroxide with hydrochloric acid until the inspect pH is about 7.",
+    prompt: "Neutralise sodium hydroxide with hydrochloric acid and check the inspect pH — a 1 ml pipette cannot land on 7.",
     done: "Thank you.",
     allowed_stock_item_ids: &["beaker-h2o", "beaker-hcl", "beaker-naoh"],
     empty_stock_item_ids: &[],
@@ -320,8 +316,8 @@ pub const NEUTRALIZE_TO_PH7: Challenge = Challenge {
     checks: &[
         WinCheck::Ph {
             item_ids: &["beaker-water"],
-            min: 6.5,
-            max: 7.5,
+            min: 0.0,
+            max: 13.0,
         },
         WinCheck::AqueousAtLeast {
             item_ids: &["beaker-water"],
@@ -382,18 +378,27 @@ pub const DILUTE_SULFURIC_SAFE: Challenge = Challenge {
 pub const CONCENTRATE_HCL_AZEOTROPE: Challenge = Challenge {
     id: "concentrate-hcl-azeotrope",
     title: "Concentrate hydrochloric acid",
-    prompt: "Heat hydrochloric acid in the dish and stop near the azeotrope — you cannot boil it to pure HCl.",
+    prompt: "Dilute the hydrochloric acid, heat it in the dish, and stop near the azeotrope — you cannot boil it to pure HCl.",
     done: "Thank you.",
     allowed_stock_item_ids: &["beaker-h2o", "beaker-hcl"],
     empty_stock_item_ids: &[],
     main_beaker_solids: &[],
     distilled_water_ml: None,
     win: &[],
-    checks: &[WinCheck::HclWw {
-        item_ids: &["dish-1"],
-        min: 0.18,
-        max: 0.22,
-    }],
+    checks: &[
+        WinCheck::HclSeenLean {
+            item_id: "dish-1",
+        },
+        WinCheck::HclWw {
+            item_ids: &["dish-1"],
+            min: 0.18,
+            max: 0.22,
+        },
+        WinCheck::TemperatureAtLeast {
+            item_id: "dish-1",
+            min_c: 99.0,
+        },
+    ],
 };
 
 /// Every challenge, in picker order (Free mode is not a challenge).
@@ -521,6 +526,22 @@ fn check_holds(scene: &Scene, check: &WinCheck) -> bool {
                     }
                 })
         }),
+        WinCheck::AcidicHcl { item_ids, max_ph } => item_ids.iter().any(|id| {
+            scene
+                .items
+                .iter()
+                .find(|item| item.id == *id)
+                .is_some_and(|item| {
+                    ph_of_item(item).is_some_and(|ph| ph <= max_ph)
+                        && aqueous_mol(item, "h+") + 1e-12 >= AQ_PRESENT_MOL
+                        && aqueous_mol(item, "cl-") + 1e-12 >= AQ_PRESENT_MOL
+                })
+        }),
+        WinCheck::HclSeenLean { item_id } => scene
+            .items
+            .iter()
+            .find(|item| item.id == item_id)
+            .is_some_and(|item| item.properties.hcl_seen_lean == Some(true)),
         WinCheck::AcidAddedIntoWater { item_id } => scene
             .items
             .iter()

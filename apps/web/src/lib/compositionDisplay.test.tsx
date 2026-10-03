@@ -9,8 +9,10 @@ import {
   formatFormulaNodes,
   formatFormulaPlain,
   formatPh,
+  formatHclWw,
   formatTemperatureC,
   phFromComposition,
+  hclInventoryMassFraction,
   solventVolumeLitres,
   StockSubstanceLabel,
   stockSubstanceAriaLabel,
@@ -148,6 +150,25 @@ describe('phFromComposition', () => {
     expect(ph).not.toBeNull()
     expect(ph!).toBeLessThan(0)
     expect(formatPh(ph!)).toBe('-0.98')
+  })
+
+  it('returns HCl mass fraction for the stock composition', () => {
+    const composition = [
+      entry({ substance_id: 'water', phase: 'liquid', amount_ml: 8.043 }),
+      entry({ substance_id: 'h+', phase: 'aqueous', amount_mol: 3.447 / 36.46 }),
+      entry({ substance_id: 'cl-', phase: 'aqueous', amount_mol: 3.447 / 36.46 }),
+    ]
+    const w = hclInventoryMassFraction(composition)
+    expect(w).not.toBeNull()
+    expect(w!).toBeCloseTo(0.30, 5)
+    expect(formatHclWw(w!)).toBe('30.0% w/w')
+    expect(
+      hclInventoryMassFraction([
+        entry({ substance_id: 'water', phase: 'liquid', amount_ml: 100 }),
+        entry({ substance_id: 'na+', phase: 'aqueous', amount_mol: 0.01 }),
+        entry({ substance_id: 'cl-', phase: 'aqueous', amount_mol: 0.01 }),
+      ]),
+    ).toBeNull()
   })
 
   it('returns pH 7 for pure water (school Kw)', () => {

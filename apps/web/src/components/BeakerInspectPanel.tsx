@@ -3,7 +3,9 @@ import {
   CompositionInspectLine,
   formatTemperatureC,
   formatPh,
+  formatHclWw,
   phFromComposition,
+  hclInventoryMassFraction,
   solventVolumeLitres,
 } from '../lib/compositionDisplay'
 import { optionalArray } from '../lib/scene'
@@ -22,6 +24,7 @@ export function BeakerInspectPanel({
   const temperatureC = itemTemperatureC(scene, item)
   const solventL = solventVolumeLitres(composition)
   const ph = phFromComposition(composition)
+  const hclWw = hclInventoryMassFraction(composition)
 
   return (
     <aside
@@ -36,6 +39,9 @@ export function BeakerInspectPanel({
           <p className="mt-1 text-[var(--ink-soft)]">Temperature: {formatTemperatureC(temperatureC)}°C</p>
           {ph != null ? (
             <p className="text-[var(--ink-soft)]">pH: {formatPh(ph)}</p>
+          ) : null}
+          {hclWw != null ? (
+            <p className="text-[var(--ink-soft)]">HCl: {formatHclWw(hclWw)}</p>
           ) : null}
         </div>
         <button

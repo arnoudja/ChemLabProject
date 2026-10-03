@@ -17,9 +17,11 @@ in the web mirror + tests.
   rebuilds that mode's start scene; there is no partial progress across a switch.
 - **Reset resets the current mode.** The bench Reset button rebuilds the start scene of the mode
   the lab is in, not always Free.
-Win clauses may be **solid mass in any named vessel** (stocks, filter paper, main beaker)
-and extra server-side checks (pH, temperature, aqueous ions, leftover liquid/solid, HCl w/w,
-acid-into-water dilution order). The browser never evaluates wins.
+- **Free mode is never "completed".** Completion (`challenge_completed` on the scene) is derived
+  after every action from the challenge's win condition, so undoing the winning move un-wins it.
+- Win clauses may include **solid mass in any named vessel** (stocks, filter paper, main beaker)
+  plus extra server-side checks (pH, temperature, aqueous ions, leftover liquid/solid, HCl w/w,
+  and acid-into-water dilution order). The browser never evaluates wins.
 - A challenge start scene is the Free bench with the challenge's edits applied: ingredient stocks
   outside the allowed list are removed, listed stocks start empty, and the main beaker
   (`beaker-water`) is preloaded with the listed dry solids. Optional `distilled_water_ml`
@@ -124,7 +126,7 @@ Intended solution: dissolve CaCl₂ and Na₂SO₄ (or add H₂SO₄), mix so gy
 | Allowed ingredient stocks | `beaker-h2o` (full), `beaker-cacl2` (full), `beaker-h2so4` (full) |
 | Empty at start | none |
 | Removed from the bench | `beaker-hcl`, `beaker-nacl`, `beaker-naoh`, `beaker-na2so4`, `beaker-sand` |
-| Win | `filter-paper-1` holds **at least** 0.15 g solid `caso4`, **and** the filtrate **or** dish is acidic HCl (pH ≤ 3 with aqueous `h+` and `cl-`) |
+| Win | `filter-paper-1` holds **at least** 0.15 g solid `caso4`, **and** a **single** vessel (filtrate or dish) is acidic HCl (pH ≤ 3 with aqueous `h+` and `cl-` on that same vessel) |
 | Tools | Full set |
 
 Intended solution: dissolve CaCl₂, add H₂SO₄ so gypsum forms and aqueous HCl remains, filter. Optional dish boil toward the azeotrope is not required.
@@ -155,13 +157,13 @@ Intended solution: pour the 10 ml water into the main beaker, dump the CaCl₂ s
 | Prompt | Make a salty solution, then add hydrochloric acid until extra salt crashes out. |
 | Done | Thank you. |
 | Main beaker (`beaker-water`) | Empty (no preload) |
-| Allowed ingredient stocks | `beaker-h2o` (5 ml), `beaker-hcl` (full), `beaker-nacl` (full) |
+| Allowed ingredient stocks | `beaker-h2o` (10 ml), `beaker-hcl` (full), `beaker-nacl` (full) |
 | Empty at start | none |
 | Removed from the bench | `beaker-h2so4`, `beaker-naoh`, `beaker-na2so4`, `beaker-cacl2`, `beaker-sand` |
 | Win | Main beaker holds **at least** 0.05 g solid `nacl`, plus aqueous `h+` and `na+` (so the solid is not just dry leftover salt with no brine) |
 | Tools | Full set |
 
-Intended solution: dissolve NaCl in the limited water, pipette in 30% HCl so the common-ion effect crashes extra solid.
+Intended solution: dissolve the 2 g NaCl in the 10 ml water (clear brine), then pipette in 30% HCl so the common-ion effect crashes extra solid.
 
 ## `neutralize-to-ph7` — Neutralise to pH 7
 
@@ -169,16 +171,16 @@ Intended solution: dissolve NaCl in the limited water, pipette in 30% HCl so the
 | --- | --- |
 | Id | `neutralize-to-ph7` |
 | Title | Neutralise to pH 7 |
-| Prompt | Neutralise sodium hydroxide with hydrochloric acid until the inspect pH is about 7. |
+| Prompt | Neutralise sodium hydroxide with hydrochloric acid and check the inspect pH — a 1 ml pipette cannot land on 7. |
 | Done | Thank you. |
 | Main beaker (`beaker-water`) | Empty (no preload) |
 | Allowed ingredient stocks | `beaker-h2o` (full), `beaker-hcl` (full), `beaker-naoh` (full) |
 | Empty at start | none |
 | Removed from the bench | `beaker-h2so4`, `beaker-nacl`, `beaker-na2so4`, `beaker-cacl2`, `beaker-sand` |
-| Win | Main beaker inspect pH in **6.5–7.5**, aqueous `na+` and `cl-` present, leftover solid `naoh` negligible |
+| Win | Main beaker inspect pH in **0–13**, aqueous `na+` and `cl-` present, leftover solid `naoh` negligible |
 | Tools | Full set |
 
-Intended solution: dissolve NaOH, add HCl while watching inspect pH. A 1 ml pipette is coarse around neutrality; the win is the inspect band, not a concordant titre.
+Intended solution: dissolve NaOH, pipette HCl, inspect pH. A 1 ml pipette / 0.2 g scoop cannot titre into 6.5–7.5; the judged band is whatever those aliquots actually hit.
 
 ## `dilute-sulfuric-safe` — Dilute sulfuric acid safely
 
@@ -203,13 +205,13 @@ Intended solution: water in the main beaker first, then pipette or pour concentr
 | --- | --- |
 | Id | `concentrate-hcl-azeotrope` |
 | Title | Concentrate hydrochloric acid |
-| Prompt | Heat hydrochloric acid in the dish and stop near the azeotrope — you cannot boil it to pure HCl. |
+| Prompt | Dilute the hydrochloric acid, heat it in the dish, and stop near the azeotrope — you cannot boil it to pure HCl. |
 | Done | Thank you. |
 | Main beaker (`beaker-water`) | Empty (no preload) |
 | Allowed ingredient stocks | `beaker-h2o` (full), `beaker-hcl` (full 30% w/w) |
 | Empty at start | none |
 | Removed from the bench | `beaker-h2so4`, `beaker-nacl`, `beaker-naoh`, `beaker-na2so4`, `beaker-cacl2`, `beaker-sand` |
-| Win | Dish liquid HCl mass fraction in **18–22% w/w** |
+| Win | Dish was diluted below 18% w/w HCl, then boiled so liquid HCl is **18–22% w/w** at T ≥ 99 °C |
 | Tools | Full set |
 
-Intended solution: transfer HCl to the dish (optionally with extra water), heat on the burner, inspect as composition moves toward ~20% w/w rather than pure acid.
+Intended solution: dilute the 30% stock in the dish (inspect HCl % w/w), then heat so composition **rises** toward ~20% w/w. Mixing stock to 20% without heat, or boiling 30% stock down, does not count.

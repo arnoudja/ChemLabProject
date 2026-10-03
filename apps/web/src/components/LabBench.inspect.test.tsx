@@ -266,6 +266,7 @@ describe('LabBench inspect', () => {
     expect(panel).toHaveTextContent('8.04 ml')
     expect(panel).toHaveTextContent('H+ (aq)')
     expect(panel).toHaveTextContent('pH: -0.98')
+    expect(panel).toHaveTextContent('HCl: 30.0% w/w')
   })
 
   it('idle click inspects paper versus filtrate', async () => {

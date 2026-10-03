@@ -1,5 +1,6 @@
 import type { CompositionEntry } from '../generated/contracts'
 import {
+  HCL_MOLAR_MASS_G_PER_MOL,
   HCL_STOCK_CAPACITY_ML,
   HCL_STOCK_HCL_MOLES,
   HCL_STOCK_WATER_ML,
@@ -99,4 +100,20 @@ export function phFromComposition(composition: CompositionEntry[]): number | nul
   const water = composition.find((c) => c.substance_id === 'water' && c.phase === 'liquid')
   if ((water?.amount_ml ?? 0) > 0) return 7
   return null
+}
+
+/** HCl mass fraction mirroring `HclInventory.w_hcl()` (null when no HCl inventory). */
+export function hclInventoryMassFraction(composition: CompositionEntry[]): number | null {
+  const waterEntry = composition.find(
+    (c) => c.substance_id === 'water' && c.phase === 'liquid',
+  )
+  const waterMl = Math.max(0, waterEntry?.amount_ml ?? 0)
+  const nH = aqueousMol(composition, 'h+')
+  const nOh = aqueousMol(composition, 'oh-')
+  const nCl = aqueousMol(composition, 'cl-')
+  const nHcl = Math.min(Math.max(nH - nOh, 0), nCl)
+  const hclMassG = nHcl * HCL_MOLAR_MASS_G_PER_MOL
+  const totalMassG = waterMl + hclMassG
+  if (nHcl <= 1e-12 || totalMassG <= 1e-6) return null
+  return hclMassG / totalMassG
 }

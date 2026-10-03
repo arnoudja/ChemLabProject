@@ -166,6 +166,11 @@ pub struct ItemProperties {
     /// `Some(false)` — water was added onto concentrated liquid acid (unsafe).
     /// Unsafe latches and is never overwritten back to safe.
     pub h2so4_dilution_into_water: Option<bool>,
+    /// Latch: this vessel held aqueous HCl leaner than 18% w/w.
+    ///
+    /// Once `Some(true)`, never cleared. Engine-only (not on the wire). Used so
+    /// the azeotrope challenge requires a VLE rise, not mixing stock to 20%.
+    pub hcl_seen_lean: Option<bool>,
 }
 
 /// A single item in the lab scene (beaker, spoon, …).
@@ -2043,6 +2048,17 @@ fn note_h2so4_dilution_order(target: &mut SceneItem, transferred: &[CompositionE
         && target.properties.h2so4_dilution_into_water != Some(false)
     {
         target.properties.h2so4_dilution_into_water = Some(true);
+    }
+}
+
+/// Latch when this vessel holds aqueous HCl leaner than the azeotrope win band.
+pub(crate) fn note_hcl_lean(item: &mut SceneItem) {
+    if item.properties.hcl_seen_lean == Some(true) {
+        return;
+    }
+    let inv = crate::hcl::HclInventory::from_item(item);
+    if inv.n_h > AMOUNT_EPS && inv.w_hcl() < 0.18 {
+        item.properties.hcl_seen_lean = Some(true);
     }
 }
 

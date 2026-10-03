@@ -482,7 +482,7 @@ export const COMMON_ION_NACL_LAYOUT: ChallengeStartLayout = {
   allowedStockItemIds: ['beaker-h2o', 'beaker-hcl', 'beaker-nacl'],
   emptyStockItemIds: [],
   mainBeakerSolids: [],
-  distilledWaterMl: 10,
+  distilledWaterMl: 5.6,
 }
 
 export const NEUTRALIZE_TO_PH7_LAYOUT: ChallengeStartLayout = {

@@ -757,7 +757,10 @@ fn make_hcl_from_gypsum_does_not_or_ph_and_chloride_across_vessels() {
         amount_g: None,
         amount_mol: Some(0.01),
     });
-    assert!(is_completed(&scene), "bundled acidic HCl on filtrate should win");
+    assert!(
+        is_completed(&scene),
+        "bundled acidic HCl on filtrate should win"
+    );
 }
 
 fn ids_has_hcl(scene: &Scene) -> bool {
@@ -811,7 +814,7 @@ fn hot_pack_solved_by_dissolving_cacl2() {
 #[test]
 fn common_ion_nacl_not_won_by_dry_salt_alone() {
     let mut scene = scene_for("common-ion-nacl");
-    assert_eq!(item(&scene, "beaker-h2o").properties.fill_ml, Some(10.0));
+    assert_eq!(item(&scene, "beaker-h2o").properties.fill_ml, Some(5.6));
     fill_stock(&mut scene, "beaker-water", "nacl", 2.0);
     assert!(!is_completed(&scene));
 }
@@ -825,25 +828,40 @@ fn common_ion_nacl_solved_by_adding_hcl_to_brine() {
     let solid_before = solid_g(item(&scene, "beaker-water"), "nacl");
     assert!(
         solid_before < 1e-3,
-        "2 g NaCl must fully dissolve in 10 ml before HCl, leftover {solid_before} g"
+        "2 g NaCl must fully dissolve in 5.6 ml before HCl, leftover {solid_before} g"
     );
     assert!(!is_completed(&scene), "clear brine must not win before HCl");
-    for n in 1..=6 {
-        pipette_into(&mut scene, "beaker-hcl", "beaker-water");
-        finish_kinetic_dissolve(&mut scene);
-        let solid_after = solid_g(item(&scene, "beaker-water"), "nacl");
-        if solid_after + 1e-6 >= 0.05 && is_completed(&scene) {
-            assert!(
-                solid_after > solid_before + 0.04,
-                "solid must increase after HCl: before {solid_before} after {solid_after} (pipettes {n})"
-            );
-            return;
+    pipette_into(&mut scene, "beaker-hcl", "beaker-water");
+    finish_kinetic_dissolve(&mut scene);
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+    apply_action(
+        &mut scene,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    for _ in 0..400 {
+        apply_elapsed(&mut scene, 1.0);
+        if solid_g(item(&scene, "dish-1"), "nacl") + 1e-6 >= 0.05 {
+            break;
+        }
+        if liquid_ml(&scene, "dish-1") <= 1e-9 {
+            break;
         }
     }
-    let solid_after = solid_g(item(&scene, "beaker-water"), "nacl");
-    panic!(
-        "common-ion crash never appeared: solid before {solid_before} after {solid_after}; h+ {}",
-        aqueous_mol(item(&scene, "beaker-water"), "h+")
+    use_tongs_pour(&mut scene, "dish-1", "beaker-water");
+    finish_kinetic_dissolve(&mut scene);
+    let solid_after =
+        solid_g(item(&scene, "beaker-water"), "nacl") + solid_g(item(&scene, "dish-1"), "nacl");
+    assert!(
+        solid_after > solid_before + 0.04,
+        "solid must increase after acid + heat: before {solid_before} after {solid_after}"
+    );
+    assert!(
+        is_completed(&scene),
+        "solid after {solid_after}; h+ {}",
+        aqueous_mol(item(&scene, "beaker-water"), "h+") + aqueous_mol(item(&scene, "dish-1"), "h+")
     );
 }
 

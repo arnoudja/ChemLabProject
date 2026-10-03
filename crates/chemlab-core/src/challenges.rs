@@ -276,26 +276,26 @@ pub const HOT_PACK_CACL2: Challenge = Challenge {
 pub const COMMON_ION_NACL: Challenge = Challenge {
     id: "common-ion-nacl",
     title: "Crash salt with acid",
-    prompt: "Make a salty solution, then add hydrochloric acid until extra salt crashes out.",
+    prompt: "Make a near-saturated salt solution, add a little hydrochloric acid, and heat until extra salt appears.",
     done: "Thank you.",
     allowed_stock_item_ids: &["beaker-h2o", "beaker-hcl", "beaker-nacl"],
     empty_stock_item_ids: &[],
     main_beaker_solids: &[],
-    distilled_water_ml: Some(10.0),
-    win: &[StockTarget {
-        item_id: "beaker-water",
-        substance_id: "nacl",
-        amount_g: 0.05,
-        compare: WinCompare::AtLeast,
-    }],
+    distilled_water_ml: Some(5.6),
+    win: &[],
     checks: &[
+        WinCheck::SolidAtLeast {
+            item_ids: &["beaker-water", "dish-1"],
+            substance_id: "nacl",
+            amount_g: 0.05,
+        },
         WinCheck::AqueousAtLeast {
-            item_ids: &["beaker-water"],
+            item_ids: &["beaker-water", "dish-1"],
             substance_id: "h+",
             amount_mol: AQ_PRESENT_MOL,
         },
         WinCheck::AqueousAtLeast {
-            item_ids: &["beaker-water"],
+            item_ids: &["beaker-water", "dish-1"],
             substance_id: "na+",
             amount_mol: 1e-4,
         },

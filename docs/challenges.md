@@ -154,16 +154,16 @@ Intended solution: pour the 10 ml water into the main beaker, dump the CaCl₂ s
 | --- | --- |
 | Id | `common-ion-nacl` |
 | Title | Crash salt with acid |
-| Prompt | Make a salty solution, then add hydrochloric acid until extra salt crashes out. |
+| Prompt | Make a near-saturated salt solution, add a little hydrochloric acid, and heat until extra salt appears. |
 | Done | Thank you. |
 | Main beaker (`beaker-water`) | Empty (no preload) |
-| Allowed ingredient stocks | `beaker-h2o` (10 ml), `beaker-hcl` (full), `beaker-nacl` (full) |
+| Allowed ingredient stocks | `beaker-h2o` (5.6 ml), `beaker-hcl` (full), `beaker-nacl` (full) |
 | Empty at start | none |
 | Removed from the bench | `beaker-h2so4`, `beaker-naoh`, `beaker-na2so4`, `beaker-cacl2`, `beaker-sand` |
-| Win | Main beaker holds **at least** 0.05 g solid `nacl`, plus aqueous `h+` and `na+` (so the solid is not just dry leftover salt with no brine) |
+| Win | **at least** 0.05 g solid `nacl` in the main beaker **or** dish, plus aqueous `h+` and `na+` (so the solid is not just dry leftover salt with no brine) |
 | Tools | Full set |
 
-Intended solution: dissolve the 2 g NaCl in the 10 ml water (clear brine), then pipette in 30% HCl so the common-ion effect crashes extra solid.
+Intended solution: dissolve the 2 g NaCl in the 5.6 ml water (clear, just unsaturated). Pipette **one** 1 ml of 30% HCl — that nudges SI over 1 — then heat so the extra solid grows to a visible 0.05 g. A second pipette or a full HCl dump adds too much water and the salt stays dissolved.
 
 ## `neutralize-to-ph7` — Neutralise to pH 7
 

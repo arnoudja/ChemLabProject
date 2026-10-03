@@ -51,9 +51,17 @@ fn free_is_the_default_mode_and_is_never_completed() {
 
 #[test]
 fn catalog_entry_matches_the_docs_copy() {
-    assert_eq!(CHALLENGES.len(), 2);
+    assert_eq!(CHALLENGES.len(), 10);
     assert_eq!(&CHALLENGES[0], &SEPARATE_NACL_SIO2);
     assert_eq!(&CHALLENGES[1], &CREATE_TABLE_SALT);
+    assert_eq!(CHALLENGES[2].id, "create-sodium-sulfate");
+    assert_eq!(CHALLENGES[3].id, "precipitate-gypsum");
+    assert_eq!(CHALLENGES[4].id, "make-hcl-from-gypsum");
+    assert_eq!(CHALLENGES[5].id, "hot-pack-cacl2");
+    assert_eq!(CHALLENGES[6].id, "common-ion-nacl");
+    assert_eq!(CHALLENGES[7].id, "neutralize-to-ph7");
+    assert_eq!(CHALLENGES[8].id, "dilute-sulfuric-safe");
+    assert_eq!(CHALLENGES[9].id, "concentrate-hcl-azeotrope");
 
     let challenge = find_challenge(SEPARATE).expect("catalog entry");
     assert_eq!(challenge, &SEPARATE_NACL_SIO2);
@@ -89,6 +97,7 @@ fn catalog_entry_matches_the_docs_copy() {
     assert_eq!(create.win[0].substance_id, "nacl");
     assert_eq!(create.win[0].amount_g, 0.20);
     assert_eq!(create.win[0].compare, WinCompare::AtLeast);
+    assert!(create.checks.is_empty());
 
     assert_eq!(find_challenge("nope"), None);
     assert_eq!(find_challenge(FREE_MODE), None);
@@ -519,4 +528,552 @@ fn move_all_solids(scene: &mut Scene, source_id: &str, stock_id: &str) {
         .unwrap();
     }
     panic!("solids never ran out in {source_id}");
+}
+
+fn scene_for(id: &str) -> Scene {
+    initial_scene_for_mode("lab-test", id).expect("challenge scene")
+}
+
+fn allowed_ids(scene: &Scene) -> Vec<&str> {
+    scene.items.iter().map(|i| i.id.as_str()).collect()
+}
+
+fn assert_tools_present(ids: &[&str]) {
+    for tool_id in [
+        "spoon-1",
+        "pipette-1",
+        "tongs-1",
+        "filter-paper-1",
+        "dish-1",
+        "burner-1",
+    ] {
+        assert!(ids.contains(&tool_id), "missing {tool_id}");
+    }
+}
+
+fn pipette_into(scene: &mut Scene, source_id: &str, dest_id: &str) {
+    fill_pipette_from(scene, source_id);
+    apply_action(
+        scene,
+        Action::UseTool {
+            tool_item_id: "pipette-1".into(),
+            target_item_id: dest_id.into(),
+        },
+    )
+    .unwrap();
+}
+
+fn spoon_into(scene: &mut Scene, stock_id: &str, dest_id: &str) {
+    apply_action(
+        scene,
+        Action::UseTool {
+            tool_item_id: "spoon-1".into(),
+            target_item_id: stock_id.into(),
+        },
+    )
+    .unwrap();
+    apply_action(
+        scene,
+        Action::UseTool {
+            tool_item_id: "spoon-1".into(),
+            target_item_id: dest_id.into(),
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn create_sodium_sulfate_starts_with_empty_product_stock() {
+    let scene = scene_for("create-sodium-sulfate");
+    let ids = allowed_ids(&scene);
+    assert!(ids.contains(&"beaker-h2so4"));
+    assert!(ids.contains(&"beaker-naoh"));
+    assert!(ids.contains(&"beaker-na2so4"));
+    assert!(!ids.contains(&"beaker-hcl"));
+    assert!(!ids.contains(&"beaker-nacl"));
+    assert_eq!(solid_g(item(&scene, "beaker-na2so4"), "na2so4"), 0.0);
+    assert_tools_present(&ids);
+    assert!(!is_completed(&scene));
+}
+
+#[test]
+fn create_sodium_sulfate_wins_on_solid_product_stock() {
+    let mut scene = scene_for("create-sodium-sulfate");
+    fill_stock(&mut scene, "beaker-na2so4", "na2so4", 0.19);
+    assert!(!is_completed(&scene));
+    fill_stock(&mut scene, "beaker-na2so4", "na2so4", 0.20);
+    assert!(is_completed(&scene));
+}
+
+#[test]
+fn create_sodium_sulfate_solved_by_neutralize_evaporate_and_return() {
+    let mut scene = scene_for("create-sodium-sulfate");
+    for _ in 0..5 {
+        pipette_into(&mut scene, "beaker-h2o", "beaker-water");
+    }
+    pipette_into(&mut scene, "beaker-h2so4", "beaker-water");
+    spoon_into(&mut scene, "beaker-naoh", "beaker-water");
+    spoon_into(&mut scene, "beaker-naoh", "beaker-water");
+    while liquid_ml(&scene, "beaker-water") > 1e-9 {
+        use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+        boil_dish_dry(&mut scene);
+    }
+    let recovered = solid_g(item(&scene, "dish-1"), "na2so4");
+    assert!(
+        recovered + 1e-6 >= 0.20,
+        "expected ≥ 0.20 g solid Na2SO4 in the dish, got {recovered}; {:?}",
+        item(&scene, "dish-1").properties.composition
+    );
+    assert!(is_completed(&scene));
+}
+
+#[test]
+fn precipitate_gypsum_starts_with_sulfate_sources() {
+    let scene = scene_for("precipitate-gypsum");
+    let ids = allowed_ids(&scene);
+    assert!(ids.contains(&"beaker-cacl2"));
+    assert!(ids.contains(&"beaker-na2so4"));
+    assert!(ids.contains(&"beaker-h2so4"));
+    assert!(!ids.contains(&"beaker-sand"));
+    assert_eq!(solid_g(item(&scene, "filter-paper-1"), "caso4"), 0.0);
+    assert!(!is_completed(&scene));
+}
+
+#[test]
+fn precipitate_gypsum_wins_on_filter_paper_solids() {
+    let mut scene = scene_for("precipitate-gypsum");
+    fill_stock(&mut scene, "filter-paper-1", "caso4", 0.14);
+    assert!(!is_completed(&scene));
+    fill_stock(&mut scene, "filter-paper-1", "caso4", 0.15);
+    assert!(is_completed(&scene));
+}
+
+#[test]
+fn precipitate_gypsum_solved_by_mix_and_filter() {
+    let mut scene = scene_for("precipitate-gypsum");
+    use_tongs_pour(&mut scene, "beaker-h2o", "beaker-water");
+    use_tongs_pour(&mut scene, "beaker-cacl2", "beaker-water");
+    use_tongs_pour(&mut scene, "beaker-na2so4", "beaker-water");
+    finish_kinetic_dissolve(&mut scene);
+    use_tongs_pour(&mut scene, "beaker-water", "filter-paper-1");
+    let gypsum = solid_g(item(&scene, "filter-paper-1"), "caso4");
+    assert!(
+        gypsum + 1e-6 >= 0.15,
+        "expected ≥ 0.15 g CaSO4 on paper, got {gypsum}"
+    );
+    assert!(is_completed(&scene));
+}
+
+#[test]
+fn make_hcl_from_gypsum_requires_acidic_filtrate_and_gypsum() {
+    let mut scene = scene_for("make-hcl-from-gypsum");
+    assert!(!ids_has_hcl(&scene));
+    fill_stock(&mut scene, "filter-paper-1", "caso4", 0.20);
+    assert!(!is_completed(&scene), "acidic HCl still missing");
+}
+
+#[test]
+fn make_hcl_from_gypsum_does_not_or_ph_and_chloride_across_vessels() {
+    let mut scene = scene_for("make-hcl-from-gypsum");
+    fill_stock(&mut scene, "filter-paper-1", "caso4", 0.20);
+    let filtrate = scene
+        .items
+        .iter_mut()
+        .find(|item| item.id == "beaker-filtrate")
+        .unwrap();
+    filtrate.properties.fill_ml = Some(20.0);
+    filtrate.properties.composition = vec![
+        CompositionEntry {
+            substance_id: "water".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(20.0),
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: None,
+        },
+        CompositionEntry {
+            substance_id: "h+".into(),
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: Some(0.01),
+        },
+        CompositionEntry {
+            substance_id: "hso4-".into(),
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: Some(0.01),
+        },
+    ];
+    let dish = scene
+        .items
+        .iter_mut()
+        .find(|item| item.id == "dish-1")
+        .unwrap();
+    dish.properties.fill_ml = Some(10.0);
+    dish.properties.composition = vec![
+        CompositionEntry {
+            substance_id: "water".into(),
+            phase: "liquid".into(),
+            amount_ml: Some(10.0),
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: None,
+        },
+        CompositionEntry {
+            substance_id: "na+".into(),
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: Some(0.01),
+        },
+        CompositionEntry {
+            substance_id: "cl-".into(),
+            phase: "aqueous".into(),
+            amount_ml: None,
+            amount_scoop: None,
+            amount_g: None,
+            amount_mol: Some(0.01),
+        },
+    ];
+    assert!(
+        !is_completed(&scene),
+        "pH on filtrate and Cl- on dish must not win"
+    );
+    let filtrate = scene
+        .items
+        .iter_mut()
+        .find(|item| item.id == "beaker-filtrate")
+        .unwrap();
+    filtrate.properties.composition.push(CompositionEntry {
+        substance_id: "cl-".into(),
+        phase: "aqueous".into(),
+        amount_ml: None,
+        amount_scoop: None,
+        amount_g: None,
+        amount_mol: Some(0.01),
+    });
+    assert!(
+        is_completed(&scene),
+        "bundled acidic HCl on filtrate should win"
+    );
+}
+
+fn ids_has_hcl(scene: &Scene) -> bool {
+    scene.items.iter().any(|i| i.id == "beaker-hcl")
+}
+
+#[test]
+fn make_hcl_from_gypsum_solved_by_filter() {
+    let mut scene = scene_for("make-hcl-from-gypsum");
+    use_tongs_pour(&mut scene, "beaker-h2o", "beaker-water");
+    use_tongs_pour(&mut scene, "beaker-cacl2", "beaker-water");
+    finish_kinetic_dissolve(&mut scene);
+    pipette_into(&mut scene, "beaker-h2so4", "beaker-water");
+    pipette_into(&mut scene, "beaker-h2so4", "beaker-water");
+    finish_kinetic_dissolve(&mut scene);
+    use_tongs_pour(&mut scene, "beaker-water", "filter-paper-1");
+    let gypsum = solid_g(item(&scene, "filter-paper-1"), "caso4");
+    let ph = crate::hcl::ph_of_item(item(&scene, "beaker-filtrate"));
+    assert!(
+        gypsum + 1e-6 >= 0.15,
+        "gypsum on paper {gypsum}; filtrate pH {ph:?}"
+    );
+    assert!(is_completed(&scene), "filtrate pH {ph:?}");
+}
+
+#[test]
+fn hot_pack_starts_with_ten_ml_water() {
+    let scene = scene_for("hot-pack-cacl2");
+    let ids = allowed_ids(&scene);
+    assert!(ids.contains(&"beaker-cacl2"));
+    assert!(!ids.contains(&"beaker-nacl"));
+    assert_eq!(item(&scene, "beaker-h2o").properties.fill_ml, Some(10.0));
+    assert!(!is_completed(&scene));
+}
+
+#[test]
+fn hot_pack_solved_by_dissolving_cacl2() {
+    let mut scene = scene_for("hot-pack-cacl2");
+    use_tongs_pour(&mut scene, "beaker-h2o", "beaker-water");
+    use_tongs_pour(&mut scene, "beaker-cacl2", "beaker-water");
+    finish_kinetic_dissolve(&mut scene);
+    let t = item(&scene, "beaker-water")
+        .properties
+        .temperature_c
+        .unwrap_or(0.0);
+    assert!(t >= 25.0, "expected warm beaker, got {t}");
+    assert_eq!(solid_g(item(&scene, "beaker-water"), "cacl2"), 0.0);
+    assert!(is_completed(&scene));
+}
+
+fn dissolve_kit_nacl_brine(scene: &mut Scene) -> f64 {
+    use_tongs_pour(scene, "beaker-h2o", "beaker-water");
+    use_tongs_pour(scene, "beaker-nacl", "beaker-water");
+    finish_kinetic_dissolve(scene);
+    let solid_before = solid_g(item(scene, "beaker-water"), "nacl");
+    assert!(
+        solid_before < 1e-3,
+        "2 g NaCl must fully dissolve in 5.6 ml before HCl, leftover {solid_before} g"
+    );
+    let water = item(scene, "beaker-water");
+    assert_eq!(water.properties.nacl_seen_clear_brine, Some(true));
+    assert_eq!(water.properties.nacl_solid_g_at_acid, None);
+    assert!(!is_completed(scene), "clear brine must not win before HCl");
+    solid_before
+}
+
+fn heat_dish_until_nacl_crash(scene: &mut Scene) {
+    apply_action(
+        scene,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    for _ in 0..400 {
+        apply_elapsed(scene, 1.0);
+        if solid_g(item(scene, "dish-1"), "nacl") + 1e-6 >= 0.05 {
+            break;
+        }
+        if liquid_ml(scene, "dish-1") <= 1e-9 {
+            break;
+        }
+    }
+}
+
+fn crash_acidified_brine_in_dish(scene: &mut Scene) {
+    finish_kinetic_dissolve(scene);
+    use_tongs_pour(scene, "beaker-water", "dish-1");
+    heat_dish_until_nacl_crash(scene);
+    use_tongs_pour(scene, "dish-1", "beaker-water");
+    finish_kinetic_dissolve(scene);
+}
+
+#[test]
+fn common_ion_nacl_not_won_by_dry_salt_alone() {
+    let mut scene = scene_for("common-ion-nacl");
+    assert_eq!(item(&scene, "beaker-h2o").properties.fill_ml, Some(5.6));
+    fill_stock(&mut scene, "beaker-water", "nacl", 2.0);
+    assert!(!is_completed(&scene));
+}
+
+#[test]
+fn common_ion_nacl_not_won_by_dumping_dry_salt_and_hcl() {
+    let mut scene = scene_for("common-ion-nacl");
+    use_tongs_pour(&mut scene, "beaker-nacl", "beaker-water");
+    pipette_into(&mut scene, "beaker-hcl", "beaker-water");
+    finish_kinetic_dissolve(&mut scene);
+    let water = item(&scene, "beaker-water");
+    let leftover = solid_g(water, "nacl");
+    assert!(
+        leftover > 0.05,
+        "dry-salt cheese must leave leftover solid, got {leftover} g"
+    );
+    assert!(
+        aqueous_mol(water, "h+") > 1e-6,
+        "pipette HCl must add aqueous h+"
+    );
+    assert!(
+        aqueous_mol(water, "na+") > 1e-4,
+        "some NaCl must dissolve into the acid"
+    );
+    assert_ne!(water.properties.nacl_seen_clear_brine, Some(true));
+    assert!(!is_completed(&scene), "leftover solid + HCl must not win");
+
+    use_tongs_pour(&mut scene, "beaker-water", "dish-1");
+    heat_dish_until_nacl_crash(&mut scene);
+    use_tongs_pour(&mut scene, "dish-1", "beaker-water");
+    finish_kinetic_dissolve(&mut scene);
+    assert!(
+        !is_completed(&scene),
+        "heating leftover dry salt + HCl must still not win without a clear brine"
+    );
+}
+
+#[test]
+fn common_ion_nacl_solved_by_adding_hcl_to_brine() {
+    let mut scene = scene_for("common-ion-nacl");
+    let solid_before = dissolve_kit_nacl_brine(&mut scene);
+    pipette_into(&mut scene, "beaker-hcl", "beaker-water");
+    finish_kinetic_dissolve(&mut scene);
+    let at_acid = item(&scene, "beaker-water")
+        .properties
+        .nacl_solid_g_at_acid
+        .expect("acid snapshot after HCl");
+    crash_acidified_brine_in_dish(&mut scene);
+    let solid_after =
+        solid_g(item(&scene, "beaker-water"), "nacl") + solid_g(item(&scene, "dish-1"), "nacl");
+    assert!(
+        solid_after > solid_before + 0.04,
+        "solid must increase after acid + heat: before {solid_before} after {solid_after}"
+    );
+    assert!(
+        solid_after > at_acid,
+        "solid must increase from the post-acid snapshot {at_acid}, after {solid_after}"
+    );
+    assert!(
+        is_completed(&scene),
+        "solid after {solid_after}; h+ {}",
+        aqueous_mol(item(&scene, "beaker-water"), "h+") + aqueous_mol(item(&scene, "dish-1"), "h+")
+    );
+}
+
+#[test]
+fn common_ion_nacl_still_wins_after_extra_hcl_and_heat() {
+    let mut scene = scene_for("common-ion-nacl");
+    dissolve_kit_nacl_brine(&mut scene);
+    pipette_into(&mut scene, "beaker-hcl", "beaker-water");
+    pipette_into(&mut scene, "beaker-hcl", "beaker-water");
+    crash_acidified_brine_in_dish(&mut scene);
+    assert!(
+        is_completed(&scene),
+        "extra pipette + heat after a clear brine is still a crash; solid {}",
+        solid_g(item(&scene, "beaker-water"), "nacl") + solid_g(item(&scene, "dish-1"), "nacl")
+    );
+}
+
+#[test]
+fn neutralize_to_ph7_wins_with_reachable_aliquots() {
+    let mut scene = scene_for("neutralize-to-ph7");
+    assert!(!is_completed(&scene));
+    use_tongs_pour(&mut scene, "beaker-h2o", "beaker-water");
+    spoon_into(&mut scene, "beaker-naoh", "beaker-water");
+    spoon_into(&mut scene, "beaker-naoh", "beaker-water");
+    pipette_into(&mut scene, "beaker-hcl", "beaker-water");
+    finish_kinetic_dissolve(&mut scene);
+    let ph = crate::hcl::ph_of_item(item(&scene, "beaker-water")).unwrap();
+    assert!(
+        (0.0..=13.0).contains(&ph),
+        "expected playable inspect pH, got {ph}"
+    );
+    assert!(
+        solid_g(item(&scene, "beaker-water"), "naoh") <= 1e-4,
+        "leftover solid NaOH"
+    );
+    assert!(is_completed(&scene), "pH {ph}");
+}
+
+#[test]
+fn dilute_sulfuric_safe_rewards_acid_into_water_only() {
+    let mut unsafe_scene = scene_for("dilute-sulfuric-safe");
+    use_tongs_pour(&mut unsafe_scene, "beaker-h2so4", "beaker-water");
+    use_tongs_pour(&mut unsafe_scene, "beaker-h2o", "beaker-water");
+    assert_eq!(
+        item(&unsafe_scene, "beaker-water")
+            .properties
+            .h2so4_dilution_into_water,
+        Some(false)
+    );
+    assert!(!is_completed(&unsafe_scene), "water-onto-acid must not win");
+
+    let mut scene = scene_for("dilute-sulfuric-safe");
+    use_tongs_pour(&mut scene, "beaker-h2o", "beaker-water");
+    pipette_into(&mut scene, "beaker-h2so4", "beaker-water");
+    assert_eq!(
+        item(&scene, "beaker-water")
+            .properties
+            .h2so4_dilution_into_water,
+        Some(true)
+    );
+    let t = item(&scene, "beaker-water")
+        .properties
+        .temperature_c
+        .unwrap_or(0.0);
+    let ph = crate::hcl::ph_of_item(item(&scene, "beaker-water"));
+    assert!(t >= 20.5, "T {t}");
+    assert!(is_completed(&scene), "T {t} pH {ph:?}");
+}
+
+#[test]
+fn concentrate_hcl_does_not_win_by_boiling_stock_or_mixing_to_twenty() {
+    let mut heat_stock = scene_for("concentrate-hcl-azeotrope");
+    use_tongs_pour(&mut heat_stock, "beaker-hcl", "dish-1");
+    apply_action(
+        &mut heat_stock,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    let mut saw_band = false;
+    for _ in 0..400 {
+        apply_elapsed(&mut heat_stock, 1.0);
+        let w = crate::hcl::HclInventory::from_item(item(&heat_stock, "dish-1")).w_hcl();
+        if (0.18..=0.22).contains(&w) {
+            saw_band = true;
+            assert!(
+                !is_completed(&heat_stock),
+                "boiling 30% stock into the azeotrope band must not win (w={w})"
+            );
+        }
+        if liquid_ml(&heat_stock, "dish-1") <= 1e-9 {
+            break;
+        }
+    }
+    assert!(saw_band, "30% stock never entered 18–22% w/w while boiling");
+
+    let mut mixed = scene_for("concentrate-hcl-azeotrope");
+    use_tongs_pour(&mut mixed, "beaker-hcl", "dish-1");
+    for _ in 0..6 {
+        pipette_into(&mut mixed, "beaker-h2o", "dish-1");
+    }
+    let w = crate::hcl::HclInventory::from_item(item(&mixed, "dish-1")).w_hcl();
+    assert!(
+        (0.18..=0.22).contains(&w),
+        "expected mix-to-20% cheese in band, got w={w}"
+    );
+    assert!(
+        !is_completed(&mixed),
+        "mixing stock to 20% w/w without heat must not win (w={w})"
+    );
+}
+
+#[test]
+fn concentrate_hcl_solved_by_diluting_then_boiling_toward_azeotrope() {
+    let mut scene = scene_for("concentrate-hcl-azeotrope");
+    assert!(!is_completed(&scene));
+    for _ in 0..5 {
+        pipette_into(&mut scene, "beaker-h2o", "dish-1");
+    }
+    for _ in 0..3 {
+        pipette_into(&mut scene, "beaker-hcl", "dish-1");
+    }
+    let dish = item(&scene, "dish-1");
+    let w0 = crate::hcl::HclInventory::from_item(dish).w_hcl();
+    assert!(
+        w0 < 0.18,
+        "playthrough must start lean so composition can rise, w={w0}"
+    );
+    assert_eq!(dish.properties.hcl_seen_lean, Some(true));
+    apply_action(
+        &mut scene,
+        Action::ToggleBurner {
+            burner_item_id: "burner-1".into(),
+        },
+    )
+    .unwrap();
+    for _ in 0..400 {
+        apply_elapsed(&mut scene, 1.0);
+        let w = crate::hcl::HclInventory::from_item(item(&scene, "dish-1")).w_hcl();
+        if (0.18..=0.22).contains(&w) && is_completed(&scene) {
+            return;
+        }
+        if liquid_ml(&scene, "dish-1") <= 1e-9 {
+            break;
+        }
+    }
+    let w = crate::hcl::HclInventory::from_item(item(&scene, "dish-1")).w_hcl();
+    let t = item(&scene, "dish-1")
+        .properties
+        .temperature_c
+        .unwrap_or(0.0);
+    panic!(
+        "dilute-then-heat never reached 18–22% w/w at boil (w={w}, T={t}, completed={})",
+        is_completed(&scene)
+    );
 }

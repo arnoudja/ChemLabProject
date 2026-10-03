@@ -22,8 +22,11 @@ export const HCL_STOCK_WATER_ML = 8.043
 /** Solution density at 30% w/w HCl (g/ml). */
 export const HCL_STOCK_DENSITY_G_PER_ML = 1.149
 
+/** Molar mass of HCl (g/mol) — mirrors `chemlab_core::hcl::HCL_MOLAR_MASS_G_PER_MOL`. */
+export const HCL_MOLAR_MASS_G_PER_MOL = 36.46
+
 /** Moles of HCl (= H⁺ = Cl⁻) in the filled Free-mode stock. */
-export const HCL_STOCK_HCL_MOLES = 3.447 / 36.46
+export const HCL_STOCK_HCL_MOLES = 3.447 / HCL_MOLAR_MASS_G_PER_MOL
 
 /** H₂SO₄ stock beaker capacity (ml of liquid acid). */
 export const H2SO4_STOCK_CAPACITY_ML = 10

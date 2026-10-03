@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { clearCsrfTokenCache } from './lib/api'
 import { STOCK_FULL_MASS_G, STOCK_FULL_SCOOPS, HCL_STOCK_CAPACITY_ML, HCL_STOCK_WATER_ML, HCL_STOCK_HCL_MOLES } from './lib/benchAmounts'
+import { CHALLENGES } from './lib/challenges'
 
 const userPayload = {
   id: 'u1',
@@ -309,6 +310,9 @@ describe('App', () => {
     expect(free).toBeChecked()
     expect(screen.getByRole('radio', { name: 'Separate salt from sand' })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: 'Create table salt' })).not.toBeChecked()
+    for (const challenge of CHALLENGES) {
+      expect(screen.getByRole('radio', { name: challenge.title })).toBeInTheDocument()
+    }
     expect(screen.queryByText(/lab bench below/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/pick a solid/i)).not.toBeInTheDocument()
   })

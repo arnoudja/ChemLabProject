@@ -2,9 +2,9 @@
 
 import type { ReactNode } from 'react'
 import type { CompositionEntry } from '../generated/contracts'
-import { phFromComposition, solutionVolumeMl } from './solutionChemistry'
+import { phFromComposition, solutionVolumeMl, hclInventoryMassFraction } from './solutionChemistry'
 
-export { phFromComposition }
+export { phFromComposition, hclInventoryMassFraction }
 
 const PHASE_ABBREV: Record<string, string> = {
   solid: 's',
@@ -156,6 +156,11 @@ function formatMolarity(value: number): string {
 /** Shared number formatting for mass (g) and volume (ml) suffixes — always two decimals. */
 function formatFixedAmount(value: number): string {
   return value.toFixed(2)
+}
+
+/** Format HCl mass fraction for inspect (one decimal percent). */
+export function formatHclWw(w: number): string {
+  return `${(w * 100).toFixed(1)}% w/w`
 }
 
 /** Format beaker/scene temperature for inspect labels (always two decimals). */

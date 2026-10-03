@@ -160,6 +160,25 @@ pub struct ItemProperties {
     /// Last vessel a pipette drew from, the vessel tongs currently hold, or the
     /// dish a spoon scoop came from.
     pub source_item_id: Option<String>,
+    /// Dilution order for concentrated H₂SO₄ in this vessel.
+    ///
+    /// `Some(true)` — liquid acid was added into water already in the vessel.
+    /// `Some(false)` — water was added onto concentrated liquid acid (unsafe).
+    /// Unsafe latches and is never overwritten back to safe.
+    pub h2so4_dilution_into_water: Option<bool>,
+    /// Latch: this vessel held aqueous HCl leaner than 18% w/w.
+    ///
+    /// Once `Some(true)`, never cleared. Engine-only (not on the wire). Used so
+    /// the azeotrope challenge requires a VLE rise, not mixing stock to 20%.
+    pub hcl_seen_lean: Option<bool>,
+    /// Latch: this vessel held a clear NaCl brine (solid NaCl below 1e-3 g with
+    /// aqueous `na+`). Once `Some(true)`, never cleared. Engine-only.
+    pub nacl_seen_clear_brine: Option<bool>,
+    /// Solid NaCl grams when acid was first seen after a clear brine. Engine-only.
+    ///
+    /// Set once, then used so a common-ion win requires the solid to **increase**
+    /// after acid — leftover dry salt plus HCl never latches a clear brine.
+    pub nacl_solid_g_at_acid: Option<f64>,
 }
 
 /// A single item in the lab scene (beaker, spoon, …).
@@ -1982,6 +2001,7 @@ fn mix_transfer_into(
     transferred: &[CompositionEntry],
     source_t: Option<f64>,
 ) -> bool {
+    note_h2so4_dilution_order(target, transferred);
     let dest_hcl_before = crate::hcl::HclInventory::from_item(target);
     let added_hcl = crate::hcl::HclInventory::from_entries(transferred);
     let dest_h2so4_before = crate::h2so4::H2so4Inventory::from_item(target);
@@ -2001,6 +2021,7 @@ fn mix_transfer_into(
 }
 
 fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquot_t: f64) -> bool {
+    note_h2so4_dilution_order(target, aliquot);
     let dest_hcl_before = crate::hcl::HclInventory::from_item(target);
     let added_hcl = crate::hcl::HclInventory::from_entries(aliquot);
     let dest_h2so4_before = crate::h2so4::H2so4Inventory::from_item(target);
@@ -2018,6 +2039,84 @@ fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquo
     let spit_hcl = apply_hcl_dilution_temperature(target, dest_hcl_before, added_hcl);
     let spit_h2so4 = apply_h2so4_dilution_temperature(target, dest_h2so4_before, added_h2so4);
     spit_hcl || spit_h2so4
+}
+
+/// Record whether this mix was acid-into-water or water-onto-acid.
+fn note_h2so4_dilution_order(target: &mut SceneItem, transferred: &[CompositionEntry]) {
+    let dest_liquid_acid = crate::h2so4::liquid_h2so4_mol_entries(&target.properties.composition);
+    let dest_water = crate::composition::liquid_water_ml_entries(&target.properties.composition);
+    let add_liquid_acid = crate::h2so4::liquid_h2so4_mol_entries(transferred);
+    let add_water = crate::composition::liquid_water_ml_entries(transferred);
+    if dest_liquid_acid > AMOUNT_EPS && add_water > AMOUNT_EPS && add_liquid_acid <= AMOUNT_EPS {
+        target.properties.h2so4_dilution_into_water = Some(false);
+        return;
+    }
+    if dest_water > AMOUNT_EPS
+        && add_liquid_acid > AMOUNT_EPS
+        && target.properties.h2so4_dilution_into_water != Some(false)
+    {
+        target.properties.h2so4_dilution_into_water = Some(true);
+    }
+}
+
+/// Latch when this vessel holds aqueous HCl leaner than the azeotrope win band.
+pub(crate) fn note_hcl_lean(item: &mut SceneItem) {
+    if item.properties.hcl_seen_lean == Some(true) {
+        return;
+    }
+    let inv = crate::hcl::HclInventory::from_item(item);
+    if inv.n_h > AMOUNT_EPS && inv.w_hcl() < 0.18 {
+        item.properties.hcl_seen_lean = Some(true);
+    }
+}
+
+/// Solid NaCl grams in `item` (mol fallback uses the engine molar mass).
+pub(crate) fn nacl_solid_mass_g(item: &SceneItem) -> f64 {
+    item.properties
+        .composition
+        .iter()
+        .filter(|entry| entry.phase == "solid" && entry.substance_id == "nacl")
+        .map(|entry| {
+            if let Some(g) = entry.amount_g {
+                return g;
+            }
+            if let Some(n) = entry.amount_mol {
+                return n * NACL_MOLAR_MASS_G_PER_MOL;
+            }
+            solid_amount_g(entry)
+        })
+        .sum()
+}
+
+/// Clear-brine / post-acid solid snapshot for the common-ion challenge.
+///
+/// Latch when leftover solid NaCl is below 1e-3 g and aqueous `na+` is present.
+/// On the first later tick that also has aqueous `h+`, snapshot the current solid.
+pub(crate) fn note_common_ion(item: &mut SceneItem) {
+    let solid_g = nacl_solid_mass_g(item);
+    let na = crate::composition::aqueous_mol(item, "na+");
+    if item.properties.nacl_seen_clear_brine != Some(true) && solid_g < 1e-3 && na >= 1e-4 {
+        item.properties.nacl_seen_clear_brine = Some(true);
+    }
+    if item.properties.nacl_seen_clear_brine == Some(true)
+        && item.properties.nacl_solid_g_at_acid.is_none()
+        && crate::composition::aqueous_mol(item, "h+") >= 1e-6
+    {
+        item.properties.nacl_solid_g_at_acid = Some(solid_g);
+    }
+}
+
+fn copy_common_ion_latches(
+    from_clear: Option<bool>,
+    from_at_acid: Option<f64>,
+    to: &mut ItemProperties,
+) {
+    if from_clear == Some(true) {
+        to.nacl_seen_clear_brine = Some(true);
+    }
+    if to.nacl_solid_g_at_acid.is_none() {
+        to.nacl_solid_g_at_acid = from_at_acid;
+    }
 }
 
 fn apply_hcl_dilution_temperature(
@@ -2070,6 +2169,20 @@ fn finalize_transfer_pair_and_note(
         &mut scene.items[dest_idx],
         crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
         true,
+    );
+    let src_clear = scene.items[source_idx].properties.nacl_seen_clear_brine;
+    let src_at_acid = scene.items[source_idx].properties.nacl_solid_g_at_acid;
+    let dest_clear = scene.items[dest_idx].properties.nacl_seen_clear_brine;
+    let dest_at_acid = scene.items[dest_idx].properties.nacl_solid_g_at_acid;
+    copy_common_ion_latches(
+        src_clear,
+        src_at_acid,
+        &mut scene.items[dest_idx].properties,
+    );
+    copy_common_ion_latches(
+        dest_clear,
+        dest_at_acid,
+        &mut scene.items[source_idx].properties,
     );
     note_spit_flags(scene, &[spit_mix, spit_src, spit_dest]);
 }

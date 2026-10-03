@@ -21,7 +21,8 @@ in the web mirror + tests.
   after every action from the challenge's win condition, so undoing the winning move un-wins it.
 - Win clauses may include **solid mass in any named vessel** (stocks, filter paper, main beaker)
   plus extra server-side checks (pH, temperature, aqueous ions, leftover liquid/solid, HCl w/w,
-  and acid-into-water dilution order). The browser never evaluates wins.
+  acid-into-water dilution order, VLE-rise latch, and clear-brine then crash). The browser never
+  evaluates wins.
 - A challenge start scene is the Free bench with the challenge's edits applied: ingredient stocks
   outside the allowed list are removed, listed stocks start empty, and the main beaker
   (`beaker-water`) is preloaded with the listed dry solids. Optional `distilled_water_ml`
@@ -154,16 +155,16 @@ Intended solution: pour the 10 ml water into the main beaker, dump the CaCl₂ s
 | --- | --- |
 | Id | `common-ion-nacl` |
 | Title | Crash salt with acid |
-| Prompt | Make a near-saturated salt solution, add a little hydrochloric acid, and heat until extra salt appears. |
+| Prompt | Make a clear near-saturated salt solution, add hydrochloric acid, and heat until extra salt appears. |
 | Done | Thank you. |
 | Main beaker (`beaker-water`) | Empty (no preload) |
 | Allowed ingredient stocks | `beaker-h2o` (5.6 ml), `beaker-hcl` (full), `beaker-nacl` (full) |
 | Empty at start | none |
 | Removed from the bench | `beaker-h2so4`, `beaker-naoh`, `beaker-na2so4`, `beaker-cacl2`, `beaker-sand` |
-| Win | **at least** 0.05 g solid `nacl` in the main beaker **or** dish, plus aqueous `h+` and `na+` (so the solid is not just dry leftover salt with no brine) |
+| Win | Same vessel (main beaker **or** dish) first held a **clear** brine (solid `nacl` < ~1e-3 g with aq. `na+`), then acid, then solid `nacl` **increased** to ≥ 0.05 g with aq. `h+` and `na+`. Dumping leftover dry salt + HCl does not count. |
 | Tools | Full set |
 
-Intended solution: dissolve the 2 g NaCl in the 5.6 ml water (clear, just unsaturated). Pipette **one** 1 ml of 30% HCl — that nudges SI over 1 — then heat so the extra solid grows to a visible 0.05 g. A second pipette or a full HCl dump adds too much water and the salt stays dissolved.
+Intended solution: dissolve the 2 g NaCl in the 5.6 ml water until the brine is clear, add HCl, then heat until extra salt appears. Extra pipettes or a full HCl dump can still crash after a clear brine (common-ion plus evaporation). Skipping the water and dumping dry salt + acid does not.
 
 ## `neutralize-to-ph7` — Neutralise to pH 7
 

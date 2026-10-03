@@ -4,10 +4,10 @@
 //! depend on mutator-heavy `scene` helpers for ion writing.
 
 use crate::scene::{
-    add_or_increase_mol_in, effective_heat_capacity, note_hcl_lean, take_composition_fraction,
-    vessel_boil_temperature_c, CompositionEntry, SceneItem, AMBIENT_TEMPERATURE_C, AMOUNT_EPS,
-    CACL2_MOLAR_MASS_G_PER_MOL, CASO4_MOLAR_MASS_G_PER_MOL, NA2SO4_MOLAR_MASS_G_PER_MOL,
-    NACL_MOLAR_MASS_G_PER_MOL, NAOH_MOLAR_MASS_G_PER_MOL,
+    add_or_increase_mol_in, effective_heat_capacity, note_common_ion, note_hcl_lean,
+    take_composition_fraction, vessel_boil_temperature_c, CompositionEntry, SceneItem,
+    AMBIENT_TEMPERATURE_C, AMOUNT_EPS, CACL2_MOLAR_MASS_G_PER_MOL, CASO4_MOLAR_MASS_G_PER_MOL,
+    NA2SO4_MOLAR_MASS_G_PER_MOL, NACL_MOLAR_MASS_G_PER_MOL, NAOH_MOLAR_MASS_G_PER_MOL,
 };
 
 /// School fraction of vessel composition discarded when chemical heat would boil.
@@ -158,6 +158,7 @@ pub(crate) fn finalize_aqueous_vessel(
         spit |= stage.apply(item, dissolve_tau_s, allow_spit_mass);
     }
     note_hcl_lean(item);
+    note_common_ion(item);
     spit
 }
 

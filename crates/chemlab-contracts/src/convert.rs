@@ -64,6 +64,8 @@ impl From<ItemProperties> for chemlab_core::ItemProperties {
             source_item_id: props.source_item_id,
             h2so4_dilution_into_water: props.h2so4_dilution_into_water,
             hcl_seen_lean: None,
+            nacl_seen_clear_brine: None,
+            nacl_solid_g_at_acid: None,
         }
     }
 }

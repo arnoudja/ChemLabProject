@@ -44,7 +44,8 @@ pub struct StockTarget {
     pub compare: WinCompare,
 }
 
-/// Extra win predicates (pH, T, aqueous ions, leftover solid/liquid, HCl w/w).
+/// Extra win predicates (pH, T, aqueous ions, leftover solid/liquid, HCl w/w,
+/// dilution order, VLE latch, common-ion crash).
 ///
 /// Solid mass still uses [`StockTarget`] (any vessel, including filter paper).
 /// `item_ids` clauses hold when **any** listed vessel satisfies the predicate.
@@ -97,6 +98,11 @@ pub enum WinCheck {
     /// Vessel received liquid H₂SO₄ into water, and never water-onto-acid.
     AcidAddedIntoWater {
         item_id: &'static str,
+    },
+    /// Same vessel saw a clear NaCl brine, then acid, then solid NaCl increased
+    /// to at least 0.05 g with aqueous `h+` and `na+` still present.
+    CommonIonCrash {
+        item_ids: &'static [&'static str],
     },
 }
 
@@ -272,34 +278,20 @@ pub const HOT_PACK_CACL2: Challenge = Challenge {
     ],
 };
 
-/// Near-saturated NaCl, then 30% HCl until extra solid salt appears.
+/// Clear NaCl brine, then HCl, then extra solid salt (common-ion / evap crash).
 pub const COMMON_ION_NACL: Challenge = Challenge {
     id: "common-ion-nacl",
     title: "Crash salt with acid",
-    prompt: "Make a near-saturated salt solution, add a little hydrochloric acid, and heat until extra salt appears.",
+    prompt: "Make a clear near-saturated salt solution, add hydrochloric acid, and heat until extra salt appears.",
     done: "Thank you.",
     allowed_stock_item_ids: &["beaker-h2o", "beaker-hcl", "beaker-nacl"],
     empty_stock_item_ids: &[],
     main_beaker_solids: &[],
     distilled_water_ml: Some(5.6),
     win: &[],
-    checks: &[
-        WinCheck::SolidAtLeast {
-            item_ids: &["beaker-water", "dish-1"],
-            substance_id: "nacl",
-            amount_g: 0.05,
-        },
-        WinCheck::AqueousAtLeast {
-            item_ids: &["beaker-water", "dish-1"],
-            substance_id: "h+",
-            amount_mol: AQ_PRESENT_MOL,
-        },
-        WinCheck::AqueousAtLeast {
-            item_ids: &["beaker-water", "dish-1"],
-            substance_id: "na+",
-            amount_mol: 1e-4,
-        },
-    ],
+    checks: &[WinCheck::CommonIonCrash {
+        item_ids: &["beaker-water", "dish-1"],
+    }],
 };
 
 /// NaOH + HCl; inspect pH is playable with 1 ml / 0.2 g steps (not a titre to 7).
@@ -547,6 +539,25 @@ fn check_holds(scene: &Scene, check: &WinCheck) -> bool {
             .iter()
             .find(|item| item.id == item_id)
             .is_some_and(|item| item.properties.h2so4_dilution_into_water == Some(true)),
+        WinCheck::CommonIonCrash { item_ids } => item_ids.iter().any(|id| {
+            scene
+                .items
+                .iter()
+                .find(|item| item.id == *id)
+                .is_some_and(|item| {
+                    let solid = solid_grams(item, "nacl");
+                    item.properties.nacl_seen_clear_brine == Some(true)
+                        && item
+                            .properties
+                            .nacl_solid_g_at_acid
+                            .is_some_and(|snapshot| {
+                                solid + CHALLENGE_MASS_TOLERANCE_G >= 0.05
+                                    && solid > snapshot + CHALLENGE_MASS_TOLERANCE_G
+                            })
+                        && aqueous_mol(item, "h+") + 1e-12 >= AQ_PRESENT_MOL
+                        && aqueous_mol(item, "na+") + 1e-12 >= 1e-4
+                })
+        }),
     }
 }
 

@@ -171,6 +171,14 @@ pub struct ItemProperties {
     /// Once `Some(true)`, never cleared. Engine-only (not on the wire). Used so
     /// the azeotrope challenge requires a VLE rise, not mixing stock to 20%.
     pub hcl_seen_lean: Option<bool>,
+    /// Latch: this vessel held a clear NaCl brine (solid NaCl below 1e-3 g with
+    /// aqueous `na+`). Once `Some(true)`, never cleared. Engine-only.
+    pub nacl_seen_clear_brine: Option<bool>,
+    /// Solid NaCl grams when acid was first seen after a clear brine. Engine-only.
+    ///
+    /// Set once, then used so a common-ion win requires the solid to **increase**
+    /// after acid — leftover dry salt plus HCl never latches a clear brine.
+    pub nacl_solid_g_at_acid: Option<f64>,
 }
 
 /// A single item in the lab scene (beaker, spoon, …).
@@ -2062,6 +2070,55 @@ pub(crate) fn note_hcl_lean(item: &mut SceneItem) {
     }
 }
 
+/// Solid NaCl grams in `item` (mol fallback uses the engine molar mass).
+pub(crate) fn nacl_solid_mass_g(item: &SceneItem) -> f64 {
+    item.properties
+        .composition
+        .iter()
+        .filter(|entry| entry.phase == "solid" && entry.substance_id == "nacl")
+        .map(|entry| {
+            if let Some(g) = entry.amount_g {
+                return g;
+            }
+            if let Some(n) = entry.amount_mol {
+                return n * NACL_MOLAR_MASS_G_PER_MOL;
+            }
+            solid_amount_g(entry)
+        })
+        .sum()
+}
+
+/// Clear-brine / post-acid solid snapshot for the common-ion challenge.
+///
+/// Latch when leftover solid NaCl is below 1e-3 g and aqueous `na+` is present.
+/// On the first later tick that also has aqueous `h+`, snapshot the current solid.
+pub(crate) fn note_common_ion(item: &mut SceneItem) {
+    let solid_g = nacl_solid_mass_g(item);
+    let na = crate::composition::aqueous_mol(item, "na+");
+    if item.properties.nacl_seen_clear_brine != Some(true) && solid_g < 1e-3 && na >= 1e-4 {
+        item.properties.nacl_seen_clear_brine = Some(true);
+    }
+    if item.properties.nacl_seen_clear_brine == Some(true)
+        && item.properties.nacl_solid_g_at_acid.is_none()
+        && crate::composition::aqueous_mol(item, "h+") >= 1e-6
+    {
+        item.properties.nacl_solid_g_at_acid = Some(solid_g);
+    }
+}
+
+fn copy_common_ion_latches(
+    from_clear: Option<bool>,
+    from_at_acid: Option<f64>,
+    to: &mut ItemProperties,
+) {
+    if from_clear == Some(true) {
+        to.nacl_seen_clear_brine = Some(true);
+    }
+    if to.nacl_solid_g_at_acid.is_none() {
+        to.nacl_solid_g_at_acid = from_at_acid;
+    }
+}
+
 fn apply_hcl_dilution_temperature(
     target: &mut SceneItem,
     dest_before: crate::hcl::HclInventory,
@@ -2112,6 +2169,20 @@ fn finalize_transfer_pair_and_note(
         &mut scene.items[dest_idx],
         crate::dissolve_kinetics::POUR_CONTACT_TAU_S,
         true,
+    );
+    let src_clear = scene.items[source_idx].properties.nacl_seen_clear_brine;
+    let src_at_acid = scene.items[source_idx].properties.nacl_solid_g_at_acid;
+    let dest_clear = scene.items[dest_idx].properties.nacl_seen_clear_brine;
+    let dest_at_acid = scene.items[dest_idx].properties.nacl_solid_g_at_acid;
+    copy_common_ion_latches(
+        src_clear,
+        src_at_acid,
+        &mut scene.items[dest_idx].properties,
+    );
+    copy_common_ion_latches(
+        dest_clear,
+        dest_at_acid,
+        &mut scene.items[source_idx].properties,
     );
     note_spit_flags(scene, &[spit_mix, spit_src, spit_dest]);
 }

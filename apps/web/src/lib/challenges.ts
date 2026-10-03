@@ -56,7 +56,8 @@ export const CHALLENGES: Challenge[] = [
   {
     id: 'common-ion-nacl',
     title: 'Crash salt with acid',
-    prompt: 'Make a near-saturated salt solution, add a little hydrochloric acid, and heat until extra salt appears.',
+    prompt:
+      'Make a clear near-saturated salt solution, add hydrochloric acid, and heat until extra salt appears.',
     done: 'Thank you.',
   },
   {

@@ -2038,10 +2038,11 @@ fn note_h2so4_dilution_order(target: &mut SceneItem, transferred: &[CompositionE
         target.properties.h2so4_dilution_into_water = Some(false);
         return;
     }
-    if dest_water > AMOUNT_EPS && add_liquid_acid > AMOUNT_EPS {
-        if target.properties.h2so4_dilution_into_water != Some(false) {
-            target.properties.h2so4_dilution_into_water = Some(true);
-        }
+    if dest_water > AMOUNT_EPS
+        && add_liquid_acid > AMOUNT_EPS
+        && target.properties.h2so4_dilution_into_water != Some(false)
+    {
+        target.properties.h2so4_dilution_into_water = Some(true);
     }
 }
 

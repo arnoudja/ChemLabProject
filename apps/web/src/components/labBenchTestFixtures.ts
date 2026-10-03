@@ -445,6 +445,87 @@ export const CREATE_TABLE_SALT_LAYOUT: ChallengeStartLayout = {
   distilledWaterMl: null,
 }
 
+export const CREATE_SODIUM_SULFATE_LAYOUT: ChallengeStartLayout = {
+  mode: 'create-sodium-sulfate',
+  allowedStockItemIds: ['beaker-h2o', 'beaker-h2so4', 'beaker-naoh', 'beaker-na2so4'],
+  emptyStockItemIds: ['beaker-na2so4'],
+  mainBeakerSolids: [],
+  distilledWaterMl: null,
+}
+
+export const PRECIPITATE_GYPSUM_LAYOUT: ChallengeStartLayout = {
+  mode: 'precipitate-gypsum',
+  allowedStockItemIds: ['beaker-h2o', 'beaker-cacl2', 'beaker-na2so4', 'beaker-h2so4'],
+  emptyStockItemIds: [],
+  mainBeakerSolids: [],
+  distilledWaterMl: null,
+}
+
+export const MAKE_HCL_FROM_GYPSUM_LAYOUT: ChallengeStartLayout = {
+  mode: 'make-hcl-from-gypsum',
+  allowedStockItemIds: ['beaker-h2o', 'beaker-cacl2', 'beaker-h2so4'],
+  emptyStockItemIds: [],
+  mainBeakerSolids: [],
+  distilledWaterMl: null,
+}
+
+export const HOT_PACK_CACL2_LAYOUT: ChallengeStartLayout = {
+  mode: 'hot-pack-cacl2',
+  allowedStockItemIds: ['beaker-h2o', 'beaker-cacl2'],
+  emptyStockItemIds: [],
+  mainBeakerSolids: [],
+  distilledWaterMl: 10,
+}
+
+export const COMMON_ION_NACL_LAYOUT: ChallengeStartLayout = {
+  mode: 'common-ion-nacl',
+  allowedStockItemIds: ['beaker-h2o', 'beaker-hcl', 'beaker-nacl'],
+  emptyStockItemIds: [],
+  mainBeakerSolids: [],
+  distilledWaterMl: 5,
+}
+
+export const NEUTRALIZE_TO_PH7_LAYOUT: ChallengeStartLayout = {
+  mode: 'neutralize-to-ph7',
+  allowedStockItemIds: ['beaker-h2o', 'beaker-hcl', 'beaker-naoh'],
+  emptyStockItemIds: [],
+  mainBeakerSolids: [],
+  distilledWaterMl: null,
+}
+
+export const DILUTE_SULFURIC_SAFE_LAYOUT: ChallengeStartLayout = {
+  mode: 'dilute-sulfuric-safe',
+  allowedStockItemIds: ['beaker-h2o', 'beaker-h2so4'],
+  emptyStockItemIds: [],
+  mainBeakerSolids: [],
+  distilledWaterMl: null,
+}
+
+export const CONCENTRATE_HCL_AZEOTROPE_LAYOUT: ChallengeStartLayout = {
+  mode: 'concentrate-hcl-azeotrope',
+  allowedStockItemIds: ['beaker-h2o', 'beaker-hcl'],
+  emptyStockItemIds: [],
+  mainBeakerSolids: [],
+  distilledWaterMl: null,
+}
+
+const CHALLENGE_START_LAYOUTS: ChallengeStartLayout[] = [
+  SEPARATE_NACL_SIO2_LAYOUT,
+  CREATE_TABLE_SALT_LAYOUT,
+  CREATE_SODIUM_SULFATE_LAYOUT,
+  PRECIPITATE_GYPSUM_LAYOUT,
+  MAKE_HCL_FROM_GYPSUM_LAYOUT,
+  HOT_PACK_CACL2_LAYOUT,
+  COMMON_ION_NACL_LAYOUT,
+  NEUTRALIZE_TO_PH7_LAYOUT,
+  DILUTE_SULFURIC_SAFE_LAYOUT,
+  CONCENTRATE_HCL_AZEOTROPE_LAYOUT,
+]
+
+export function layoutForMode(mode: string): ChallengeStartLayout | null {
+  return CHALLENGE_START_LAYOUTS.find((layout) => layout.mode === mode) ?? null
+}
+
 /** @deprecated Prefer `challengeStartScene(SEPARATE_NACL_SIO2_LAYOUT)` or a snapshot. */
 export function challengeScene(): LabScene {
   return challengeStartScene(SEPARATE_NACL_SIO2_LAYOUT)

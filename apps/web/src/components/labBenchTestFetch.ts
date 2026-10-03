@@ -4,11 +4,10 @@ import type { LabAction, LabScene } from '../generated/contracts'
 import { optionalArray } from '../lib/scene'
 import { FREE_MODE } from '../lib/challenges'
 import {
-  CREATE_TABLE_SALT_LAYOUT,
-  SEPARATE_NACL_SIO2_LAYOUT,
   challengeStartScene,
   cloneScene,
   initialScene,
+  layoutForMode,
   withFilledMainBeaker,
 } from './labBenchTestFixtures'
 import {
@@ -34,8 +33,8 @@ import {
 /** Mirror of the server's mode-aware reset: back to the start scene of the current mode. */
 function startSceneForMode(mode: string): LabScene {
   if (mode === FREE_MODE) return initialScene()
-  if (mode === CREATE_TABLE_SALT_LAYOUT.mode) return challengeStartScene(CREATE_TABLE_SALT_LAYOUT)
-  if (mode === SEPARATE_NACL_SIO2_LAYOUT.mode) return challengeStartScene(SEPARATE_NACL_SIO2_LAYOUT)
+  const layout = layoutForMode(mode)
+  if (layout) return challengeStartScene(layout)
   // Unknown mode: fall back to Free (safer than inventing a challenge layout).
   return initialScene()
 }

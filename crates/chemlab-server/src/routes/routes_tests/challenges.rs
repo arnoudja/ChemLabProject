@@ -306,3 +306,61 @@ async fn create_table_salt_completes_with_at_least_one_scoop() {
         true
     );
 }
+
+#[tokio::test]
+async fn hot_pack_select_mode_keeps_ten_ml_water_and_cacl2() {
+    let app = test_app().await;
+    let (csrf_token, csrf_cookie, session_cookie) =
+        register_user(&app, "mode-hot-pack@chemlab.local").await;
+    let cookies = format!("{session_cookie}; {csrf_cookie}");
+
+    let response = post_action(
+        &app,
+        &cookies,
+        Some(&csrf_token),
+        select_mode("hot-pack-cacl2"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let scene = body_json(response).await["scene"].clone();
+    assert_eq!(scene["mode"], "hot-pack-cacl2");
+    let ids = scene_ids(&scene);
+    assert!(ids.contains(&"beaker-cacl2".to_string()));
+    assert!(ids.contains(&"beaker-h2o".to_string()));
+    assert!(!ids.contains(&"beaker-nacl".to_string()));
+    assert_eq!(
+        scene_item(&scene, "beaker-h2o")["properties"]["fill_ml"],
+        10.0
+    );
+    assert_eq!(scene["challenge_completed"], false);
+}
+
+#[tokio::test]
+async fn precipitate_gypsum_completes_from_filter_paper_solid() {
+    let (app, state) = test_app_state().await;
+    let (csrf_token, csrf_cookie, session_cookie) =
+        register_user(&app, "mode-gypsum-win@chemlab.local").await;
+    let cookies = format!("{session_cookie}; {csrf_cookie}");
+    assert_eq!(
+        post_action(
+            &app,
+            &cookies,
+            Some(&csrf_token),
+            select_mode("precipitate-gypsum")
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
+
+    persist_stock_solid(&state, &app, &cookies, "filter-paper-1", "caso4", 0.14).await;
+    assert_eq!(
+        body_json(get_scene(&app, Some(&cookies)).await).await["challenge_completed"],
+        false
+    );
+    persist_stock_solid(&state, &app, &cookies, "filter-paper-1", "caso4", 0.15).await;
+    assert_eq!(
+        body_json(get_scene(&app, Some(&cookies)).await).await["challenge_completed"],
+        true
+    );
+}

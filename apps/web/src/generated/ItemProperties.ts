@@ -21,4 +21,9 @@ on?: boolean | null,
  * Last vessel a pipette drew from, the vessel tongs currently hold, or the
  * dish a spoon scoop came from.
  */
-source_item_id?: string | null, };
+source_item_id?: string | null, 
+/**
+ * Dilution order for concentrated H₂SO₄: `true` acid-into-water, `false`
+ * water-onto-acid. Omitted when unset. Server-authored; used by challenge wins.
+ */
+h2so4_dilution_into_water?: boolean | null, };

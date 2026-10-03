@@ -45,6 +45,7 @@ impl From<chemlab_core::ItemProperties> for ItemProperties {
             holding: props.holding.into_iter().map(Into::into).collect(),
             on: props.on,
             source_item_id: props.source_item_id,
+            h2so4_dilution_into_water: props.h2so4_dilution_into_water,
         }
     }
 }
@@ -61,6 +62,7 @@ impl From<ItemProperties> for chemlab_core::ItemProperties {
             holding: props.holding.into_iter().map(Into::into).collect(),
             on: props.on,
             source_item_id: props.source_item_id,
+            h2so4_dilution_into_water: props.h2so4_dilution_into_water,
         }
     }
 }

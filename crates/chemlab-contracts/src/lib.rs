@@ -144,6 +144,10 @@ pub struct ItemProperties {
     /// dish a spoon scoop came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_item_id: Option<String>,
+    /// Dilution order for concentrated H₂SO₄: `true` acid-into-water, `false`
+    /// water-onto-acid. Omitted when unset. Server-authored; used by challenge wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub h2so4_dilution_into_water: Option<bool>,
 }
 
 /// A single item in the lab scene (beaker, spoon, …).
@@ -442,6 +446,7 @@ mod tests {
                 }],
                 on: None,
                 source_item_id: None,
+                h2so4_dilution_into_water: None,
             },
         };
         let scene = LabScene {
@@ -481,6 +486,7 @@ mod tests {
             holding: vec![],
             on: None,
             source_item_id: None,
+            h2so4_dilution_into_water: None,
         };
         let json = serde_json::to_string(&props).unwrap();
         assert!(!json.contains("composition"));
@@ -488,6 +494,7 @@ mod tests {
         assert!(!json.contains("fill_ml"));
         assert!(!json.contains("on"));
         assert!(!json.contains("source_item_id"));
+        assert!(!json.contains("h2so4_dilution_into_water"));
         let back: ItemProperties = serde_json::from_str(&json).unwrap();
         assert_eq!(props, back);
     }
@@ -532,6 +539,7 @@ mod tests {
                 }],
                 on: None,
                 source_item_id: Some("beaker-water".into()),
+                h2so4_dilution_into_water: None,
             },
         };
         let dish = Item {
@@ -549,6 +557,7 @@ mod tests {
                 holding: vec![],
                 on: None,
                 source_item_id: None,
+                h2so4_dilution_into_water: None,
             },
         };
         let burner = Item {
@@ -566,6 +575,7 @@ mod tests {
                 holding: vec![],
                 on: Some(false),
                 source_item_id: None,
+                h2so4_dilution_into_water: None,
             },
         };
         let scene = LabScene {
@@ -619,6 +629,7 @@ mod tests {
                 holding: vec![],
                 on: None,
                 source_item_id: None,
+                h2so4_dilution_into_water: None,
             },
         };
         let json = serde_json::to_string(&item).unwrap();
@@ -651,6 +662,7 @@ mod tests {
                 holding: vec![],
                 on: None,
                 source_item_id: Some("beaker-water".into()),
+                h2so4_dilution_into_water: None,
             },
         };
         let water = Item {
@@ -675,6 +687,7 @@ mod tests {
                 holding: vec![],
                 on: None,
                 source_item_id: None,
+                h2so4_dilution_into_water: None,
             },
         };
         let json = serde_json::to_string(&tongs).unwrap();
@@ -722,6 +735,7 @@ mod tests {
                 ],
                 on: None,
                 source_item_id: Some("dish-1".into()),
+                h2so4_dilution_into_water: None,
             },
         };
         let json = serde_json::to_string(&spoon).unwrap();
@@ -751,6 +765,7 @@ mod tests {
                 holding: vec![],
                 on: None,
                 source_item_id: None,
+                h2so4_dilution_into_water: None,
             },
         };
         let json = serde_json::to_string(&item).unwrap();
@@ -787,6 +802,7 @@ mod tests {
                 holding: vec![],
                 on: None,
                 source_item_id: None,
+                h2so4_dilution_into_water: None,
             },
         };
         let json = serde_json::to_string(&item).unwrap();

@@ -160,6 +160,12 @@ pub struct ItemProperties {
     /// Last vessel a pipette drew from, the vessel tongs currently hold, or the
     /// dish a spoon scoop came from.
     pub source_item_id: Option<String>,
+    /// Dilution order for concentrated H₂SO₄ in this vessel.
+    ///
+    /// `Some(true)` — liquid acid was added into water already in the vessel.
+    /// `Some(false)` — water was added onto concentrated liquid acid (unsafe).
+    /// Unsafe latches and is never overwritten back to safe.
+    pub h2so4_dilution_into_water: Option<bool>,
 }
 
 /// A single item in the lab scene (beaker, spoon, …).
@@ -1982,6 +1988,7 @@ fn mix_transfer_into(
     transferred: &[CompositionEntry],
     source_t: Option<f64>,
 ) -> bool {
+    note_h2so4_dilution_order(target, transferred);
     let dest_hcl_before = crate::hcl::HclInventory::from_item(target);
     let added_hcl = crate::hcl::HclInventory::from_entries(transferred);
     let dest_h2so4_before = crate::h2so4::H2so4Inventory::from_item(target);
@@ -2001,6 +2008,7 @@ fn mix_transfer_into(
 }
 
 fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquot_t: f64) -> bool {
+    note_h2so4_dilution_order(target, aliquot);
     let dest_hcl_before = crate::hcl::HclInventory::from_item(target);
     let added_hcl = crate::hcl::HclInventory::from_entries(aliquot);
     let dest_h2so4_before = crate::h2so4::H2so4Inventory::from_item(target);
@@ -2018,6 +2026,23 @@ fn mix_aliquot_into(target: &mut SceneItem, aliquot: &[CompositionEntry], aliquo
     let spit_hcl = apply_hcl_dilution_temperature(target, dest_hcl_before, added_hcl);
     let spit_h2so4 = apply_h2so4_dilution_temperature(target, dest_h2so4_before, added_h2so4);
     spit_hcl || spit_h2so4
+}
+
+/// Record whether this mix was acid-into-water or water-onto-acid.
+fn note_h2so4_dilution_order(target: &mut SceneItem, transferred: &[CompositionEntry]) {
+    let dest_liquid_acid = crate::h2so4::liquid_h2so4_mol_entries(&target.properties.composition);
+    let dest_water = crate::composition::liquid_water_ml_entries(&target.properties.composition);
+    let add_liquid_acid = crate::h2so4::liquid_h2so4_mol_entries(transferred);
+    let add_water = crate::composition::liquid_water_ml_entries(transferred);
+    if dest_liquid_acid > AMOUNT_EPS && add_water > AMOUNT_EPS && add_liquid_acid <= AMOUNT_EPS {
+        target.properties.h2so4_dilution_into_water = Some(false);
+        return;
+    }
+    if dest_water > AMOUNT_EPS && add_liquid_acid > AMOUNT_EPS {
+        if target.properties.h2so4_dilution_into_water != Some(false) {
+            target.properties.h2so4_dilution_into_water = Some(true);
+        }
+    }
 }
 
 fn apply_hcl_dilution_temperature(
